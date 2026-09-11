@@ -140,8 +140,24 @@ client rather than documented, so it is always optional and always fails soft.
 |---|---|---|---|
 | Is there a native diff panel? | Desktop Code tab | **No.** `/tui` has no function in Code sessions, so neither renderer exists there. `/diff` consequently has no surface to draw on and does nothing. | 2026-09-11 |
 | Is there a native diff panel? | Terminal CLI | **Yes.** Shipped in v2.1.260. Requires the fullscreen renderer, a git repo, and a terminal ≥110 columns; auto-opens at ≥144. State persists in `~/.claude.json` as `diffSidebarOpen`. | 2026-09-11 |
-| Does `statusLine` run? | Desktop Code tab | **Pending.** Blocks P2 only. | — |
+| Does `statusLine` run? | Desktop Code tab | **Yes.** Measured on Claude Code 2.1.268: the configured command receives the JSON on stdin, and after the first API response of the session `rate_limits` carries both windows (`five_hour`, `seven_day` with `used_percentage` and `resets_at`). `session_name`, `cost`, `context_window` and, from the second call on, `prompt_cache` are all present. `pr` was absent because the session was not in a git repository, as specified. | 2026-09-11 |
 | Does `statusLine` run? | Terminal CLI | **Pending.** Blocks P2 only. | — |
+
+**Desktop payload, measured 2026-09-11 (Claude Code 2.1.268).** Top-level keys:
+`session_id`, `transcript_path`, `cwd`, `scratchpad_dir`, `effort`, `model`, `workspace`,
+`version`, `output_style`, `cost`, `context_window`, `exceeds_200k_tokens`, `fast_mode`,
+`thinking`, and — once the session has made an API call — `session_name`, `rate_limits`
+and `prompt_cache`. Three consequences:
+
+- **The quota panel has its documented data source on the primary surface.** No transcript
+  fallback is needed for Desktop, so `session-source` ships one implementation unless the
+  CLI result differs.
+- **`scratchpad_dir` is a candidate surface marker.** It is present on Desktop sessions and
+  is the kind of signal `session-source` is meant to derive `surface` from rather than
+  asking the user. Confirm against a CLI session before relying on it.
+- **The first call of a session carries no `rate_limits`, no `prompt_cache` and a null
+  `context_window.current_usage`**, exactly as section 5.1 predicts. The absent-data path is
+  the normal opening state of every session, not an edge case.
 
 **Consequence for the roadmap.** The diff panel Anthropic shipped on 2026-09-03 does
 not overlap with P4 on the primary surface, because it does not exist there. P4 is

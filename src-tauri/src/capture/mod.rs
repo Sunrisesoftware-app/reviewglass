@@ -1,0 +1,437 @@
+//! Capture engine (rg.capture-engine).
+//!
+//! Captures the monitor under the source rectangle through Windows.Graphics.Capture
+//! (via the `windows-capture` crate), crops the rectangle out of each frame and keeps
+//! only the newest crop in memory. Pixels never touch the disk and never leave the
+//! process. Scaling is left to the glass window's canvas: the engine hands over the
+//! source pixels at 1:1 and the frontend draws them at the chosen zoom.
+//!
+//! Coordinates are physical pixels in the virtual-desktop space, which is what
+//! `GetCursorPos` and `GetMonitorInfoW` return for a per-monitor-DPI-aware process
+//! (tao declares PerMonitorV2 awareness).
+
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
+use parking_lot::Mutex;
+use windows::Win32::Foundation::POINT;
+use windows::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MonitorFromPoint, HMONITOR, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+};
+use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+use windows_capture::capture::{CaptureControl, Context, GraphicsCaptureApiHandler};
+use windows_capture::frame::Frame;
+use windows_capture::graphics_capture_api::InternalCaptureControl;
+use windows_capture::monitor::Monitor;
+use windows_capture::settings::{
+    ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
+    MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
+};
+
+/// Zoom bounds from the spec (section 6.3, capture-engine): above roughly 400 %
+/// bitmap scaling visibly degrades, so higher factors are not offered.
+pub const ZOOM_MIN: f32 = 1.5;
+pub const ZOOM_MAX: f32 = 4.0;
+
+/// Frame delivery cap while the source is changing. Idle cost is governed by
+/// Windows.Graphics.Capture itself, which delivers nothing while the screen is static.
+const MAX_FPS: u64 = 30;
+
+/// A rectangle in virtual-desktop physical pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SourceRect {
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+}
+
+impl SourceRect {
+    fn centered_on(cx: i32, cy: i32, w: u32, h: u32) -> Self {
+        Self {
+            x: cx - (w / 2) as i32,
+            y: cy - (h / 2) as i32,
+            w,
+            h,
+        }
+    }
+}
+
+/// The newest cropped frame. `seq` increases only when the pixels changed, so a
+/// consumer polling with its last seen `seq` can skip redraws on a static source.
+#[derive(Default)]
+pub struct FrameData {
+    pub seq: u64,
+    pub width: u32,
+    pub height: u32,
+    /// RGBA8, tightly packed, `width * height * 4` bytes.
+    pub rgba: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct MonitorGeom {
+    handle: isize,
+    /// Top-left of the monitor in virtual-desktop coordinates.
+    left: i32,
+    top: i32,
+}
+
+/// State shared between the capture thread and the command handlers.
+struct Shared {
+    /// The rectangle to crop, in virtual-desktop coordinates.
+    source: Mutex<SourceRect>,
+    /// The monitor the running capture is attached to.
+    monitor: Mutex<Option<MonitorGeom>>,
+    latest: Mutex<FrameData>,
+    seq: AtomicU64,
+    last_hash: AtomicU64,
+}
+
+struct Handler {
+    shared: Arc<Shared>,
+    scratch: Vec<u8>,
+}
+
+impl GraphicsCaptureApiHandler for Handler {
+    type Flags = Arc<Shared>;
+    type Error = CaptureError;
+
+    fn new(ctx: Context<Self::Flags>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            shared: ctx.flags,
+            scratch: Vec::new(),
+        })
+    }
+
+    fn on_frame_arrived(
+        &mut self,
+        frame: &mut Frame,
+        _control: InternalCaptureControl,
+    ) -> Result<(), Self::Error> {
+        let Some(mon) = *self.shared.monitor.lock() else {
+            return Ok(());
+        };
+        let src = *self.shared.source.lock();
+
+        // Monitor-local crop box, clamped to the frame so a rectangle hanging off the
+        // edge still yields whatever part of it is on screen.
+        let fw = frame.width() as i32;
+        let fh = frame.height() as i32;
+        let x0 = (src.x - mon.left).clamp(0, fw);
+        let y0 = (src.y - mon.top).clamp(0, fh);
+        let x1 = (src.x - mon.left + src.w as i32).clamp(0, fw);
+        let y1 = (src.y - mon.top + src.h as i32).clamp(0, fh);
+        if x1 - x0 < 2 || y1 - y0 < 2 {
+            return Ok(());
+        }
+
+        let buffer = frame
+            .buffer_crop(x0 as u32, y0 as u32, x1 as u32, y1 as u32)
+            .map_err(|_| CaptureError::Frame)?;
+        let w = buffer.width();
+        let h = buffer.height();
+        let bytes = buffer.as_nopadding_buffer(&mut self.scratch);
+
+        // Skip the publish when nothing changed. A sampled FNV over the crop is far
+        // cheaper than a full compare and good enough to keep a static source idle.
+        let hash = sampled_hash(bytes);
+        if hash == self.shared.last_hash.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+        self.shared.last_hash.store(hash, Ordering::Relaxed);
+
+        let seq = self.shared.seq.fetch_add(1, Ordering::Relaxed) + 1;
+        let mut latest = self.shared.latest.lock();
+        latest.seq = seq;
+        latest.width = w;
+        latest.height = h;
+        latest.rgba.clear();
+        latest.rgba.extend_from_slice(bytes);
+        Ok(())
+    }
+}
+
+fn sampled_hash(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let step = (bytes.len() / 4096).max(1);
+    for b in bytes.iter().step_by(step) {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+    h ^ bytes.len() as u64
+}
+
+#[derive(Debug)]
+pub enum CaptureError {
+    /// Windows.Graphics.Capture could not be started on the target monitor.
+    Start(String),
+    /// A frame could not be read.
+    Frame,
+    /// No monitor contains the requested point.
+    NoMonitor,
+}
+
+impl std::fmt::Display for CaptureError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Start(e) => write!(f, "capture could not start: {e}"),
+            Self::Frame => f.write_str("frame could not be read"),
+            Self::NoMonitor => f.write_str("no monitor at that position"),
+        }
+    }
+}
+
+/// How the source rectangle is chosen each tick.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "mode", rename_all = "lowercase")]
+pub enum Mode {
+    /// The rectangle follows the cursor.
+    Follow,
+    /// The rectangle is locked; wheel scrolling moves it.
+    Frozen,
+}
+
+/// The engine: owns the running capture and the shared state.
+pub struct Engine {
+    shared: Arc<Shared>,
+    control: Mutex<Option<CaptureControl<Handler, CaptureError>>>,
+    view: Mutex<View>,
+}
+
+/// What the glass wants to show: its own size in physical pixels and the zoom.
+#[derive(Clone, Copy, Debug)]
+struct View {
+    width_px: u32,
+    height_px: u32,
+    zoom: f32,
+    mode: Mode,
+    /// Origin of the frozen rectangle (only meaningful in `Mode::Frozen`).
+    frozen_origin: (i32, i32),
+}
+
+impl Default for Engine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Engine {
+    pub fn new() -> Self {
+        Self {
+            shared: Arc::new(Shared {
+                source: Mutex::new(SourceRect {
+                    x: 0,
+                    y: 0,
+                    w: 2,
+                    h: 2,
+                }),
+                monitor: Mutex::new(None),
+                latest: Mutex::new(FrameData::default()),
+                seq: AtomicU64::new(0),
+                last_hash: AtomicU64::new(0),
+            }),
+            control: Mutex::new(None),
+            view: Mutex::new(View {
+                width_px: 640,
+                height_px: 240,
+                zoom: 2.0,
+                mode: Mode::Follow,
+                frozen_origin: (0, 0),
+            }),
+        }
+    }
+
+    /// Update the glass geometry and zoom. Zoom is clamped, never rejected.
+    pub fn set_view(&self, width_px: u32, height_px: u32, zoom: f32) -> f32 {
+        let zoom = if zoom.is_finite() {
+            zoom.clamp(ZOOM_MIN, ZOOM_MAX)
+        } else {
+            2.0
+        };
+        let mut v = self.view.lock();
+        v.width_px = width_px.max(2);
+        v.height_px = height_px.max(2);
+        v.zoom = zoom;
+        zoom
+    }
+
+    pub fn zoom(&self) -> f32 {
+        self.view.lock().zoom
+    }
+
+    pub fn mode(&self) -> Mode {
+        self.view.lock().mode
+    }
+
+    /// Freeze on the current source rectangle, or resume following the cursor.
+    pub fn set_mode(&self, mode: Mode) {
+        let mut v = self.view.lock();
+        if mode == Mode::Frozen && v.mode != Mode::Frozen {
+            let s = *self.shared.source.lock();
+            v.frozen_origin = (s.x, s.y);
+        }
+        v.mode = mode;
+    }
+
+    /// Restore a frozen rectangle from persisted state.
+    pub fn freeze_at(&self, x: i32, y: i32) {
+        let mut v = self.view.lock();
+        v.mode = Mode::Frozen;
+        v.frozen_origin = (x, y);
+    }
+
+    /// Scroll the frozen rectangle by a delta in source pixels. No-op while following.
+    pub fn scroll(&self, dx: i32, dy: i32) {
+        let mut v = self.view.lock();
+        if v.mode == Mode::Frozen {
+            v.frozen_origin.0 += dx;
+            v.frozen_origin.1 += dy;
+        }
+    }
+
+    pub fn source(&self) -> SourceRect {
+        *self.shared.source.lock()
+    }
+
+    /// Recompute the source rectangle and (re)attach the capture to the monitor
+    /// under it. Called from the glass's poll loop, so it runs a few times a second.
+    pub fn tick(&self) -> Result<(), CaptureError> {
+        let v = *self.view.lock();
+        let src_w = ((v.width_px as f32 / v.zoom).round() as u32).max(2);
+        let src_h = ((v.height_px as f32 / v.zoom).round() as u32).max(2);
+
+        let rect = match v.mode {
+            Mode::Follow => {
+                let (cx, cy) = cursor_pos();
+                SourceRect::centered_on(cx, cy, src_w, src_h)
+            }
+            Mode::Frozen => SourceRect {
+                x: v.frozen_origin.0,
+                y: v.frozen_origin.1,
+                w: src_w,
+                h: src_h,
+            },
+        };
+        *self.shared.source.lock() = rect;
+
+        let center = (rect.x + (rect.w / 2) as i32, rect.y + (rect.h / 2) as i32);
+        let geom = monitor_at(center).ok_or(CaptureError::NoMonitor)?;
+        let running = self.shared.monitor.lock().map(|m| m.handle);
+        if running != Some(geom.handle) {
+            self.attach(geom)?;
+        }
+        Ok(())
+    }
+
+    fn attach(&self, geom: MonitorGeom) -> Result<(), CaptureError> {
+        let mut control = self.control.lock();
+        if let Some(old) = control.take() {
+            let _ = old.stop();
+        }
+        *self.shared.monitor.lock() = Some(geom);
+        self.shared.last_hash.store(0, Ordering::Relaxed);
+
+        let monitor = Monitor::from_raw_hmonitor(geom.handle as *mut std::ffi::c_void);
+        let settings = Settings::new(
+            monitor,
+            CursorCaptureSettings::WithoutCursor,
+            DrawBorderSettings::WithoutBorder,
+            SecondaryWindowSettings::Default,
+            MinimumUpdateIntervalSettings::Custom(Duration::from_millis(1000 / MAX_FPS)),
+            DirtyRegionSettings::Default,
+            ColorFormat::Rgba8,
+            Arc::clone(&self.shared),
+        );
+        let started = Handler::start_free_threaded(settings)
+            .map_err(|e| CaptureError::Start(format!("{e:?}")))?;
+        *control = Some(started);
+        Ok(())
+    }
+
+    /// The newest frame if it is newer than `since`; `None` when unchanged.
+    pub fn frame_since(&self, since: u64) -> Option<(u64, u32, u32, Vec<u8>)> {
+        let latest = self.shared.latest.lock();
+        if latest.seq == 0 || latest.seq == since {
+            return None;
+        }
+        Some((latest.seq, latest.width, latest.height, latest.rgba.clone()))
+    }
+
+    pub fn stop(&self) {
+        if let Some(c) = self.control.lock().take() {
+            let _ = c.stop();
+        }
+        *self.shared.monitor.lock() = None;
+    }
+}
+
+fn cursor_pos() -> (i32, i32) {
+    let mut p = POINT::default();
+    // SAFETY: GetCursorPos writes into a valid POINT.
+    unsafe {
+        let _ = GetCursorPos(&mut p);
+    }
+    (p.x, p.y)
+}
+
+fn monitor_at((x, y): (i32, i32)) -> Option<MonitorGeom> {
+    // SAFETY: plain Win32 queries with valid out-pointers; DEFAULTTONEAREST never
+    // returns a null handle while at least one monitor exists.
+    unsafe {
+        let h: HMONITOR = MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTONEAREST);
+        if h.is_invalid() {
+            return None;
+        }
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if !GetMonitorInfoW(h, &mut info).as_bool() {
+            return None;
+        }
+        let r = info.rcMonitor;
+        Some(MonitorGeom {
+            handle: h.0 as isize,
+            left: r.left,
+            top: r.top,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zoom_is_clamped_not_rejected() {
+        let e = Engine::new();
+        assert_eq!(e.set_view(100, 100, 0.5), ZOOM_MIN);
+        assert_eq!(e.set_view(100, 100, 9.0), ZOOM_MAX);
+        assert_eq!(e.set_view(100, 100, f32::NAN), 2.0);
+        assert_eq!(e.set_view(100, 100, 2.5), 2.5);
+    }
+
+    #[test]
+    fn scroll_only_moves_a_frozen_rect() {
+        let e = Engine::new();
+        e.scroll(10, 10);
+        assert_eq!(e.view.lock().frozen_origin, (0, 0));
+        e.freeze_at(5, 5);
+        e.scroll(10, -3);
+        assert_eq!(e.view.lock().frozen_origin, (15, 2));
+    }
+
+    #[test]
+    fn sampled_hash_distinguishes_length_and_content() {
+        assert_ne!(sampled_hash(&[0; 16]), sampled_hash(&[0; 32]));
+        assert_ne!(sampled_hash(&[0; 16]), sampled_hash(&[1; 16]));
+        assert_eq!(sampled_hash(&[7; 100]), sampled_hash(&[7; 100]));
+    }
+
+    #[test]
+    fn centered_rect_is_centered() {
+        let r = SourceRect::centered_on(100, 50, 20, 10);
+        assert_eq!((r.x, r.y, r.w, r.h), (90, 45, 20, 10));
+    }
+}
