@@ -7,6 +7,9 @@ license = "Apache-2.0"
 repository = "https://github.com/Sunrisesoftware-app/reviewglass"
 edition = "2021"
 rust-version = "1.85"
+# Two binaries now ship: the app and the statusLine collector. Tauri bundles the one
+# named here; the collector is installed beside it.
+default-run = "reviewglass"
 
 [lib]
 # The `_lib` suffix keeps the lib name distinct from the bin name on Windows

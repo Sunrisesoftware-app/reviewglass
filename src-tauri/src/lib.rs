@@ -5,8 +5,10 @@
 mod capture;
 mod config;
 mod glass;
+mod panel;
 pub mod session;
 pub mod spool;
+pub mod usage;
 
 use tauri::Manager;
 
@@ -18,6 +20,7 @@ pub fn run() {
             let config_dir = app.path().app_config_dir()?;
             app.manage(config::Store::open(&config_dir));
             app.manage(capture::Engine::new());
+            app.manage(panel::PanelState::new());
 
             if let Some(w) = app.get_webview_window(glass::GLASS_LABEL) {
                 if let Err(e) = glass::exclude_from_capture(&w) {
@@ -39,6 +42,7 @@ pub fn run() {
             glass::glass_hide,
             glass::app_quit,
             glass::glass_frame,
+            panel::panel_usage,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ReviewGlass")
