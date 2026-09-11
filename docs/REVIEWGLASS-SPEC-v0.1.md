@@ -140,24 +140,49 @@ client rather than documented, so it is always optional and always fails soft.
 |---|---|---|---|
 | Is there a native diff panel? | Desktop Code tab | **No.** `/tui` has no function in Code sessions, so neither renderer exists there. `/diff` consequently has no surface to draw on and does nothing. | 2026-09-11 |
 | Is there a native diff panel? | Terminal CLI | **Yes.** Shipped in v2.1.260. Requires the fullscreen renderer, a git repo, and a terminal ≥110 columns; auto-opens at ≥144. State persists in `~/.claude.json` as `diffSidebarOpen`. | 2026-09-11 |
-| Does `statusLine` run? | Desktop Code tab | **Yes.** Measured on Claude Code 2.1.268: the configured command receives the JSON on stdin, and after the first API response of the session `rate_limits` carries both windows (`five_hour`, `seven_day` with `used_percentage` and `resets_at`). `session_name`, `cost`, `context_window` and, from the second call on, `prompt_cache` are all present. `pr` was absent because the session was not in a git repository, as specified. | 2026-09-11 |
-| Does `statusLine` run? | Terminal CLI | **Pending.** Blocks P2 only. | — |
+| Does `statusLine` run? | Desktop Code tab | **No.** Measured on Claude Code 2.1.268. A Desktop session (`entrypoint: claude-desktop`) started after the passthrough was configured, which produced user and assistant messages, wrote nothing to the log. A CLI session in the same directory three minutes later wrote on every message. | 2026-09-11 |
+| Does `statusLine` run? | Terminal CLI | **Yes.** Measured on Claude Code 2.1.268. The first call of a session carries no `rate_limits`, no `prompt_cache` and a null `context_window.current_usage`; from the first API response on, `rate_limits` carries `five_hour` and `seven_day` with `used_percentage` and `resets_at`, `session_name` appears, and `prompt_cache` follows on the next call. `pr` was absent outside a git repository, as specified. Print mode (`claude -p`) runs no status line at all: it has no line to render. | 2026-09-11 |
 
-**Desktop payload, measured 2026-09-11 (Claude Code 2.1.268).** Top-level keys:
-`session_id`, `transcript_path`, `cwd`, `scratchpad_dir`, `effort`, `model`, `workspace`,
-`version`, `output_style`, `cost`, `context_window`, `exceeds_200k_tokens`, `fast_mode`,
-`thinking`, and — once the session has made an API call — `session_name`, `rate_limits`
-and `prompt_cache`. Three consequences:
+**This is the outcome section 4 called "the most likely awkward case": fires in CLI only,
+on the secondary surface, while the primary surface is blind to the channel.**
 
-- **The quota panel has its documented data source on the primary surface.** No transcript
-  fallback is needed for Desktop, so `session-source` ships one implementation unless the
-  CLI result differs.
-- **`scratchpad_dir` is a candidate surface marker.** It is present on Desktop sessions and
-  is the kind of signal `session-source` is meant to derive `surface` from rather than
-  asking the user. Confirm against a CLI session before relying on it.
-- **The first call of a session carries no `rate_limits`, no `prompt_cache` and a null
-  `context_window.current_usage`**, exactly as section 5.1 predicts. The absent-data path is
+**CLI payload, measured 2026-09-11 (Claude Code 2.1.268).** Top-level keys:
+`session_id`, `transcript_path`, `cwd`, `scratchpad_dir`, `prompt_id`, `effort`, `model`,
+`workspace`, `version`, `output_style`, `cost`, `context_window`, `exceeds_200k_tokens`,
+`fast_mode`, `thinking`, and — once the session has made an API call — `session_name`,
+`rate_limits` and `prompt_cache`.
+
+**How the surfaces were told apart.** Not from the statusLine payload, which offers no
+marker: both surfaces write their transcript under `~/.claude/projects/<slug>/` and both
+carry a `scratchpad_dir` under `AppData/Local/Temp/claude/`. The spec's earlier note about
+Desktop sessions living in `AppData/Roaming/Claude/claude-code-sessions/` does not hold on
+2.1.268. The marker is inside the transcript itself: records carry
+**`entrypoint`**, `"claude-desktop"` or `"cli"`.
+
+Four consequences for the architecture:
+
+- **`session-source` ships two implementations after all.** `ClaudeStatusLineSource` serves
+  CLI sessions; `ClaudeTranscriptSource`, reading the JSONL under `~/.claude/projects/`,
+  is the only way a Desktop session reaches the panel. It is no longer conditional.
+- **`surface` comes from the transcript's `entrypoint`, not from a guess.** This satisfies
+  the `session-source` contract's "derive it from available signals" requirement exactly,
+  and the Desktop path has to open the transcript anyway.
+- **The account quota is not lost, but it is borrowed.** `rate_limits` is account-wide, so a
+  single CLI session running anywhere supplies the gauge for every session in the panel,
+  Desktop ones included. When no CLI session is live the gauge has no source and must be
+  hidden, not zeroed — and the panel must say *why* it is absent, because "no CLI session
+  running" is a condition the user can act on, unlike "no Pro/Max plan".
+- **Per-session attribution for Desktop sessions comes from transcript token counts**, which
+  are in different units from the quota again. This does not change adr.rg.007; it widens
+  it: attribution now has two derivations, and neither may be blended with the gauge.
+
+Two smaller findings worth keeping:
+
+- The first call of a session carries no `rate_limits`, no `prompt_cache` and a null
+  `context_window.current_usage`, exactly as section 5.1 predicts. The absent-data path is
   the normal opening state of every session, not an edge case.
+- A session started **before** `statusLine` was configured never runs it. The installer must
+  tell the user that running sessions are unaffected until they are restarted.
 
 **Consequence for the roadmap.** The diff panel Anthropic shipped on 2026-09-03 does
 not overlap with P4 on the primary surface, because it does not exist there. P4 is

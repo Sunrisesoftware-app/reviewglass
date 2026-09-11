@@ -56,6 +56,7 @@ pub fn restore(app: &AppHandle) {
             let _ = w.hide();
         }
     }
+    engine.set_enabled(cfg.visible);
     engine.set_view(cfg.width, cfg.height, cfg.zoom);
     if cfg.frozen {
         engine.freeze_at(cfg.frozen_x, cfg.frozen_y);
@@ -89,6 +90,7 @@ fn toggle_visible(app: &AppHandle) {
     };
     let visible = w.is_visible().unwrap_or(true);
     let _ = if visible { w.hide() } else { w.show() };
+    app.state::<Engine>().set_enabled(!visible);
     let store = app.state::<Store>();
     let _ = store.update(|c| c.glass.visible = !visible);
 }
@@ -161,13 +163,22 @@ pub fn glass_save_position(store: State<Store>, x: i32, y: i32) {
 #[tauri::command]
 pub fn glass_frame(engine: State<Engine>, since: u64) -> Result<Response, String> {
     engine.tick().map_err(|e| e.to_string())?;
+    if !engine.is_enabled() {
+        let mut idle = Vec::with_capacity(16);
+        idle.extend_from_slice(&since.to_le_bytes());
+        idle.extend_from_slice(&0u32.to_le_bytes());
+        idle.extend_from_slice(&0u32.to_le_bytes());
+        return Ok(Response::new(idle));
+    }
     let mut out = Vec::with_capacity(16);
     match engine.frame_since(since) {
         Some((seq, w, h, rgba)) => {
+            out.reserve(rgba.len());
             out.extend_from_slice(&seq.to_le_bytes());
             out.extend_from_slice(&w.to_le_bytes());
             out.extend_from_slice(&h.to_le_bytes());
             out.extend_from_slice(&rgba);
+            engine.recycle(rgba);
         }
         None => {
             out.extend_from_slice(&since.to_le_bytes());

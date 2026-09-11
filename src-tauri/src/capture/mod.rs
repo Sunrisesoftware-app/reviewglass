@@ -79,6 +79,9 @@ struct MonitorGeom {
 
 /// State shared between the capture thread and the command handlers.
 struct Shared {
+    /// A buffer handed back by the reader, reused by the capture thread so a frame
+    /// costs no allocation and no copy beyond the one the crop itself needs.
+    spare: Mutex<Vec<u8>>,
     /// The rectangle to crop, in virtual-desktop coordinates.
     source: Mutex<SourceRect>,
     /// The monitor the running capture is attached to.
@@ -124,6 +127,23 @@ impl GraphicsCaptureApiHandler for Handler {
         let y1 = (src.y - mon.top + src.h as i32).clamp(0, fh);
         if x1 - x0 < 2 || y1 - y0 < 2 {
             return Ok(());
+        }
+
+        // Skip the crop entirely when the compositor tells us nothing inside our box
+        // changed. Cropping allocates a staging texture and copies through it, which is
+        // by far the most expensive thing this handler does, and a magnifier parked over
+        // a still region would otherwise pay it thirty times a second for no new pixels.
+        // An empty list means "the whole frame is dirty" as far as we are concerned: the
+        // API reports no regions when it cannot track them, and skipping on that would
+        // freeze the glass.
+        if let Ok(regions) = frame.dirty_regions() {
+            if !regions.is_empty()
+                && !regions
+                    .iter()
+                    .any(|r| r.x < x1 && r.x + r.width > x0 && r.y < y1 && r.y + r.height > y0)
+            {
+                return Ok(());
+            }
         }
 
         let buffer = frame
@@ -195,6 +215,9 @@ pub enum Mode {
 /// The engine: owns the running capture and the shared state.
 pub struct Engine {
     shared: Arc<Shared>,
+    /// False while the glass is hidden. A hidden magnifier has nothing to show, so it
+    /// holds no capture session and reads no pixels.
+    enabled: Mutex<bool>,
     control: Mutex<Option<CaptureControl<Handler, CaptureError>>>,
     view: Mutex<View>,
 }
@@ -219,7 +242,9 @@ impl Default for Engine {
 impl Engine {
     pub fn new() -> Self {
         Self {
+            enabled: Mutex::new(true),
             shared: Arc::new(Shared {
+                spare: Mutex::new(Vec::new()),
                 source: Mutex::new(SourceRect {
                     x: 0,
                     y: 0,
@@ -294,9 +319,31 @@ impl Engine {
         *self.shared.source.lock()
     }
 
+    /// Turn capture on or off. Turning it off releases the capture session; the next
+    /// tick after it is turned back on attaches a fresh one.
+    pub fn set_enabled(&self, enabled: bool) {
+        let changed = {
+            let mut e = self.enabled.lock();
+            let changed = *e != enabled;
+            *e = enabled;
+            changed
+        };
+        if changed && !enabled {
+            self.stop();
+        }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        *self.enabled.lock()
+    }
+
     /// Recompute the source rectangle and (re)attach the capture to the monitor
     /// under it. Called from the glass's poll loop, so it runs a few times a second.
+    /// A no-op while disabled.
     pub fn tick(&self) -> Result<(), CaptureError> {
+        if !self.is_enabled() {
+            return Ok(());
+        }
         let v = *self.view.lock();
         let src_w = ((v.width_px as f32 / v.zoom).round() as u32).max(2);
         let src_h = ((v.height_px as f32 / v.zoom).round() as u32).max(2);
@@ -339,7 +386,7 @@ impl Engine {
             DrawBorderSettings::WithoutBorder,
             SecondaryWindowSettings::Default,
             MinimumUpdateIntervalSettings::Custom(Duration::from_millis(1000 / MAX_FPS)),
-            DirtyRegionSettings::Default,
+            DirtyRegionSettings::ReportOnly,
             ColorFormat::Rgba8,
             Arc::clone(&self.shared),
         );
@@ -349,13 +396,31 @@ impl Engine {
         Ok(())
     }
 
-    /// The newest frame if it is newer than `since`; `None` when unchanged.
+    /// Take the newest frame if it is newer than `since`; `None` when unchanged.
+    ///
+    /// The pixel buffer is moved out rather than copied, and the reader's previous
+    /// allocation is left behind for the capture thread to refill, so a frame costs no
+    /// copy beyond the crop itself. A frame the reader took is gone from the engine: a
+    /// second call with the same `since` yields `None`, which the glass treats as
+    /// "unchanged" and leaves its canvas alone.
     pub fn frame_since(&self, since: u64) -> Option<(u64, u32, u32, Vec<u8>)> {
-        let latest = self.shared.latest.lock();
-        if latest.seq == 0 || latest.seq == since {
+        let mut latest = self.shared.latest.lock();
+        if latest.seq == 0 || latest.seq == since || latest.rgba.is_empty() {
             return None;
         }
-        Some((latest.seq, latest.width, latest.height, latest.rgba.clone()))
+        let mut taken = std::mem::take(&mut *self.shared.spare.lock());
+        taken.clear();
+        std::mem::swap(&mut latest.rgba, &mut taken);
+        Some((latest.seq, latest.width, latest.height, taken))
+    }
+
+    /// Hand a drained buffer back for the capture thread to refill. Keeping the larger
+    /// of the two allocations is what makes a steady stream of frames allocation-free.
+    pub fn recycle(&self, buf: Vec<u8>) {
+        let mut spare = self.shared.spare.lock();
+        if spare.capacity() < buf.capacity() {
+            *spare = buf;
+        }
     }
 
     pub fn stop(&self) {
@@ -402,6 +467,35 @@ fn monitor_at((x, y): (i32, i32)) -> Option<MonitorGeom> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disabled_engine_does_not_tick() {
+        let e = Engine::new();
+        assert!(e.is_enabled());
+        e.set_enabled(false);
+        assert!(!e.is_enabled());
+        // Disabled, tick is a no-op and never reports "no monitor at that position".
+        assert!(e.tick().is_ok());
+    }
+
+    #[test]
+    fn frame_is_taken_once() {
+        let e = Engine::new();
+        {
+            let mut latest = e.shared.latest.lock();
+            latest.seq = 4;
+            latest.width = 2;
+            latest.height = 1;
+            latest.rgba = vec![9; 8];
+        }
+        let (seq, w, h, px) = e.frame_since(0).expect("a newer frame is available");
+        assert_eq!((seq, w, h, px.len()), (4, 2, 1, 8));
+        // The pixels moved out; asking again for the same seq yields nothing rather
+        // than an empty frame the glass would draw as a black rectangle.
+        assert!(e.frame_since(0).is_none());
+        e.recycle(px);
+        assert!(e.shared.spare.lock().capacity() >= 8);
+    }
 
     #[test]
     fn zoom_is_clamped_not_rejected() {
