@@ -274,6 +274,11 @@
     <span class="sep"></span>
 
     <button
+      title="Open the sessions panel"
+      aria-label="Open the sessions panel"
+      onpointerdown={(e) => control(e, () => invoke("panel_show"))}>▤</button
+    >
+    <button
       class:active={frozen}
       title={frozen ? "Follow the cursor (F)" : "Freeze this region (F)"}
       aria-label="Freeze"

@@ -56,6 +56,10 @@
       <p class="empty">{PHASE[active]}</p>
     {/if}
   </section>
+
+  <footer>
+    Closing this window hides it — the ▤ button on the glass brings it back.
+  </footer>
 </div>
 
 <style>
@@ -134,5 +138,11 @@
   }
   .empty {
     color: var(--muted);
+  }
+  footer {
+    padding: 6px 14px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 11px;
   }
 </style>

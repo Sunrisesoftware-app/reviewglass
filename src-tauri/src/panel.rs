@@ -6,7 +6,7 @@
 //! path — spool, transcripts, usage model — in one place that is easy to reason about.
 
 use parking_lot::Mutex;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 use crate::session;
 use crate::usage::{UsageModel, UsageView};
@@ -22,6 +22,19 @@ impl PanelState {
         Self {
             model: Mutex::new(UsageModel::new()),
         }
+    }
+}
+
+pub const PANEL_LABEL: &str = "panel";
+
+/// Bring the panel up. Closing it hides it rather than destroying it (see lib.rs), so
+/// this is always able to bring the same window back.
+#[tauri::command]
+pub fn panel_show(app: AppHandle) {
+    if let Some(w) = app.get_webview_window(PANEL_LABEL) {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
     }
 }
 

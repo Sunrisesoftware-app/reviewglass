@@ -27,6 +27,18 @@ pub fn run() {
                     eprintln!("reviewglass: {e}");
                 }
             }
+            // Closing the panel hides it instead of destroying it: it is a companion
+            // window, and a user who closes it to get it out of the way should be able
+            // to bring it back from the glass rather than restarting the app.
+            if let Some(w) = app.get_webview_window(panel::PANEL_LABEL) {
+                let handle = w.clone();
+                w.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = handle.hide();
+                    }
+                });
+            }
             glass::restore(app.handle());
             if let Err(e) = glass::register_hotkeys(app.handle()) {
                 eprintln!("reviewglass: hotkeys not registered: {e}");
@@ -43,6 +55,7 @@ pub fn run() {
             glass::app_quit,
             glass::glass_frame,
             panel::panel_usage,
+            panel::panel_show,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ReviewGlass")
