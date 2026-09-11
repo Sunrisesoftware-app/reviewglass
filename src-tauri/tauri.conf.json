@@ -1,0 +1,59 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ReviewGlass",
+  "version": "0.1.0",
+  "identifier": "app.sunrisesoftware.reviewglass",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "panel",
+        "title": "ReviewGlass",
+        "url": "/panel",
+        "width": 900,
+        "height": 640,
+        "minWidth": 480,
+        "minHeight": 320
+      },
+      {
+        "label": "glass",
+        "title": "ReviewGlass Glass",
+        "url": "/glass",
+        "width": 640,
+        "height": 240,
+        "minWidth": 160,
+        "minHeight": 60,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": true,
+        "shadow": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  }
+}
