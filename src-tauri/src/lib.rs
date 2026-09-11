@@ -1,6 +1,6 @@
 //! ReviewGlass core. Two windows (glass, panel) are declared in tauri.conf.json;
 //! the Rust side owns capture, configuration, and later the spool watcher and git.
-//! See docs/REVIEWGLASS-SPEC-v0.1.md section 6 for the module contracts.
+//! See docs/REVIEWGLASS-SPEC.md section 6 for the module contracts.
 
 mod capture;
 mod config;

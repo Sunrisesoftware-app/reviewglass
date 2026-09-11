@@ -1,6 +1,6 @@
 # ReviewGlass — notes for the build agent
 
-Read `docs/REVIEWGLASS-SPEC-v0.1.md` before changing architecture. Section 6.3 is the module
+Read `docs/REVIEWGLASS-SPEC.md` before changing architecture. Section 6.3 is the module
 contract list; section 10 is this file's source.
 
 ## Rules

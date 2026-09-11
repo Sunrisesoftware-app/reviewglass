@@ -1,11 +1,32 @@
 # ReviewGlass — Product & Architecture Specification
 
-**Version:** 0.1 (draft)
+**Version:** 0.2
 **Date:** 2026-09-11
 **Owner:** Petri Korhonen / Sunrise Software Oy
-**Status:** Draft for Atlas ingestion. Not yet approved for build.
-**Target intake:** Atlas system record, then Claude Code build in a new repository.
-**Source of truth:** Atlas artifact `REVIEWGLASS-SPEC` (this file is a copy of version 1).
+**Status:** In build. P0 complete, P1 shipped, P2 built.
+**Model:** Atlas system `reviewglass` (modules `rg.*`, decisions `adr.rg.001`-`011`).
+**Repository:** github.com/Sunrisesoftware-app/reviewglass (private until P8). The repo
+carries a copy of this document at `docs/REVIEWGLASS-SPEC.md`; this artifact is the
+source of truth.
+
+### What changed from v0.1
+
+Three measurements contradicted the draft, and the architecture moved rather than the
+measurements:
+
+1. **`statusLine` does not run in the Desktop Code tab.** It runs in the terminal CLI.
+   The primary surface depends on the undocumented channel and the secondary one on the
+   documented channel - the inverse of what section 4 assumed. Recorded in 4.1; forces
+   `adr.rg.003` and `adr.rg.009`.
+2. **`context_window.current_usage` is an object, not a number** (5.1). One field of the
+   wrong type failed the whole payload, which made "treat every field as optional"
+   insufficient on its own. Forces `adr.rg.011`.
+3. **The collectors are binaries, not shell scripts** (6.3), which removes the Git Bash
+   path-mangling hazard the draft warned about rather than working around it. Forces
+   `adr.rg.010`.
+
+Everything else in the draft survived contact, including the two-window split, the file
+spool, the shared-gauge-versus-attribution rule, and the decision to start at P1.
 
 ---
 
@@ -37,7 +58,7 @@ It is built first for the author's own use, distributed later as an open-source 
 - Windows 11 only.
 - Claude Code as the only instrumented agent.
 - Local-only operation. No network egress except one explicitly user-triggered
-  feature (see `explain-service`, section 6.9).
+  feature (see `explain-service`, section 6.3).
 - Free, open-source, signed-installer distribution.
 
 ### 2.2 Explicit non-goals for v1
@@ -61,6 +82,8 @@ It is built first for the author's own use, distributed later as an open-source 
 | D2 | Explain-service backend | **Both, behind a pluggable interface.** Remote API and a local compute unit are equal-status options; neither is hardcoded. | 2026-09-11 |
 | D3 | Primary target surface | **Desktop Code tab is primary. Terminal CLI is a supported secondary surface**, not a separate build. | 2026-09-11 |
 | D4 | Name availability | **Open.** Confirm "ReviewGlass" is free of conflicting use before the repository is made public. Blocks P8, not P1. | — |
+| D5 | Collector form | **Native binaries, not shell scripts** (`adr.rg.010`). Removes the Git Bash / PowerShell question entirely. | 2026-09-11 |
+| D6 | Payload tolerance | **A field of the wrong type costs that field only** (`adr.rg.011`), not only a field that is absent. | 2026-09-11 |
 
 ### 3.1 Consequences of D1 (Apache-2.0)
 
@@ -100,7 +123,9 @@ section 6). This changes the module boundary and the privacy posture:
 
 ## 4. Prerequisite spike (Phase 0)
 
-**This must be completed before any architecture is committed.**
+**Complete. The outcome is in 4.1, and it is not the one this section expected — read
+4.1 before 4. The text below is kept as written, because what the spike was asked and
+what it returned are both worth having.**
 
 The entire quota panel assumes Claude Code executes the configured `statusLine`
 command in the Desktop app's Code tab. The `statusLine` feature is documented from a
@@ -130,9 +155,10 @@ whichever combination is observed.
 
 In any fallback case, transcripts yield token counts but **not** rate-limit
 percentages. The quota panel then shows consumption trends rather than official limit
-percentages, and the optional OAuth usage probe (section 5.4) becomes the only source
-of true percentages. That probe is reverse-engineered from Claude Code's bundled
-client rather than documented, so it is always optional and always fails soft.
+percentages, and the optional OAuth usage probe (never specified beyond this mention,
+and not built) would become the only source of true percentages. That probe is
+reverse-engineered from Claude Code's bundled client rather than documented, so it is
+always optional and always fails soft.
 
 ### 4.1 Results
 
@@ -198,20 +224,21 @@ worth recording:
   advantage of the native feature on the surface where it exists, and should not be
   chased.
 
-**P1 is unblocked and has no dependency on the pending statusLine result.** Build may
-begin.
+**P1 was unblocked by this result and has since shipped.** It depends on no Claude Code
+channel at all, which is why the spec put it first.
 
 ---
 
 ## 5. Data sources
 
-Three independent channels, in order of preference. Each degrades gracefully.
+Four channels. Each degrades gracefully, and which one carries a session depends on the
+surface it runs on — the finding of section 4.1, and the reason 5.2 exists at all.
 
-### 5.1 statusLine JSON (primary, documented)
+### 5.1 statusLine JSON (primary for CLI, documented)
 
 Claude Code pipes a JSON object to a configured command on stdin, on every assistant
 message, after `/compact`, on permission-mode change, on vim-mode toggle, and on a
-`refreshInterval` timer.
+`refreshInterval` timer. **In the terminal CLI only** (4.1).
 
 Fields consumed:
 
@@ -219,13 +246,14 @@ Fields consumed:
 |---|---|
 | `session_id`, `session_name` | Session identity and panel row label |
 | `workspace.current_dir`, `workspace.project_dir` | Which project a session belongs to |
+| `transcript_path` | A direct pointer to the file that knows the surface |
 | `model.id`, `model.display_name` | Model attribution |
 | `rate_limits.five_hour.{used_percentage,resets_at}` | Account-wide 5h quota |
 | `rate_limits.seven_day.{used_percentage,resets_at}` | Account-wide weekly quota |
 | `cost.total_cost_usd`, `cost.total_duration_ms` | Per-session cost and elapsed time |
 | `cost.total_lines_added/removed` | Per-session change volume |
 | `context_window.used_percentage`, `context_window.current_usage` | Per-session context fill |
-| `prompt_cache.*` | Cache health panel (6.5) |
+| `prompt_cache.*` | Cache health panel (P5) |
 | `pr.number`, `pr.url`, `pr.review_state`, `pr.kind` | PR panel without GitHub API |
 | `effort.level`, `thinking.enabled`, `fast_mode` | Session configuration display |
 
@@ -236,12 +264,41 @@ Fields consumed:
   Every field must be treated as optionally absent, not as null.
 - `rate_limits` has **no per-model breakdown**. The user's "Opus limit" notification
   corresponds to a model-specific weekly limit that this channel does not expose.
-- `context_window.current_usage` is `null` before the first API call and again after
-  `/compact` until the next call.
+- `context_window.current_usage` is **an object** of token counts
+  (`input_tokens`, `output_tokens`, `cache_creation_input_tokens`,
+  `cache_read_input_tokens`), not a number - measured on 2.1.268, correcting v0.1. It is
+  `null` before the first API call and again after `/compact` until the next call.
+- **A field may change type, not only disappear.** Optional fields handle an absence and
+  do nothing about a wrong shape: on 2.1.268 the `current_usage` mismatch failed the
+  entire payload, costing the session, the model, the cost and the quota over a field
+  nothing reads. Every field is therefore parsed leniently - a value that does not fit
+  becomes absent and its neighbours are untouched (`adr.rg.011`). The two cases collapse
+  to the behaviour the spec already prescribes for an absence.
 - `prompt_cache` requires Claude Code v2.1.251+. Handle absence.
 - `pr` is absent outside a git repo and disappears when the PR merges or closes.
 
-### 5.2 PostToolUse hook (primary, documented)
+### 5.2 Claude Code transcripts (primary for Desktop, undocumented)
+
+`~/.claude/projects/<slug>/<session_id>.jsonl`, written for every session on both
+surfaces whether or not a status line is configured. Since `statusLine` does not run in
+the Desktop Code tab, this is the **only** channel that reaches the primary surface, and
+it is load-bearing rather than a fallback (`adr.rg.003`).
+
+Fields consumed: `entrypoint` (`"claude-desktop"` / `"cli"` — the only surface marker
+there is), `sessionId`, `cwd`, `version`, and the record kinds, for a count of assistant
+turns. Nothing else. **The conversation itself is never read**, and the file is opened
+read-only and never written, truncated or moved.
+
+What it does not carry: `rate_limits`, cost, or context percentages. That absence is what
+forces the borrowed gauge of `adr.rg.009`.
+
+Being undocumented, it is the channel most likely to change shape. Its reader tolerates a
+half-written last line (a growing file is appended to while it is read), skips any record
+it cannot parse rather than treating it as the end of the data, and falls back to the file
+name for a session id — so a format change degrades this channel rather than emptying the
+panel.
+
+### 5.3 PostToolUse hook (primary, documented)
 
 Fires after every `Edit`, `Write`, or `MultiEdit`, receiving the changed file path in
 its JSON input. This is the real-time trigger for the live diff view.
@@ -250,7 +307,7 @@ The hook must be non-blocking and fast. It writes an event file and exits 0. It 
 returns a non-zero exit code, because PostToolUse "blocking errors" surface in the
 session UI without actually blocking anything, which would be pure noise.
 
-### 5.3 Filesystem watcher (fallback, universal)
+### 5.4 Filesystem watcher (fallback, universal)
 
 Watches the project directory for changes and runs `git diff` on modification. Slower
 and coarser than the hook, but agent-agnostic. This is the path that a future Codex
@@ -264,16 +321,25 @@ adapter reuses.
 
 ```
 Claude Code session 1..N
-  ├─ statusLine passthrough script ──► spool/sessions/<session_id>.json  (atomic)
-  └─ PostToolUse hook ──────────────► spool/events/<timestamp>-<uuid>.json
-                                              │
-                                      filesystem watcher
-                                              │
+  │
+  ├─ CLI sessions only ─────────────────────────────────────────────────┐
+  │    statusLine collector ─────────► spool/sessions/<session_id>.json │ (atomic)
+  │    PostToolUse hook ─────────────► spool/events/<ts>-<uuid>.json    │
+  │                                                                     │
+  └─ both surfaces ─────────────────────────────────────────────────────┤
+       transcript (Claude Code's own) ~/.claude/projects/…/<id>.jsonl   │ (read-only)
+                                                                        │
+                                                    filesystem watcher ◄┘
+                                                              │
 ReviewGlass process (Tauri v2)
-  ├─ Rust core: watcher, aggregation, git, capture
+  ├─ Rust core: session sources, usage model, git, capture
   ├─ Window A: glass   (frameless, transparent, always-on-top, skip-taskbar)
   └─ Window B: panel   (normal window, sessions / diff / cache / PR)
 ```
+
+The split down the middle is the P0 result made structural: the spool reaches CLI
+sessions, the transcript reaches every session, and only the transcript knows which is
+which.
 
 **No network listener. No localhost port. No IPC socket.** Inter-process
 communication is plain files under the user profile. This is both the simplest
@@ -289,9 +355,9 @@ projects of this shape.
 |---|---|---|
 | Shell | Tauri v2 | Transparent always-on-top windows with an HTML/CSS UI at a fraction of Electron's footprint. Electron reserves 200-300 MB before doing anything. |
 | Core | Rust | Required by Tauri; also the right layer for Win32 capture interop. |
-| Capture | `windows` crate, `Windows.Graphics.Capture` | Microsoft's current recommendation over the legacy Magnification API. |
+| Capture | `windows-capture` crate over `Windows.Graphics.Capture` | Microsoft's current recommendation over the legacy Magnification API. |
 | Watcher | `notify` | Cross-platform filesystem events. |
-| Frontend | Svelte (or equivalent lightweight framework) | Small bundle, no virtual-DOM overhead in an overlay redrawn continuously. |
+| Frontend | SvelteKit (adapter-static) | Small bundle, no virtual-DOM overhead in an overlay redrawn continuously. |
 | Diff rendering | Existing library | Do not hand-roll a diff renderer. |
 
 ### 6.3 Module contracts
@@ -300,7 +366,7 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
 
 ---
 
-**`statusline-collector`** *(script, ships as an installed asset)*
+**`statusline-collector`** *(native binary, ships as an installed asset - `adr.rg.010`)*
 
 - **inputs:** statusLine JSON on stdin
 - **outputs:** atomic write to `spool/sessions/<session_id>.json`; a rendered status
@@ -308,17 +374,23 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
 - **dependsOn:** none
 - **contract:** MUST always print a status line to stdout. `statusLine` is a
   single-value setting, so ReviewGlass takes over the user's status line entirely; if
-  the script prints nothing the line goes blank. MUST complete in well under the
+  the collector prints nothing the line goes blank. MUST complete in well under the
   300 ms debounce window. MUST exit 0 on any internal failure, falling back to a
-  minimal status line.
-- **platform note:** on Windows, Claude Code runs status line commands through Git
-  Bash when installed, otherwise PowerShell. Git Bash consumes unquoted backslashes,
-  silently mangling Windows-style paths. All configured paths MUST use forward
-  slashes.
+  minimal status line. MUST store the payload verbatim and uninterpreted, so a field the
+  app does not read yet is still there when it learns to. MUST refuse a session id that
+  is not a safe file name rather than writing to a path of the payload's choosing.
+  MUST report a parse failure on stderr under `REVIEWGLASS_DEBUG` and say nothing
+  otherwise: a collector that has quietly stopped understanding Claude Code is the
+  failure nobody would notice.
+- **platform note:** on Windows, Claude Code runs status line commands through Git Bash
+  when installed, otherwise PowerShell. Git Bash consumes unquoted backslashes, silently
+  mangling Windows-style paths. Shipping the collector as a native binary that Claude
+  Code invokes directly removes the question - no shell interprets the command or its
+  path (`adr.rg.010`). Forward slashes in configured paths remain the convention.
 
 ---
 
-**`hook-collector`** *(script, ships as an installed asset)*
+**`hook-collector`** *(native binary, ships as an installed asset - `adr.rg.010`)*
 
 - **inputs:** PostToolUse JSON on stdin
 - **outputs:** `spool/events/<ts>-<uuid>.json` containing `{session_id, file_path, tool, ts}`
@@ -334,22 +406,32 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
 - **dependsOn:** none
 - **contract:** MUST tolerate partially written files (readers retry once on parse
   failure). MUST expire session records whose file has not been touched within a TTL
-  (proposed: 10 minutes) so closed sessions leave the panel. MUST handle N concurrent
+  (10 minutes) so closed sessions leave the panel — Claude Code writes no close record on
+  either channel, so age is the only signal a session ended. MUST handle N concurrent
   writers and one reader without locking.
 
 ---
 
 **`session-source`** *(Rust, trait)*
 
-- **inputs:** implementation-specific
+- **inputs:** spool records (CLI sessions); transcript records (every session)
 - **outputs:** normalized `SessionSnapshot`
-- **dependsOn:** `spool-watcher`
-- **contract:** the abstraction boundary that lets a future Codex adapter or a
-  JSONL-transcript adapter (Phase 0 fallback) be added without touching consumers.
-  v1 ships `ClaudeStatusLineSource`, plus `ClaudeTranscriptSource` if the P0 spike
-  requires it. Every `SessionSnapshot` MUST carry a `surface` field
-  (`desktop` / `cli` / `unknown`) so the panel can tell the user where a session
-  lives. Derive it from available signals rather than asking the user to configure it.
+- **dependsOn:** `spool-watcher`, the transcript directory
+- **contract:** the abstraction boundary that lets a future Codex adapter be added
+  without touching consumers, and the place the two Claude Code surfaces are reconciled.
+  **v1 ships BOTH implementations** (`adr.rg.003`), not one plus a conditional:
+  `ClaudeStatusLineSource` reads the spool and reaches CLI sessions;
+  `ClaudeTranscriptSource` reads the JSONL under `~/.claude/projects/` and is the only
+  thing that reaches a Desktop session, because `statusLine` does not run there.
+  Every `SessionSnapshot` MUST carry a `surface` field (`desktop` / `cli` / `unknown`)
+  taken from the transcript's **`entrypoint`**, never guessed: the statusLine payload
+  carries no marker, and on 2.1.268 both surfaces write transcripts under
+  `~/.claude/projects/` and both carry a `scratchpad_dir`, so neither separates them.
+  A session seen on both channels is one session keyed by `session_id`, with the
+  statusLine record winning field by field (fresher, richer) while the transcript owns
+  `surface` outright. A session already found through the spool resolves its surface
+  from the transcript its own payload names, rather than depending on a directory scan
+  reaching it. Transcripts are opened read-only and never written, truncated or moved.
 
 ---
 
@@ -362,16 +444,27 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
   - `rate_limits` values are **account-wide**. All concurrent sessions report the same
     `five_hour.used_percentage`. The model MUST NOT present the shared percentage as a
     per-session figure.
-  - Per-session attribution is a **separate, derived** quantity computed from deltas in
-    `cost.total_cost_usd` and context/token counts over time. It answers "which
+  - `rate_limits` arrives only through `statusLine`, which runs only in the CLI, so the
+    gauge is **borrowed from whatever CLI session is live** and shown for every session
+    including Desktop ones (`adr.rg.009`). With no CLI session the gauge has no source
+    and MUST be hidden with its reason named: "no CLI session is running" is a condition
+    the user can act on, unlike "no Pro/Max plan", so the two absences MUST NOT share a
+    message.
+  - Attribution has **two derivations**: statusLine cost deltas for CLI sessions,
+    transcript token counts for Desktop ones. They are not comparable unit for unit, so
+    each share carries its basis and a mixed set is flagged rather than blended.
+  - Per-session attribution is a **separate, derived** quantity. It answers "which
     session is consuming most" in relative terms only.
   - Attribution and quota are different units. Quota weights by model; token counts do
     not. The UI MUST show them as two distinct things: one shared gauge plus N
     relative shares, never a single blended number.
-  - Burn rate is computed from consecutive `(used_percentage, observed_at)` pairs.
-    Time-to-limit is a linear projection and MUST be labelled as an estimate.
+  - Burn rate is computed from consecutive `(used_percentage, observed_at)` pairs, and
+    is absent until two samples exist far enough apart: a rate from one point is not an
+    estimate but a fabrication. Time-to-limit is a linear projection and MUST be
+    labelled as an estimate.
   - `resets_at` is Unix epoch seconds. Crossing it resets the window; the model MUST
-    discard pre-reset samples rather than averaging across the boundary.
+    discard pre-reset samples rather than averaging across the boundary. 94 % to 3 % is a
+    reset, not a fall of 91 points per hour.
 
 ---
 
@@ -383,11 +476,16 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
 - **contract:**
   - MUST call `SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)` on the glass
     window. Without this the glass captures itself and produces infinite recursion.
-  - MUST be per-monitor DPI aware and handle mixed-scaling multi-monitor setups.
-  - MUST throttle frame rate when the source region is static (proposed: 30 fps while
-    moving, 5 fps when idle) to keep idle CPU negligible.
+  - MUST be per-monitor DPI aware and handle mixed-scaling multi-monitor setups. It
+    attaches to the monitor under the source rectangle and re-attaches when the
+    rectangle crosses to another.
+  - MUST throttle when the source region is static, to keep idle CPU negligible. The
+    effective mechanism is the compositor's dirty regions: when none intersects the
+    source box the crop is skipped entirely, which is what the cost actually sits in —
+    a crop allocates a staging texture and copies through it.
   - Zoom is clamped to 150-400%. Above roughly 400% bitmap scaling visibly degrades;
     offering higher factors would promise sharpness the technique cannot deliver.
+  - A hidden glass holds no capture session at all.
 
 ---
 
@@ -395,11 +493,15 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
 
 - **inputs:** frame buffer, user input
 - **outputs:** rendered overlay; region selection
-- **dependsOn:** `capture-engine`
+- **dependsOn:** `capture-engine`, `config-store`
 - **contract:** frameless, transparent, always-on-top, excluded from taskbar. Draggable
-  by its body. Resizable. Supports **freeze mode**: detach from the cursor, lock the
-  source region, and scroll content with the mouse wheel. Global hotkey to show/hide.
-  Geometry, zoom, and freeze state persist across restarts.
+  by its body, resizable by explicit grips (a frameless transparent window has no system
+  border). Supports **freeze mode**: detach from the cursor, lock the source region, and
+  scroll content with the mouse wheel. Global hotkey to show/hide. Geometry, zoom, and
+  freeze state persist across restarts. Every action MUST have a visible control as well
+  as its keyboard or mouse gesture, and the control bar MUST be discoverable on first
+  run — but it MUST NOT stand over the magnified content once it has been found, since
+  the glass is a reading surface.
 
 ---
 
@@ -409,8 +511,11 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
 - **outputs:** user interactions
 - **dependsOn:** `usage-model`, `diff-service`
 - **contract:** tabbed. Sessions tab is the default view. All tabs render correctly
-  when their data source is absent (no Pro/Max plan, no git repo, older Claude Code
-  version) by hiding the affected element rather than showing zeros or errors.
+  when their data source is absent (no Pro/Max plan, no git repo, no CLI session, older
+  Claude Code version) by hiding the affected element rather than showing zeros or
+  errors — and by naming the reason wherever the user can act on it. Closing the panel
+  hides it rather than destroying it, and the glass can bring it back: two windows that
+  cannot reach each other are two tools.
 
 ---
 
@@ -486,9 +591,9 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
 - **inputs:** user settings
 - **outputs:** persisted configuration
 - **dependsOn:** none
-- **contract:** JSON under the user profile. Contains no secrets. Writes atomically.
-  A corrupt config file resets to defaults with a visible notice rather than failing
-  to start.
+- **contract:** JSON under the user profile. Contains no secrets. Writes atomically
+  (temp file plus rename). A corrupt config file resets to defaults, keeps the old one
+  beside it as `.bak`, and says so visibly rather than failing to start.
 
 ---
 
@@ -502,7 +607,9 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
   chain the previous command. MUST be reversible by the uninstaller. MUST warn when
   workspace trust has not been accepted, since neither hooks nor status line run
   until it is, and when `disableAllHooks` or `allowManagedHooksOnly` is set, which
-  suppresses both silently.
+  suppresses both silently. MUST tell the user that sessions already running are
+  unaffected until they are restarted, since a session only runs the status line that
+  existed when it started (4.1).
 
 ---
 
@@ -512,9 +619,9 @@ Each phase is independently useful and independently shippable.
 
 | Phase | Deliverable | Modules | Exit criterion |
 |---|---|---|---|
-| **P0** | Spike | — | Diff-surface question resolved per surface (done, see 4.1); statusLine behaviour confirmed on Desktop and CLI (pending, gates P2 only); D4 resolved (gates P8 only) |
-| **P1** | Magnifier | `capture-engine`, `glass-window`, `config-store` | Readable magnified text over the Code tab, no self-capture, persists geometry |
-| **P2** | Session panel | `statusline-collector`, `spool-watcher`, `session-source`, `usage-model`, `panel-window` | Five concurrent sessions visible in one table with correct shared-vs-attributed quota semantics |
+| **P0** | Spike | — | **Done.** Diff-surface question resolved per surface; statusLine confirmed on both surfaces (CLI yes, Desktop no). D4 remains open and gates P8 only |
+| **P1** | Magnifier | `capture-engine`, `glass-window`, `config-store` | **Done.** Readable magnified text over the Code tab, no self-capture, geometry persists. Idle CPU measured at 1.35 % of one core on a release build with a static source (0.06 % of a 24-thread machine); 30.9 % with the screen churning |
+| **P2** | Session panel | `statusline-collector`, `spool-watcher`, `session-source`, `usage-model`, `panel-window` | **Built; exit criterion not yet met.** Both channels verified against two live sessions (one Desktop via transcript, one CLI via the spool) with correct shared-vs-attributed semantics. Five concurrent sessions still to be observed |
 | **P3** | Burn rate & alerts | `notifier`, `usage-model` extension | Threshold toast fires before a limit is reached |
 | **P4** | Live diff | `hook-collector`, `diff-service`, panel tab | Agent edit appears in the panel within ~1 s |
 | **P5** | Cache & PR panels | panel tabs | `prompt_cache` and `pr` surfaces rendered, absent-data paths verified |
@@ -523,8 +630,10 @@ Each phase is independently useful and independently shippable.
 | **P8** | Public release | — | License, README, contribution notes, repo opened |
 | **v2** | macOS, Codex adapter | new `session-source` impl, ScreenCaptureKit backend | out of v1 scope |
 
-Phase 1 alone solves the original complaint and is worth shipping to yourself before
-anything else is written.
+Phase 1 alone solved the original complaint and was shipped to the author before anything
+else was written. That ordering held up: it was the one phase that depended on no Claude
+Code channel, and the channel the other phases depended on turned out not to exist on the
+primary surface.
 
 ---
 
@@ -532,7 +641,8 @@ anything else is written.
 
 ### 8.1 Build
 
-Tauri's bundler produces both Windows installer formats:
+Tauri's bundler produces both Windows installer formats, and both were verified on
+2026-09-11 (NSIS 1.4 MB, MSI 2.1 MB):
 
 ```
 src-tauri/target/release/bundle/nsis/ReviewGlass_0.1.0_x64-setup.exe
@@ -542,6 +652,9 @@ src-tauri/target/release/bundle/msi/ReviewGlass_0.1.0_x64_en-US.msi
 NSIS (`-setup.exe`) is the primary artifact: it can be built on non-Windows hosts,
 which keeps CI options open. MSI is secondary; building it requires the VBSCRIPT
 optional Windows feature to be enabled, otherwise the WiX step fails.
+
+Two binaries ship: the app, and the statusLine collector installed beside it
+(`adr.rg.010`), which is why the crate declares `default-run`.
 
 ### 8.2 Updates
 
@@ -563,7 +676,12 @@ Stated plainly in the README, because it is a genuine differentiator:
 
 - Screen pixels are read, scaled, and displayed. They are never written to disk or
   transmitted.
-- Session data is read from files Claude Code already writes on the same machine.
+- Session data is read from files Claude Code already writes on the same machine: the
+  spool the collectors fill, and the JSONL transcripts, which are opened read-only. Only
+  session state is read from a transcript - never the conversation.
+- The account quota reaches ReviewGlass only through a terminal `claude` session, because
+  that is the only surface Claude Code runs a status line on. A Desktop-only user sees
+  sessions but no gauge, and the panel says so rather than showing a blank.
 - No analytics, no accounts, no network listener.
 - The explain feature is off by default with no backend selected. A fresh installation
   performs no inference.
@@ -574,18 +692,25 @@ Stated plainly in the README, because it is a genuine differentiator:
 - Only the selected hunk and its immediate context are ever sent. Never the file,
   the repository, or the conversation.
 
+**One measurement that does not support a claim in 6.2.** The running app holds about
+700 MB of private bytes across eight processes, essentially all of it WebView2's seven.
+The stack table's "a fraction of Electron's 200-300 MB" does not hold as written. The
+Rust core itself is ~62 MB. This is recorded rather than quietly dropped; it is not a
+P1 criterion, and it should not stand in the README unexamined.
+
 ---
 
 ## 9. Risks
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| statusLine does not run in Desktop Code tab | Removes the primary data source | P0 spike; JSONL transcript fallback designed behind `session-source` |
-| Claude Code changes the statusLine JSON shape | Panel degrades or breaks | Treat every field as optional; feature-detect rather than version-check; never hard-fail on a missing field |
+| statusLine does not run in Desktop Code tab | Removes the primary data source | **This fired.** The transcript reader is no longer a fallback but the primary surface's only channel; the account gauge is borrowed from a CLI session (`adr.rg.003`, `adr.rg.009`) |
+| Claude Code changes the statusLine JSON shape | Panel degrades or breaks | **This fired, in a form the mitigation did not cover.** Treating every field as optional survives a field that disappears and not a field that changes type; `current_usage` changed type and failed the whole payload. Every field is now parsed leniently (`adr.rg.011`) |
+| The transcript format changes | Desktop sessions vanish from the panel | The channel is undocumented and load-bearing, which is uncomfortable and unavoidable. Its reader skips what it cannot parse and falls back to the file name for a session id, so a change degrades the channel rather than emptying it |
 | User already has a status line configured | ReviewGlass silently replaces it | Installer detects, asks, offers to chain |
 | Capture recursion | Unusable overlay | `WDA_EXCLUDEFROMCAPTURE`, verified in P1 |
 | Mixed-DPI multi-monitor | Misaligned or wrongly scaled capture | Per-monitor DPI awareness from the start, not retrofitted |
-| Idle CPU cost of continuous capture | Tool becomes annoying to leave running | Frame-rate throttling on a static source; measure in P1 |
+| Idle CPU cost of continuous capture | Tool becomes annoying to leave running | Measured in P1: 14 % of one core before the dirty-region skip, 1.35 % after |
 | Scope creep into an IDE | Project never ships | Non-goals in 2.2 are binding |
 
 ---
@@ -594,13 +719,18 @@ Stated plainly in the README, because it is a genuine differentiator:
 
 - Repository language: English for code, comments, commit messages, and documentation.
 - All configured file paths on Windows use forward slashes.
-- Every consumer of Claude Code data must assume the field may be absent. The correct
-  behaviour for absent data is to hide the element, not to render a zero.
+- Every consumer of Claude Code data must assume the field may be absent **or of an
+  unexpected type**. The correct behaviour for both is to hide the element, not to render
+  a zero. Absent data should also say *why* it is absent wherever the reason is something
+  the user can act on.
 - License is Apache-2.0. Do not introduce a GPLv2-only dependency at any point.
 - `explain-service` must contain no provider-specific code. If a provider name appears
   outside `explain-backend`, the boundary has been violated.
-- **Start at P1.** It has no dependency on the pending P0 statusLine result and solves
-  the original problem on its own.
-- Do not begin P2 before the statusLine result is recorded for both surfaces in
-  section 4.1.
+- ReviewGlass is a read surface. It never writes into a session, a repository or a
+  transcript.
+- P0, P1 and the build of P2 are done. P3 (burn-rate alerts) is next and depends only on
+  the usage model P2 shipped.
+- Ship the affordance with the mechanism: a visible control for every action, a
+  discoverable first-run state, and a named empty state. A feature reachable only by a
+  keystroke nobody was told about is not finished.
 - D4 (name) blocks P8 only. Development proceeds under the working name.

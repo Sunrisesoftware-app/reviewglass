@@ -54,7 +54,7 @@ run.
 | `src/routes/glass` | the magnifier window |
 | `src/routes/panel` | the sessions / diff / cache / PR / settings window |
 | `scripts/statusline`, `scripts/hook` | the collector scripts Claude Code runs (P2, P4; not yet present) |
-| `docs/REVIEWGLASS-SPEC-v0.1.md` | product and architecture specification |
+| `docs/REVIEWGLASS-SPEC.md` | product and architecture specification |
 
 ## License
 
