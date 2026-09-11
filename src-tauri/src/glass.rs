@@ -148,6 +148,23 @@ pub fn glass_scroll(engine: State<Engine>, store: State<Store>, dx: i32, dy: i32
     });
 }
 
+/// Hide the glass. The global hotkey brings it back; the capture stops meanwhile.
+#[tauri::command]
+pub fn glass_hide(app: AppHandle) {
+    if let Some(w) = app.get_webview_window(GLASS_LABEL) {
+        let _ = w.hide();
+    }
+    app.state::<Engine>().set_enabled(false);
+    let _ = app.state::<Store>().update(|c| c.glass.visible = false);
+}
+
+/// Quit ReviewGlass entirely. Distinct from hiding: the hotkey does not bring it back.
+#[tauri::command]
+pub fn app_quit(app: AppHandle) {
+    app.state::<Engine>().stop();
+    app.exit(0);
+}
+
 #[tauri::command]
 pub fn glass_save_position(store: State<Store>, x: i32, y: i32) {
     let _ = store.update(|c| {
