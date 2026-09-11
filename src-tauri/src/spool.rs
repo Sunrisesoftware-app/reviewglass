@@ -71,7 +71,10 @@ mod tests {
             safe_file_stem("b99e7a1f-b52d-42f8-b3db-7858547ccca7").as_deref(),
             Some("b99e7a1f-b52d-42f8-b3db-7858547ccca7")
         );
-        assert_eq!(safe_file_stem("../../etc/passwd").as_deref(), Some("etcpasswd"));
+        assert_eq!(
+            safe_file_stem("../../etc/passwd").as_deref(),
+            Some("etcpasswd")
+        );
         assert_eq!(safe_file_stem("..").as_deref(), None);
         assert_eq!(safe_file_stem("").as_deref(), None);
     }

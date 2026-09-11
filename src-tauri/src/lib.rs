@@ -5,6 +5,8 @@
 mod capture;
 mod config;
 mod glass;
+pub mod session;
+pub mod spool;
 
 use tauri::Manager;
 
