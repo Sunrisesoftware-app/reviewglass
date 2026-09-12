@@ -15,7 +15,12 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { PhysicalSize } from "@tauri-apps/api/dpi";
 
-  type GlassState = { zoom: number; frozen: boolean; config: "loaded" | "fresh" | "reset-corrupt" };
+  type GlassState = {
+    zoom: number;
+    frozen: boolean;
+    lens: boolean;
+    config: "loaded" | "fresh" | "reset-corrupt";
+  };
 
   const win = getCurrentWindow();
   const HEADER = 16;
@@ -30,6 +35,7 @@
   let canvas: HTMLCanvasElement;
   let zoom = $state(2);
   let frozen = $state(false);
+  let lens = $state(false);
   let error = $state<string | null>(null);
   let notice = $state<string | null>(null);
   let haveFrame = $state(false);
@@ -115,7 +121,25 @@
 
   async function setFrozen(next: boolean) {
     frozen = next;
+    if (next) lens = false;
     await invoke("glass_set_frozen", { frozen: next });
+  }
+
+  // The lens rides on the cursor and passes clicks through, so once it is on, its own
+  // bar cannot switch it off; the hotkey and the tray can, and the badge says so.
+  async function setLens(next: boolean) {
+    lens = next;
+    if (next) frozen = false;
+    hovering = false;
+    await invoke("glass_set_lens", { lens: next });
+  }
+
+  // While the pointer is over the glass the source holds still and the picture dims,
+  // so the controls read clearly and nothing jumps underneath them.
+  function setHover(next: boolean) {
+    if (lens) return;
+    hovering = next;
+    void invoke("glass_set_hovered", { hovered: next });
   }
 
   async function resizeBy(factor: number) {
@@ -150,6 +174,7 @@
 
   function onkeydown(e: KeyboardEvent) {
     if (e.key === "f" || e.key === "F") void setFrozen(!frozen);
+    else if (e.key === "l" || e.key === "L") void setLens(!lens);
     else if (e.key === "Escape") void invoke("glass_hide");
     else if (e.key === "+" || e.key === "=") void setZoom(zoom + ZOOM_STEP);
     else if (e.key === "-" || e.key === "_") void setZoom(zoom - ZOOM_STEP);
@@ -195,6 +220,7 @@
       const s = await invoke<GlassState>("glass_state");
       zoom = s.zoom;
       frozen = s.frozen;
+      lens = s.lens;
       if (s.config === "reset-corrupt") {
         notice = "Settings were unreadable; defaults are in effect (the old file is kept as config.json.bak).";
         setTimeout(() => (notice = null), 8000);
@@ -206,6 +232,8 @@
         await listen<GlassState>("glass:state", (ev) => {
           zoom = ev.payload.zoom;
           frozen = ev.payload.frozen;
+          lens = ev.payload.lens;
+          if (lens) hovering = false;
         }),
       );
       void poll();
@@ -225,14 +253,21 @@
 <div
   class="glass"
   class:frozen
+  class:lens
+  class:dimmed={hovering && !lens}
   {onpointerdown}
   {ondblclick}
   {onwheel}
-  onpointerenter={() => (hovering = true)}
-  onpointerleave={() => (hovering = false)}
+  onpointerenter={() => setHover(true)}
+  onpointerleave={() => setHover(false)}
   role="presentation"
 >
   <canvas bind:this={canvas}></canvas>
+  <div class="dim" aria-hidden="true"></div>
+
+  {#if lens}
+    <div class="lens-badge">Lens · Ctrl+Alt+L or the tray icon to release</div>
+  {/if}
 
   {#if error}
     <div class="overlay error"><span>{error}</span></div>
@@ -243,7 +278,20 @@
     <div class="overlay notice">{notice}</div>
   {/if}
 
-  <div class="bar" class:visible={barVisible} role="toolbar" tabindex="-1" aria-label="Glass controls">
+  <div class="bar" class:visible={barVisible && !lens} role="toolbar" tabindex="-1" aria-label="Glass controls">
+    <button
+      class="move"
+      title="Drag to move the glass"
+      aria-label="Move the glass"
+      onpointerdown={(e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        void win.startDragging();
+      }}>✥</button
+    >
+
+    <span class="sep"></span>
+
     <button
       title="Zoom out (− or wheel down)"
       aria-label="Zoom out"
@@ -286,6 +334,11 @@
       onpointerdown={(e) => control(e, () => setFrozen(!frozen))}>{frozen ? "❄" : "⌖"}</button
     >
     <button
+      title="Lens: ride on the cursor, clicks pass through (L, Ctrl+Alt+L to release)"
+      aria-label="Lens mode"
+      onpointerdown={(e) => control(e, () => setLens(true))}>◎</button
+    >
+    <button
       title="Hide — Ctrl+Alt+G or the tray icon brings it back (Esc)"
       aria-label="Hide"
       onpointerdown={(e) => control(e, () => invoke("glass_hide"))}>▁</button
@@ -323,6 +376,37 @@
   }
   .glass.frozen {
     border-color: rgba(80, 180, 255, 0.95);
+  }
+  .glass.lens {
+    border-color: rgba(255, 255, 255, 0.85);
+    border-radius: 10px;
+    cursor: none;
+  }
+  /* Darken the picture while the controls are up, so they read as controls and not as
+     part of what is being magnified. */
+  .dim {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    transition: opacity 140ms ease;
+    pointer-events: none;
+  }
+  .glass.dimmed .dim {
+    opacity: 1;
+  }
+  .lens-badge {
+    position: absolute;
+    left: 50%;
+    bottom: 6px;
+    transform: translateX(-50%);
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgba(20, 20, 20, 0.82);
+    font: 11px system-ui, sans-serif;
+    color: #eee;
+    white-space: nowrap;
+    pointer-events: none;
   }
   canvas {
     display: block;
@@ -400,6 +484,10 @@
   }
   .bar button.quit:hover {
     background: rgba(200, 40, 40, 0.85);
+  }
+  .bar button.move {
+    cursor: move;
+    font-size: 14px;
   }
   .value {
     min-width: 38px;

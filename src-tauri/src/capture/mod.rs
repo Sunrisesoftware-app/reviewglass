@@ -206,10 +206,13 @@ impl std::fmt::Display for CaptureError {
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "mode", rename_all = "lowercase")]
 pub enum Mode {
-    /// The rectangle follows the cursor.
+    /// The window stays put; the source rectangle follows the cursor.
     Follow,
-    /// The rectangle is locked; wheel scrolling moves it.
+    /// The window stays put; the rectangle is locked and wheel scrolling moves it.
     Frozen,
+    /// The window itself rides on the cursor, showing what is under it — the classic
+    /// magnifier lens. Clicks pass through to whatever is beneath.
+    Lens,
 }
 
 /// The engine: owns the running capture and the shared state.
@@ -231,6 +234,10 @@ struct View {
     mode: Mode,
     /// Origin of the frozen rectangle (only meaningful in `Mode::Frozen`).
     frozen_origin: (i32, i32),
+    /// The pointer is over the glass. While following, the source holds still so the
+    /// picture does not jump to "what is under the glass" the moment the user reaches
+    /// for a control.
+    hovered: bool,
 }
 
 impl Default for Engine {
@@ -263,6 +270,7 @@ impl Engine {
                 zoom: 2.0,
                 mode: Mode::Follow,
                 frozen_origin: (0, 0),
+                hovered: false,
             }),
         }
     }
@@ -304,6 +312,10 @@ impl Engine {
         let mut v = self.view.lock();
         v.mode = Mode::Frozen;
         v.frozen_origin = (x, y);
+    }
+
+    pub fn set_hovered(&self, hovered: bool) {
+        self.view.lock().hovered = hovered;
     }
 
     /// Scroll the frozen rectangle by a delta in source pixels. No-op while following.
@@ -349,7 +361,17 @@ impl Engine {
         let src_h = ((v.height_px as f32 / v.zoom).round() as u32).max(2);
 
         let rect = match v.mode {
-            Mode::Follow => {
+            Mode::Follow if v.hovered => {
+                // Hold the last rectangle; only its size may change (zoom).
+                let s = *self.shared.source.lock();
+                SourceRect {
+                    x: s.x + (s.w as i32 - src_w as i32) / 2,
+                    y: s.y + (s.h as i32 - src_h as i32) / 2,
+                    w: src_w,
+                    h: src_h,
+                }
+            }
+            Mode::Follow | Mode::Lens => {
                 let (cx, cy) = cursor_pos();
                 SourceRect::centered_on(cx, cy, src_w, src_h)
             }
@@ -431,7 +453,8 @@ impl Engine {
     }
 }
 
-fn cursor_pos() -> (i32, i32) {
+/// The cursor in virtual-desktop physical pixels.
+pub fn cursor_pos() -> (i32, i32) {
     let mut p = POINT::default();
     // SAFETY: GetCursorPos writes into a valid POINT.
     unsafe {

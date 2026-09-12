@@ -16,18 +16,27 @@ use crate::panel::PANEL_LABEL;
 
 const ID_GLASS: &str = "show-glass";
 const ID_PANEL: &str = "show-panel";
+const ID_LENS: &str = "toggle-lens";
 const ID_QUIT: &str = "quit";
 
 pub fn install(app: &AppHandle) -> tauri::Result<()> {
     let show_glass =
         MenuItem::with_id(app, ID_GLASS, "Show glass\tCtrl+Alt+G", true, None::<&str>)?;
     let show_panel = MenuItem::with_id(app, ID_PANEL, "Show sessions panel", true, None::<&str>)?;
+    let lens = MenuItem::with_id(
+        app,
+        ID_LENS,
+        "Lens on / off\tCtrl+Alt+L",
+        true,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, ID_QUIT, "Quit ReviewGlass", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
         &[
             &show_glass,
             &show_panel,
+            &lens,
             &PredefinedMenuItem::separator(app)?,
             &quit,
         ],
@@ -41,6 +50,12 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             ID_GLASS => show_glass_window(app),
             ID_PANEL => show_panel_window(app),
+            ID_LENS => {
+                let engine = app.state::<Engine>();
+                let on = engine.mode() != crate::capture::Mode::Lens;
+                show_glass_window(app);
+                crate::glass::set_lens_inner(app, &engine, on);
+            }
             ID_QUIT => quit_app(app),
             _ => {}
         })

@@ -62,6 +62,8 @@ pub fn run() {
             glass::glass_state,
             glass::glass_set_view,
             glass::glass_set_frozen,
+            glass::glass_set_lens,
+            glass::glass_set_hovered,
             glass::glass_scroll,
             glass::glass_save_position,
             glass::glass_hide,

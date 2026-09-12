@@ -23,6 +23,8 @@ pub struct GlassConfig {
     pub height: u32,
     pub zoom: f32,
     pub frozen: bool,
+    /// Lens mode: the window rides on the cursor and passes clicks through.
+    pub lens: bool,
     /// Origin of the frozen source rectangle, kept only while `frozen`.
     pub frozen_x: i32,
     pub frozen_y: i32,
@@ -38,6 +40,7 @@ impl Default for GlassConfig {
             height: 340,
             zoom: 2.0,
             frozen: false,
+            lens: false,
             frozen_x: 0,
             frozen_y: 0,
             visible: true,
@@ -50,6 +53,7 @@ impl Default for GlassConfig {
 pub struct Hotkeys {
     pub toggle_glass: String,
     pub toggle_freeze: String,
+    pub toggle_lens: String,
 }
 
 impl Default for Hotkeys {
@@ -57,6 +61,7 @@ impl Default for Hotkeys {
         Self {
             toggle_glass: "Ctrl+Alt+G".into(),
             toggle_freeze: "Ctrl+Alt+F".into(),
+            toggle_lens: "Ctrl+Alt+L".into(),
         }
     }
 }
