@@ -36,6 +36,7 @@ tauri-plugin-global-shortcut = "2"
 parking_lot = "0.12.5"
 dirs = "7.0.0"
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }
+tauri-plugin-notification = "2"
 
 # See https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

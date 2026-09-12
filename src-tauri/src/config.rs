@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
+pub use crate::notifier::AlertConfig;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GlassConfig {
@@ -64,6 +66,7 @@ impl Default for Hotkeys {
 pub struct Config {
     pub glass: GlassConfig,
     pub hotkeys: Hotkeys,
+    pub alerts: AlertConfig,
 }
 
 /// What happened when the file was loaded, for the panel to show once.

@@ -5,6 +5,7 @@
 mod capture;
 mod config;
 mod glass;
+mod notifier;
 mod panel;
 pub mod session;
 pub mod spool;
@@ -16,6 +17,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
             app.manage(config::Store::open(&config_dir));
@@ -43,6 +45,7 @@ pub fn run() {
             if let Err(e) = glass::register_hotkeys(app.handle()) {
                 eprintln!("reviewglass: hotkeys not registered: {e}");
             }
+            panel::spawn_usage_loop(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -56,6 +59,9 @@ pub fn run() {
             glass::glass_frame,
             panel::panel_usage,
             panel::panel_show,
+            panel::alerts_get,
+            panel::alerts_set,
+            panel::alerts_test,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ReviewGlass")

@@ -9,6 +9,7 @@
   import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import Sessions from "./Sessions.svelte";
+  import Settings from "./Settings.svelte";
   import type { UsageView } from "./types";
 
   const tabs = ["Sessions", "Diff", "Cache", "PR", "Settings"] as const;
@@ -17,17 +18,18 @@
     Diff: "Live diff arrives in phase 4.",
     Cache: "Cache health arrives in phase 5.",
     PR: "Pull-request state arrives in phase 5.",
-    Settings: "Settings arrive alongside the installer in phase 7.",
   };
 
   let active = $state<Tab>("Sessions");
   let usage = $state<UsageView | null>(null);
+  // Null for the first couple of seconds after start, before the usage loop's first pass.
+
   let failure = $state<string | null>(null);
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   async function refresh() {
     try {
-      usage = await invoke<UsageView>("panel_usage");
+      usage = await invoke<UsageView | null>("panel_usage");
       failure = null;
     } catch (e) {
       failure = e instanceof Error ? e.message : String(e);
@@ -52,6 +54,8 @@
   <section>
     {#if active === "Sessions"}
       <Sessions {usage} {failure} />
+    {:else if active === "Settings"}
+      <Settings />
     {:else}
       <p class="empty">{PHASE[active]}</p>
     {/if}
