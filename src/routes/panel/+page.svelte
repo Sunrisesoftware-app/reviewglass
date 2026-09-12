@@ -62,7 +62,7 @@
   </section>
 
   <footer>
-    Closing this window hides it — the ▤ button on the glass brings it back.
+    Closing this window hides it. The tray icon or the ▤ button on the glass brings it back; the tray menu quits for real.
   </footer>
 </div>
 

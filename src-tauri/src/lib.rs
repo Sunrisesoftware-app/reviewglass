@@ -9,6 +9,7 @@ mod notifier;
 mod panel;
 pub mod session;
 pub mod spool;
+mod tray;
 pub mod usage;
 
 use tauri::Manager;
@@ -16,6 +17,14 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // A second launch brings the running copy forward instead of starting another
+        // that would fight it for the config file and the capture. Both windows can be
+        // hidden, so "it is not on screen" and "it is not running" look alike; this is
+        // what makes the difference harmless.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            tray::show_glass_window(app);
+            tray::show_panel_window(app);
+        }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
@@ -41,6 +50,7 @@ pub fn run() {
                     }
                 });
             }
+            tray::install(app.handle())?;
             glass::restore(app.handle());
             if let Err(e) = glass::register_hotkeys(app.handle()) {
                 eprintln!("reviewglass: hotkeys not registered: {e}");

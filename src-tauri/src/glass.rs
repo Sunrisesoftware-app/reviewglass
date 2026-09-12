@@ -161,8 +161,7 @@ pub fn glass_hide(app: AppHandle) {
 /// Quit ReviewGlass entirely. Distinct from hiding: the hotkey does not bring it back.
 #[tauri::command]
 pub fn app_quit(app: AppHandle) {
-    app.state::<Engine>().stop();
-    app.exit(0);
+    crate::tray::quit_app(&app);
 }
 
 #[tauri::command]

@@ -286,7 +286,7 @@
       onpointerdown={(e) => control(e, () => setFrozen(!frozen))}>{frozen ? "❄" : "⌖"}</button
     >
     <button
-      title="Hide — Ctrl+Alt+G brings it back (Esc)"
+      title="Hide — Ctrl+Alt+G or the tray icon brings it back (Esc)"
       aria-label="Hide"
       onpointerdown={(e) => control(e, () => invoke("glass_hide"))}>▁</button
     >

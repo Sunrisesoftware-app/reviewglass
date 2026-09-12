@@ -90,11 +90,7 @@ fn toast(app: &AppHandle, title: &str, body: &str) {
 /// this is always able to bring the same window back.
 #[tauri::command]
 pub fn panel_show(app: AppHandle) {
-    if let Some(w) = app.get_webview_window(PANEL_LABEL) {
-        let _ = w.show();
-        let _ = w.unminimize();
-        let _ = w.set_focus();
-    }
+    crate::tray::show_panel_window(&app);
 }
 
 /// The latest view the loop produced. `None` only in the first two seconds after start.
