@@ -2,8 +2,12 @@
 //! calls, the global hotkeys, self-exclusion from capture, and persistence of
 //! geometry, zoom and freeze state through the config store.
 
+use std::thread;
+use std::time::Duration;
+
 use serde::Serialize;
 use tauri::ipc::Response;
+use tauri::menu::{ContextMenu, Menu, MenuItem, PredefinedMenuItem};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use windows::Win32::Foundation::HWND;
@@ -15,6 +19,9 @@ use crate::config::{LoadOutcome, Store};
 pub const GLASS_LABEL: &str = "glass";
 /// Event sent to the glass when freeze/zoom changes from outside the webview.
 pub const STATE_EVENT: &str = "glass:state";
+/// Event asking the glass to step its zoom (the webview owns the zoom value, since it
+/// is tied to the canvas size it reports).
+pub const ZOOM_EVENT: &str = "glass:zoom";
 
 #[derive(Clone, Serialize)]
 pub struct GlassState {
@@ -66,6 +73,9 @@ pub fn restore(app: &AppHandle) {
     } else if cfg.frozen {
         engine.freeze_at(cfg.frozen_x, cfg.frozen_y);
     }
+    // A restored still has no pixels in hand until one frame arrives; the engine lets
+    // exactly one through and then holds (see Engine::freeze_at).
+    let _ = engine.is_still();
 }
 
 pub fn register_hotkeys(app: &AppHandle) -> Result<(), String> {
@@ -112,8 +122,23 @@ fn toggle_visible(app: &AppHandle) {
 }
 
 fn set_frozen_inner(app: &AppHandle, engine: &Engine, frozen: bool) {
-    if engine.mode() == Mode::Lens {
-        leave_lens(app);
+    // Freezing from the lens keeps the lens's size and position: the still is what the
+    // lens was showing, and the user is about to drag it somewhere to keep it.
+    let was_lens = engine.mode() == Mode::Lens;
+    if was_lens {
+        let store = app.state::<Store>();
+        if let Some(w) = app.get_webview_window(GLASS_LABEL) {
+            if let (Ok(s), Ok(p)) = (w.inner_size(), w.outer_position()) {
+                let _ = store.update(|c| {
+                    c.glass.lens_width = s.width;
+                    c.glass.lens_height = s.height;
+                    c.glass.width = s.width;
+                    c.glass.height = s.height;
+                    c.glass.x = Some(p.x);
+                    c.glass.y = Some(p.y);
+                });
+            }
+        }
     }
     engine.set_mode(if frozen { Mode::Frozen } else { Mode::Follow });
     let src = engine.source();
@@ -127,20 +152,49 @@ fn set_frozen_inner(app: &AppHandle, engine: &Engine, frozen: bool) {
     let _ = app.emit_to(GLASS_LABEL, STATE_EVENT, state_of(engine, &store));
 }
 
-/// Enter or leave lens mode. In the lens the window rides on the cursor and passes
-/// clicks through, so the user can keep working underneath it. Leaving restores a
-/// normal, clickable window where the lens last was.
+/// Enter or leave lens mode. In the lens the window rides on the cursor at its own,
+/// smaller size. It is NOT click-through: the cursor is always over it, so a
+/// right-click opens the glass menu and a double-click freezes what is under it —
+/// which is the reading-then-parking workflow the lens exists for. Leaving restores the
+/// parked size where the lens last was.
 pub fn set_lens_inner(app: &AppHandle, engine: &Engine, lens: bool) {
+    let store = app.state::<Store>();
+    let cfg = store.get().glass;
+    let Some(w) = app.get_webview_window(GLASS_LABEL) else {
+        return;
+    };
     if lens {
-        engine.set_mode(Mode::Lens);
-        if let Some(w) = app.get_webview_window(GLASS_LABEL) {
-            let _ = w.set_ignore_cursor_events(true);
+        // Remember the parked size before switching to the lens size.
+        if let Ok(s) = w.inner_size() {
+            let _ = store.update(|c| {
+                c.glass.width = s.width;
+                c.glass.height = s.height;
+            });
         }
+        let _ = w.set_size(PhysicalSize::new(cfg.lens_width, cfg.lens_height));
+        engine.set_view(cfg.lens_width, cfg.lens_height, engine.zoom());
+        engine.set_mode(Mode::Lens);
     } else {
-        leave_lens(app);
+        // Remember the lens size the user settled on, then park at the parked size.
+        if engine.mode() == Mode::Lens {
+            if let Ok(s) = w.inner_size() {
+                let _ = store.update(|c| {
+                    c.glass.lens_width = s.width;
+                    c.glass.lens_height = s.height;
+                });
+            }
+        }
+        let parked = store.get().glass;
+        let _ = w.set_size(PhysicalSize::new(parked.width, parked.height));
+        engine.set_view(parked.width, parked.height, engine.zoom());
+        if let Ok(p) = w.outer_position() {
+            let _ = store.update(|c| {
+                c.glass.x = Some(p.x);
+                c.glass.y = Some(p.y);
+            });
+        }
         engine.set_mode(Mode::Follow);
     }
-    let store = app.state::<Store>();
     let _ = store.update(|c| {
         c.glass.lens = lens;
         if lens {
@@ -150,33 +204,115 @@ pub fn set_lens_inner(app: &AppHandle, engine: &Engine, lens: bool) {
     let _ = app.emit_to(GLASS_LABEL, STATE_EVENT, state_of(engine, &store));
 }
 
-fn leave_lens(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window(GLASS_LABEL) {
-        let _ = w.set_ignore_cursor_events(false);
-        // Persist where the lens ended up, so the window does not jump back to its
-        // pre-lens position on the next start.
-        if let Ok(p) = w.outer_position() {
-            let _ = app.state::<Store>().update(|c| {
-                c.glass.x = Some(p.x);
-                c.glass.y = Some(p.y);
-            });
-        }
-    }
+/// Ride the cursor on a thread of its own, at a rate the webview's frame poll cannot
+/// match. Moving the window from the poll made it step at 30 Hz with setTimeout jitter
+/// on top; this runs at ~120 Hz and only touches the window when the target changed.
+pub fn spawn_lens_rider(app: AppHandle) {
+    thread::Builder::new()
+        .name("reviewglass-lens".into())
+        .spawn(move || loop {
+            let engine = app.state::<Engine>();
+            if engine.mode() == Mode::Lens && engine.is_enabled() {
+                if let Some(w) = app.get_webview_window(GLASS_LABEL) {
+                    let (cx, cy) = cursor_pos();
+                    if let Ok(size) = w.outer_size() {
+                        let target = PhysicalPosition::new(
+                            cx - (size.width / 2) as i32,
+                            cy - (size.height / 2) as i32,
+                        );
+                        if w.outer_position().ok() != Some(target) {
+                            let _ = w.set_position(target);
+                        }
+                    }
+                }
+                thread::sleep(Duration::from_millis(8));
+            } else {
+                thread::sleep(Duration::from_millis(100));
+            }
+        })
+        .expect("lens rider thread");
 }
 
-/// In lens mode, keep the window centred on the cursor. Called on every frame poll.
-fn ride_cursor(app: &AppHandle, engine: &Engine) {
-    if engine.mode() != Mode::Lens {
-        return;
-    }
-    let Some(w) = app.get_webview_window(GLASS_LABEL) else {
-        return;
+// ---- context menu ---------------------------------------------------------
+
+const M_FREEZE: &str = "glass-freeze";
+const M_LENS: &str = "glass-lens";
+const M_ZOOM_IN: &str = "glass-zoom-in";
+const M_ZOOM_OUT: &str = "glass-zoom-out";
+const M_HIDE: &str = "glass-hide";
+const M_PANEL: &str = "glass-panel";
+const M_QUIT: &str = "glass-quit";
+
+/// Build and pop the glass's right-click menu at the cursor. Every entry mirrors a
+/// control on the bar or a hotkey; the menu exists so the same actions are one click
+/// away when the bar is dim, the lens is riding, or the user simply reaches for the
+/// right button first.
+pub fn popup_menu(app: &AppHandle, engine: &Engine) -> tauri::Result<()> {
+    let mode = engine.mode();
+    let freeze_label = if mode == Mode::Frozen {
+        "Resume live view\tF"
+    } else {
+        "Freeze this picture\tF"
     };
-    let (cx, cy) = cursor_pos();
-    let Ok(size) = w.outer_size() else { return };
-    let target = PhysicalPosition::new(cx - (size.width / 2) as i32, cy - (size.height / 2) as i32);
-    if w.outer_position().ok() != Some(target) {
-        let _ = w.set_position(target);
+    let lens_label = if mode == Mode::Lens {
+        "Leave lens\tL"
+    } else {
+        "Lens: ride on the cursor\tL"
+    };
+    let menu = Menu::with_items(
+        app,
+        &[
+            &MenuItem::with_id(app, M_FREEZE, freeze_label, true, None::<&str>)?,
+            &MenuItem::with_id(app, M_LENS, lens_label, true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(
+                app,
+                M_ZOOM_IN,
+                "Zoom in\t+",
+                mode != Mode::Frozen,
+                None::<&str>,
+            )?,
+            &MenuItem::with_id(
+                app,
+                M_ZOOM_OUT,
+                "Zoom out\t−",
+                mode != Mode::Frozen,
+                None::<&str>,
+            )?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, M_PANEL, "Show sessions panel", true, None::<&str>)?,
+            &MenuItem::with_id(app, M_HIDE, "Hide glass\tEsc", true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, M_QUIT, "Quit ReviewGlass", true, None::<&str>)?,
+        ],
+    )?;
+    if let Some(w) = app.get_webview_window(GLASS_LABEL) {
+        menu.popup(w.as_ref().window())?;
+    }
+    Ok(())
+}
+
+/// Handle a pick from the glass menu. Wired in lib.rs; ids that are not ours fall
+/// through untouched so the tray's own handler still sees its events.
+pub fn on_menu(app: &AppHandle, id: &str) {
+    let engine = app.state::<Engine>();
+    match id {
+        M_FREEZE => {
+            let frozen = engine.mode() != Mode::Frozen;
+            set_frozen_inner(app, &engine, frozen);
+        }
+        M_LENS => {
+            let lens = engine.mode() != Mode::Lens;
+            set_lens_inner(app, &engine, lens);
+        }
+        M_ZOOM_IN | M_ZOOM_OUT => {
+            let step = if id == M_ZOOM_IN { 0.25 } else { -0.25 };
+            let _ = app.emit_to(GLASS_LABEL, ZOOM_EVENT, step);
+        }
+        M_HIDE => glass_hide(app.clone()),
+        M_PANEL => crate::tray::show_panel_window(app),
+        M_QUIT => crate::tray::quit_app(app),
+        _ => {}
     }
 }
 
@@ -262,8 +398,12 @@ pub fn glass_save_position(store: State<Store>, x: i32, y: i32) {
 /// header carries the current seq with width = height = 0 and no pixels. A capture
 /// error is reported as a string so the glass can show its error state.
 #[tauri::command]
-pub fn glass_frame(app: AppHandle, engine: State<Engine>, since: u64) -> Result<Response, String> {
-    ride_cursor(&app, &engine);
+pub fn glass_menu(app: AppHandle, engine: State<Engine>) -> Result<(), String> {
+    popup_menu(&app, &engine).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn glass_frame(engine: State<Engine>, since: u64) -> Result<Response, String> {
     engine.tick().map_err(|e| e.to_string())?;
     if !engine.is_enabled() {
         let mut idle = Vec::with_capacity(16);

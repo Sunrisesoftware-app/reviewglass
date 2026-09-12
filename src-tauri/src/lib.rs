@@ -56,13 +56,16 @@ pub fn run() {
                 eprintln!("reviewglass: hotkeys not registered: {e}");
             }
             panel::spawn_usage_loop(app.handle().clone());
+            glass::spawn_lens_rider(app.handle().clone());
             Ok(())
         })
+        .on_menu_event(|app, event| glass::on_menu(app, event.id().as_ref()))
         .invoke_handler(tauri::generate_handler![
             glass::glass_state,
             glass::glass_set_view,
             glass::glass_set_frozen,
             glass::glass_set_lens,
+            glass::glass_menu,
             glass::glass_set_hovered,
             glass::glass_scroll,
             glass::glass_save_position,

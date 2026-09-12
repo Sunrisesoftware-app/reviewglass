@@ -23,8 +23,11 @@ pub struct GlassConfig {
     pub height: u32,
     pub zoom: f32,
     pub frozen: bool,
-    /// Lens mode: the window rides on the cursor and passes clicks through.
+    /// Lens mode: the window rides on the cursor.
     pub lens: bool,
+    /// The lens has its own, smaller size, remembered separately from the parked glass.
+    pub lens_width: u32,
+    pub lens_height: u32,
     /// Origin of the frozen source rectangle, kept only while `frozen`.
     pub frozen_x: i32,
     pub frozen_y: i32,
@@ -41,6 +44,8 @@ impl Default for GlassConfig {
             zoom: 2.0,
             frozen: false,
             lens: false,
+            lens_width: 640,
+            lens_height: 360,
             frozen_x: 0,
             frozen_y: 0,
             visible: true,

@@ -5,10 +5,15 @@
   // chosen zoom. Polling is adaptive: ~30 fps while frames change, ~5 fps once a frozen
   // source has been static, so an idle glass costs almost nothing.
   //
+  // Three modes. Follow: the window stays put and the source rides the cursor. Lens: the
+  // window itself rides the cursor at its own smaller size. Frozen: a still — the
+  // picture stops updating so a captured instruction survives the user switching to
+  // another application underneath it; drag the still wherever it should live.
+  //
   // The controls live in a bar that appears on hover and fades when the pointer leaves,
   // because the glass is a reading surface: chrome sitting over magnified text defeats
-  // the point of magnifying it. Every control also has a keyboard or mouse equivalent,
-  // so nothing is reachable only by hunting for a button.
+  // the point of magnifying it. Every control also has a keyboard, wheel or right-click
+  // equivalent, so nothing is reachable only by hunting for a button.
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -115,6 +120,7 @@
   }
 
   async function setZoom(next: number) {
+    if (frozen) return; // a still has fixed pixels; zoom returns when it resumes
     zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(next / ZOOM_STEP) * ZOOM_STEP));
     await reportView();
   }
@@ -130,16 +136,16 @@
   async function setLens(next: boolean) {
     lens = next;
     if (next) frozen = false;
-    hovering = false;
     await invoke("glass_set_lens", { lens: next });
   }
 
   // While the pointer is over the glass the source holds still and the picture dims,
   // so the controls read clearly and nothing jumps underneath them.
   function setHover(next: boolean) {
-    if (lens) return;
     hovering = next;
-    void invoke("glass_set_hovered", { hovered: next });
+    // In the lens the pointer is always over the glass; holding the source there would
+    // freeze the lens, so the hold applies to the parked glass only.
+    void invoke("glass_set_hovered", { hovered: next && !lens });
   }
 
   async function resizeBy(factor: number) {
@@ -152,16 +158,13 @@
 
   async function onwheel(e: WheelEvent) {
     e.preventDefault();
-    if (frozen) {
-      // Scroll the source rectangle in source pixels; a notch is roughly three lines.
-      const step = Math.round(Math.max(1, 40 / zoom));
-      const dir = Math.sign(e.deltaY) * step;
-      const dx = e.shiftKey ? dir : Math.sign(e.deltaX) * step;
-      const dy = e.shiftKey ? 0 : dir;
-      await invoke("glass_scroll", { dx, dy });
-    } else {
-      await setZoom(zoom + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
-    }
+    if (frozen) return; // a still neither scrolls nor zooms
+    await setZoom(zoom + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
+  }
+
+  function oncontextmenu(e: MouseEvent) {
+    e.preventDefault();
+    void invoke("glass_menu");
   }
 
   function onpointerdown(e: PointerEvent) {
@@ -209,6 +212,7 @@
     const unlisten: (() => void)[] = [];
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
     const savePosition = () => {
+      if (lens) return; // the lens moves every few ms; its position is not a setting
       clearTimeout(saveTimer);
       saveTimer = setTimeout(async () => {
         const p = await win.outerPosition();
@@ -229,11 +233,13 @@
       unlisten.push(await win.onMoved(savePosition));
       unlisten.push(await win.onResized(() => void reportView()));
       unlisten.push(
+        await listen<number>("glass:zoom", (ev) => void setZoom(zoom + ev.payload)),
+      );
+      unlisten.push(
         await listen<GlassState>("glass:state", (ev) => {
           zoom = ev.payload.zoom;
           frozen = ev.payload.frozen;
           lens = ev.payload.lens;
-          if (lens) hovering = false;
         }),
       );
       void poll();
@@ -258,6 +264,7 @@
   {onpointerdown}
   {ondblclick}
   {onwheel}
+  {oncontextmenu}
   onpointerenter={() => setHover(true)}
   onpointerleave={() => setHover(false)}
   role="presentation"
@@ -266,7 +273,9 @@
   <div class="dim" aria-hidden="true"></div>
 
   {#if lens}
-    <div class="lens-badge">Lens · Ctrl+Alt+L or the tray icon to release</div>
+    <div class="lens-badge">Lens · double-click to freeze · right-click for options · L to release</div>
+  {:else if frozen}
+    <div class="lens-badge">Still · drag it anywhere · F or right-click to resume</div>
   {/if}
 
   {#if error}
@@ -278,7 +287,7 @@
     <div class="overlay notice">{notice}</div>
   {/if}
 
-  <div class="bar" class:visible={barVisible && !lens} role="toolbar" tabindex="-1" aria-label="Glass controls">
+  <div class="bar" class:visible={barVisible} role="toolbar" tabindex="-1" aria-label="Glass controls">
     <button
       class="move"
       title="Drag to move the glass"
@@ -295,14 +304,14 @@
     <button
       title="Zoom out (− or wheel down)"
       aria-label="Zoom out"
-      disabled={zoom <= ZOOM_MIN}
+      disabled={frozen || zoom <= ZOOM_MIN}
       onpointerdown={(e) => control(e, () => setZoom(zoom - ZOOM_STEP))}>−</button
     >
     <span class="value" aria-live="polite">{Math.round(zoom * 100)}%</span>
     <button
       title="Zoom in (+ or wheel up)"
       aria-label="Zoom in"
-      disabled={zoom >= ZOOM_MAX}
+      disabled={frozen || zoom >= ZOOM_MAX}
       onpointerdown={(e) => control(e, () => setZoom(zoom + ZOOM_STEP))}>+</button
     >
 
@@ -328,15 +337,17 @@
     >
     <button
       class:active={frozen}
-      title={frozen ? "Follow the cursor (F)" : "Freeze this region (F)"}
+      title={frozen ? "Resume live view (F)" : "Freeze this picture as a still (F)"}
       aria-label="Freeze"
       aria-pressed={frozen}
       onpointerdown={(e) => control(e, () => setFrozen(!frozen))}>{frozen ? "❄" : "⌖"}</button
     >
     <button
-      title="Lens: ride on the cursor, clicks pass through (L, Ctrl+Alt+L to release)"
+      class:active={lens}
+      title={lens ? "Leave the lens (L)" : "Lens: ride on the cursor (L)"}
       aria-label="Lens mode"
-      onpointerdown={(e) => control(e, () => setLens(true))}>◎</button
+      aria-pressed={lens}
+      onpointerdown={(e) => control(e, () => setLens(!lens))}>◎</button
     >
     <button
       title="Hide — Ctrl+Alt+G or the tray icon brings it back (Esc)"
@@ -380,7 +391,6 @@
   .glass.lens {
     border-color: rgba(255, 255, 255, 0.85);
     border-radius: 10px;
-    cursor: none;
   }
   /* Darken the picture while the controls are up, so they read as controls and not as
      part of what is being magnified. */

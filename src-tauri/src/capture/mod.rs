@@ -10,7 +10,7 @@
 //! `GetCursorPos` and `GetMonitorInfoW` return for a per-monitor-DPI-aware process
 //! (tao declares PerMonitorV2 awareness).
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -89,6 +89,17 @@ struct Shared {
     latest: Mutex<FrameData>,
     seq: AtomicU64,
     last_hash: AtomicU64,
+    /// The rectangle the last published crop came from. A rectangle that moved is new
+    /// content even when the compositor reports nothing dirty inside it.
+    last_rect: Mutex<Option<SourceRect>>,
+    /// Frozen: hold the picture. No frame is published until this clears, so the glass
+    /// keeps showing what it showed at the moment of freezing — a still, not a live
+    /// view of a locked region. That is what lets a captured instruction survive the
+    /// user switching to another application underneath it.
+    still: AtomicBool,
+    /// Set when a freeze was restored from disk with no pixels in hand: the next
+    /// published frame becomes the still.
+    freeze_after_publish: AtomicBool,
 }
 
 struct Handler {
@@ -112,6 +123,9 @@ impl GraphicsCaptureApiHandler for Handler {
         frame: &mut Frame,
         _control: InternalCaptureControl,
     ) -> Result<(), Self::Error> {
+        if self.shared.still.load(Ordering::Relaxed) {
+            return Ok(());
+        }
         let Some(mon) = *self.shared.monitor.lock() else {
             return Ok(());
         };
@@ -136,13 +150,19 @@ impl GraphicsCaptureApiHandler for Handler {
         // An empty list means "the whole frame is dirty" as far as we are concerned: the
         // API reports no regions when it cannot track them, and skipping on that would
         // freeze the glass.
-        if let Ok(regions) = frame.dirty_regions() {
-            if !regions.is_empty()
-                && !regions
-                    .iter()
-                    .any(|r| r.x < x1 && r.x + r.width > x0 && r.y < y1 && r.y + r.height > y0)
-            {
-                return Ok(());
+        // Only while the rectangle itself has not moved: a rectangle that moved shows
+        // different pixels regardless of what changed on screen, and skipping there is
+        // what made the picture lag behind the cursor.
+        let moved = *self.shared.last_rect.lock() != Some(src);
+        if !moved {
+            if let Ok(regions) = frame.dirty_regions() {
+                if !regions.is_empty()
+                    && !regions
+                        .iter()
+                        .any(|r| r.x < x1 && r.x + r.width > x0 && r.y < y1 && r.y + r.height > y0)
+                {
+                    return Ok(());
+                }
             }
         }
 
@@ -156,12 +176,20 @@ impl GraphicsCaptureApiHandler for Handler {
         // Skip the publish when nothing changed. A sampled FNV over the crop is far
         // cheaper than a full compare and good enough to keep a static source idle.
         let hash = sampled_hash(bytes);
-        if hash == self.shared.last_hash.load(Ordering::Relaxed) {
+        if !moved && hash == self.shared.last_hash.load(Ordering::Relaxed) {
             return Ok(());
         }
         self.shared.last_hash.store(hash, Ordering::Relaxed);
+        *self.shared.last_rect.lock() = Some(src);
 
         let seq = self.shared.seq.fetch_add(1, Ordering::Relaxed) + 1;
+        if self
+            .shared
+            .freeze_after_publish
+            .swap(false, Ordering::Relaxed)
+        {
+            self.shared.still.store(true, Ordering::Relaxed);
+        }
         let mut latest = self.shared.latest.lock();
         latest.seq = seq;
         latest.width = w;
@@ -252,6 +280,9 @@ impl Engine {
             enabled: Mutex::new(true),
             shared: Arc::new(Shared {
                 spare: Mutex::new(Vec::new()),
+                last_rect: Mutex::new(None),
+                still: AtomicBool::new(false),
+                freeze_after_publish: AtomicBool::new(false),
                 source: Mutex::new(SourceRect {
                     x: 0,
                     y: 0,
@@ -305,6 +336,18 @@ impl Engine {
             v.frozen_origin = (s.x, s.y);
         }
         v.mode = mode;
+        // Frozen means a still. Leaving it forces the next frame through, whatever the
+        // dirty regions say, so the picture goes live again immediately.
+        self.shared
+            .still
+            .store(mode == Mode::Frozen, Ordering::Relaxed);
+        if mode != Mode::Frozen {
+            *self.shared.last_rect.lock() = None;
+        }
+    }
+
+    pub fn is_still(&self) -> bool {
+        self.shared.still.load(Ordering::Relaxed)
     }
 
     /// Restore a frozen rectangle from persisted state.
@@ -312,6 +355,12 @@ impl Engine {
         let mut v = self.view.lock();
         v.mode = Mode::Frozen;
         v.frozen_origin = (x, y);
+        // A still restored from disk has no pixels yet: let one frame through, then
+        // hold.
+        self.shared.still.store(false, Ordering::Relaxed);
+        self.shared
+            .freeze_after_publish
+            .store(true, Ordering::Relaxed);
     }
 
     pub fn set_hovered(&self, hovered: bool) {
@@ -400,6 +449,7 @@ impl Engine {
         }
         *self.shared.monitor.lock() = Some(geom);
         self.shared.last_hash.store(0, Ordering::Relaxed);
+        *self.shared.last_rect.lock() = None;
 
         let monitor = Monitor::from_raw_hmonitor(geom.handle as *mut std::ffi::c_void);
         let settings = Settings::new(
