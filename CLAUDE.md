@@ -1,41 +1,119 @@
 # ReviewGlass — notes for the build agent
 
+A Windows 11 desktop companion for Claude Code sessions: a magnifier glass, a session
+and quota panel, threshold alerts, and later a live diff. Tauri v2, Rust core,
+SvelteKit. Apache-2.0. Built first for the author's own use; private until P8.
+
 Read `docs/REVIEWGLASS-SPEC.md` before changing architecture. Section 6.3 is the module
-contract list; section 10 is this file's source.
+contract list. The Atlas model (system `reviewglass`) is the source of truth for
+modules, connections and decisions; the spec is its prose.
 
-## Rules
+## Golden rules
 
-- Language: English for code, comments, commit messages and documentation.
-- License: Apache-2.0. Never introduce a GPLv2-only dependency.
-- Every consumer of Claude Code data assumes the field may be absent. Absent data **hides the
-  element**; it never renders a zero, a dash or an error.
-- `explain-service` contains no provider-specific code. A provider name outside
+- **Language.** Code, comments, commit messages and documentation in English.
+  Conversation with the owner in Finnish.
+- **License.** Apache-2.0. Never introduce a GPLv2-only dependency.
+- **Absent data hides its element.** Every consumer of Claude Code data assumes a field
+  may be absent *or of an unexpected type* (adr.rg.011). Never a zero, a dash or an
+  error in place of a missing figure — and where the reason is something the user can
+  act on, say the reason ("no CLI session is running").
+- **`rate_limits` is account-wide.** Never a per-session figure (adr.rg.007). The gauge
+  is borrowed from whatever CLI session is live (adr.rg.009); attribution is a separate,
+  relative quantity, and the two are never blended.
+- **A read surface.** ReviewGlass never writes into a session, a repository or a
+  transcript. Transcripts are opened read-only, and only session state is read from
+  them — never the conversation.
+- **The glass never captures itself.** `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`
+  on the glass and on the halo.
+- **`explain-service` contains no provider-specific code.** A provider name outside
   `src-tauri/src/explain/backend` is a boundary violation.
-- All configured Windows paths use forward slashes (Git Bash mangles backslashes).
-- The glass window must call `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` or it captures
-  itself.
-- `rate_limits` is account-wide. Never present it as a per-session figure.
-- ReviewGlass is a read surface. It never writes into a session, a repository or a transcript.
-- Collector scripts always exit 0 and always print a status line.
+- **Collectors always exit 0 and always print a line.** They are native binaries
+  (adr.rg.010), never shell scripts. Configured Windows paths use forward slashes.
+- **Ship the affordance with the mechanism.** A visible control for every action, a
+  discoverable first-run state, a named empty state. A feature reachable only by a
+  keystroke nobody was told about is not finished.
+- **A hideable window has a fixed point.** The tray icon and single-instance rule
+  (adr.rg.015) are not optional: without them a hidden app becomes two processes.
+
+## Working practice
+
+- Verify before declaring done: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`,
+  `cargo test`, `pnpm check`. CI on windows-latest runs the same and is the gate.
+- Build the release and run it: `pnpm tauri build`, then launch
+  `src-tauri/target/release/reviewglass.exe` (the Desktop and Start Menu shortcuts point
+  there). Stop the running instance first — it holds the config file. Measure on the
+  release build, never the dev build.
+- Commit straight to `main` while the repo is private and single-author; keep CI
+  green. Commit subject: what changed and why, in English; the body records what was
+  measured.
+- **A decision enters the Atlas model first.** New ADR → `decisions[]` in
+  `model/systems/reviewglass.model.json` in the Atlas checkout, validate
+  (`pnpm validate:models`, `pnpm review --system reviewglass`), PR, merge, then
+  `pnpm --filter @atlas/mcp-worker exec wrangler deploy` (CI only dry-runs the deploy).
+  Then render the repo mirror: `node scripts/adr-from-model.mjs`. A hand edit under
+  `docs/adr/` is lost on the next run.
+- End each session by updating `docs/CHANGELOG.md`, `docs/BUILD_INFO.json` and, when a
+  lesson was learned, `docs/LESSONS.md`; put the status to Atlas
+  (`atlas_put_status`, system `reviewglass`).
+- The spec is Atlas artifact `REVIEWGLASS-SPEC`; `docs/REVIEWGLASS-SPEC.md` is its copy.
+  Change both in the same session or neither.
+
+## Session handover: what a cold start reads
+
+1. **This file** — rules, practice, the lessons below.
+2. **`docs/BUILD_INFO.json`** — where the build stands, what is next, how it is deployed.
+3. **`docs/CHANGELOG.md`** — what shipped and why, newest first, with what was measured.
+4. **`docs/adr/`** — the decisions, rendered from the Atlas model; `README.md` there is
+   the index.
+5. **`docs/LESSONS.md`** — the pitfalls, with the story behind the rules above.
+6. **`docs/REVIEWGLASS-SPEC.md`** — the product and architecture specification (v0.2
+   at the time of writing; 6.3 carries the module contracts).
+7. Atlas (optional but useful): system `reviewglass` — `atlas_get_workspace` for status
+   and thread, `atlas_get_rationale` for the ADRs as the model holds them.
+
+The owner's machine has the spike rig still installed
+(`~/.reviewglass/spike/`, `~/.claude/settings.json.bak-reviewglass-p0`); the real
+collector replaced it in `settings.json` on 11.9.2026.
 
 ## Roadmap gates
 
-- **P1 (magnifier)** has no dependency on anything. Start here.
-- **P2 (session panel)** does not begin until the P0 statusLine result is recorded for both
-  Desktop and CLI in spec section 4.1.
-- **P8 (public release)** waits on name clearance (adr.rg.008).
+- **P0** done: statusLine fires in the CLI, not in the Desktop Code tab.
+- **P1** done. **P2** built; its exit criterion (five concurrent sessions) is still to
+  be observed. **P3** built; the toast is measured working.
+- **P4** (live diff) is next: `hook-collector` as a native binary, `diff-service`, the
+  Diff tab. Nothing gates it.
+- **P8** (public release) waits on name clearance (adr.rg.008).
 
-## Atlas
+## Layout
 
-This system is `reviewglass` in the Atlas model (modules `rg.*`, decisions `adr.rg.*`). Keep the
-model and the code in step: a new module, connection or decision here is a proposal there.
+| Path | What |
+|---|---|
+| `src-tauri/src/capture/` | `rg.capture-engine`: Windows.Graphics.Capture, crop, dirty-region skip |
+| `src-tauri/src/glass.rs` | `rg.glass-window` Rust side: modes, hotkeys, lens/halo rider thread, context menu |
+| `src-tauri/src/tray.rs` | tray icon; the single-instance hook is in `lib.rs` |
+| `src-tauri/src/session/` | `rg.session-source`: payload types, spool reader, transcript reader, merge |
+| `src-tauri/src/usage.rs` | `rg.usage-model`: one gauge, N shares, burn rate |
+| `src-tauri/src/notifier.rs` | `rg.notifier`: threshold logic (delivery is in `panel.rs`) |
+| `src-tauri/src/panel.rs` | usage loop thread, panel commands, alert settings |
+| `src-tauri/src/config.rs` | `rg.config-store`: atomic JSON, corrupt-file recovery |
+| `src-tauri/src/spool.rs` | `rg.spool`: paths, atomic write, safe file names |
+| `src-tauri/src/bin/statusline.rs` | `rg.statusline-collector` |
+| `src/routes/glass`, `halo`, `panel` | the three windows |
+| `scripts/adr-from-model.mjs` | renders `docs/adr/` from the Atlas model |
 
-## Commands
+## Lessons that became rules
 
-```bash
-pnpm install          # once
-pnpm tauri dev        # both windows, hot reload
-pnpm check            # svelte-check
-cargo check --manifest-path src-tauri/Cargo.toml
-pnpm tauri build      # NSIS + MSI under src-tauri/target/release/bundle/
-```
+Full stories in `docs/LESSONS.md`. The short forms:
+
+- **A payload with no surface marker is not evidence about the surface** (11.9.2026).
+  The spike's first reading was backwards. Read a transcript's `entrypoint`, never guess.
+- **Optional is not lenient** (11.9.2026). `current_usage` changed type and one strict
+  `Option` failed the whole payload. Every Claude Code field parses leniently.
+- **A skip keyed on "the input did not change" must include every input** (12.9.2026).
+  The dirty-region skip ignored the rectangle's own position; the lens vibrated.
+- **Never write a derived value back as the setting it came from** (12.9.2026). The
+  canvas size was stored as the window size and the window shrank on every restart.
+- **A hideable window needs a fixed point** (12.9.2026). Two instances were alive at
+  once before the tray existed.
+- **A session runs the status line that existed when it started** (11.9.2026). The
+  installer must say so.

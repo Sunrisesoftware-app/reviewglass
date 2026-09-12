@@ -1,0 +1,26 @@
+{
+  "name": "reviewglass",
+  "version": "0.1.0",
+  "phase": 3,
+  "phaseName": "P0 spike done (CLI yes, Desktop no) · P1 magnifier done · P2 session panel built, exit criterion open · P3 threshold alerts built",
+  "session": 1,
+  "updated": "2026-09-12",
+  "state": "Session 1 (11.-12.9.2026): FROM SPEC TO A TOOL THE OWNER USES. The Atlas system was drafted from REVIEWGLASS-SPEC v1, validated across seven lenses and merged (#292), then corrected twice as measurements contradicted the draft (#293, #294). The P0 spike found that statusLine runs in the terminal CLI and not in the Desktop Code tab — the inverse of the spec's assumption — after a first reading that got it backwards; the transcript's entrypoint field settled it, session-source ships two implementations and the account gauge is borrowed from any live CLI session (adr.rg.003, adr.rg.009). P1 shipped: Windows.Graphics.Capture, no self-capture, idle 1.35 % of one core on a release build after the dirty-region skip. P2 built: a native statusLine collector (adr.rg.010) with a per-field lenient parser after context_window.current_usage proved to be an object (adr.rg.011); both channels verified on this machine; one shared gauge and N relative shares, never blended. P3 built: threshold toasts from a usage loop on its own thread (adr.rg.016), with a test button; measured working. The first hands-on day then reshaped the glass: a permanent title bar with three named modes Follow / Lens / Still (adr.rg.013), freeze as a still rather than a locked region (adr.rg.012), a cursor halo (adr.rg.014), tray icon and single instance after two instances were measured alive at once (adr.rg.015), a right-click menu, a chrome scale, and a fix for a size drift that had shrunk the window from 900x340 to 632x352. Sixteen ADRs live in the Atlas model and are rendered into docs/adr/ by scripts/adr-from-model.mjs.",
+  "deploy": {
+    "surface": "the owner's own Windows 11 machine only; no hosted component",
+    "binary": "src-tauri/target/release/reviewglass.exe, launched from Desktop and Start Menu shortcuts that point at the build output",
+    "collector": "~/.reviewglass/bin/reviewglass-statusline.exe, configured as statusLine in ~/.claude/settings.json (backup: settings.json.bak-reviewglass-p0)",
+    "installers": "NSIS and MSI both build; not yet used — P7",
+    "atlas": "system reviewglass; status via atlas_put_status; MCP worker redeployed manually after each model merge (CI only dry-runs)"
+  },
+  "workflow": "Code and docs in English, conversation in Finnish. cargo fmt + clippy -D warnings + cargo test + pnpm check before every commit; CI on windows-latest runs the same. Commit straight to main while the repo is private and single-author; the Atlas model changes go through a PR on the Atlas repo, then wrangler deploy of the MCP worker. A new decision enters the Atlas model first and is rendered into docs/adr/ by node scripts/adr-from-model.mjs. End a session by updating docs/CHANGELOG.md, docs/BUILD_INFO.json and, if a lesson was learned, docs/LESSONS.md; put the status to Atlas.",
+  "next": [
+    "P2 exit criterion: observe five concurrent sessions in the panel with correct shared-vs-attributed semantics",
+    "Spec v3: fold adr.rg.012-016 into 6.3 (glass-window contract, three modes, halo in the topology) — the repo copy and the Atlas artifact together",
+    "P4 live diff: hook-collector as a native binary, diff-service, the Diff tab",
+    "Toast identity: the unpackaged exe is attributed to Windows PowerShell; the installer (P7) gives the app its own",
+    "Memory: ~700 MB private bytes across eight processes, almost all WebView2; recorded in spec 8.4, not yet examined",
+    "adr.rg.008: clear the name before P8"
+  ],
+  "nextUpdated": "2026-09-12"
+}
