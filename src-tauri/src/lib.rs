@@ -51,6 +51,7 @@ pub fn run() {
                 });
             }
             tray::install(app.handle())?;
+            glass::prepare_halo(app.handle());
             glass::restore(app.handle());
             if let Err(e) = glass::register_hotkeys(app.handle()) {
                 eprintln!("reviewglass: hotkeys not registered: {e}");
@@ -66,6 +67,8 @@ pub fn run() {
             glass::glass_save_size,
             glass::glass_set_frozen,
             glass::glass_set_lens,
+            glass::glass_set_halo,
+            glass::glass_cycle_ui_scale,
             glass::glass_menu,
             glass::glass_set_hovered,
             glass::glass_scroll,

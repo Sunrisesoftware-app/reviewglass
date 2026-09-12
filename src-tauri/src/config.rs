@@ -32,6 +32,12 @@ pub struct GlassConfig {
     pub frozen_x: i32,
     pub frozen_y: i32,
     pub visible: bool,
+    /// The cursor halo in Follow mode: a ring around the pointer so the eye, on the
+    /// glass, still knows where the hand is.
+    pub halo: bool,
+    /// Scale of the glass's own chrome (title bar text and buttons). The glass exists
+    /// because things are too small to read; its own bar must not be one of them.
+    pub ui_scale: f32,
 }
 
 impl Default for GlassConfig {
@@ -49,6 +55,8 @@ impl Default for GlassConfig {
             frozen_x: 0,
             frozen_y: 0,
             visible: true,
+            halo: true,
+            ui_scale: 1.0,
         }
     }
 }

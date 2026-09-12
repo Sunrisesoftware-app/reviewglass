@@ -26,6 +26,8 @@
     zoom: number;
     frozen: boolean;
     lens: boolean;
+    halo: boolean;
+    ui_scale: number;
     config: "loaded" | "fresh" | "reset-corrupt";
   };
 
@@ -43,12 +45,26 @@
   let zoom = $state(2);
   let frozen = $state(false);
   let lens = $state(false);
+  let halo = $state(true);
+  let uiScale = $state(1);
   let error = $state<string | null>(null);
   let notice = $state<string | null>(null);
   let haveFrame = $state(false);
   let hovering = $state(false);
   type ModeName = "follow" | "lens" | "still";
   const mode = $derived<ModeName>(lens ? "lens" : frozen ? "still" : "follow");
+
+  async function setHalo(next: boolean) {
+    halo = next;
+    await invoke("glass_set_halo", { halo: next });
+  }
+
+  // The chrome grows in steps. The glass exists because things are too small to read;
+  // its own bar must not be one of them.
+  async function cycleUiScale() {
+    uiScale = await invoke<number>("glass_cycle_ui_scale");
+    await reportView(); // the bar's height changed, so the picture area did too
+  }
 
   function setMode(next: ModeName) {
     if (next === mode) return;
@@ -238,6 +254,8 @@
       zoom = s.zoom;
       frozen = s.frozen;
       lens = s.lens;
+      halo = s.halo;
+      uiScale = s.ui_scale;
       if (s.config === "reset-corrupt") {
         notice = "Settings were unreadable; defaults are in effect (the old file is kept as config.json.bak).";
         setTimeout(() => (notice = null), 8000);
@@ -259,6 +277,8 @@
           zoom = ev.payload.zoom;
           frozen = ev.payload.frozen;
           lens = ev.payload.lens;
+          halo = ev.payload.halo;
+          uiScale = ev.payload.ui_scale;
         }),
       );
       void poll();
@@ -276,12 +296,22 @@
 <div
   class="glass {mode}"
   class:dimmed={hovering && mode === "follow"}
+  style="--ui: {uiScale}"
   onpointerenter={() => setHover(true)}
   onpointerleave={() => setHover(false)}
   role="presentation"
 >
-  <header class="titlebar" {onpointerdown} {oncontextmenu} role="toolbar" aria-label="ReviewGlass">
-    <span class="grab" title="Drag to move" aria-hidden="true">✥</span>
+  <header class="titlebar" {onpointerdown} {oncontextmenu} role="toolbar" tabindex="-1" aria-label="ReviewGlass">
+    <button
+      class="grab"
+      title="Drag to move the glass"
+      aria-label="Move the glass"
+      onpointerdown={(e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        void win.startDragging();
+      }}>✥</button
+    >
     <span class="name">ReviewGlass</span>
 
     {#if mode === "lens"}
@@ -342,6 +372,21 @@
         onpointerdown={(e) => control(e, () => resizeBy(SIZE_STEP))}>▭+</button
       >
 
+      <span class="sep"></span>
+
+      <button
+        class:on={halo}
+        title={halo ? "Cursor halo is on: a ring marks the pointer on screen" : "Show a ring around the pointer on screen"}
+        aria-label="Cursor halo"
+        aria-pressed={halo}
+        onpointerdown={(e) => control(e, () => setHalo(!halo))}>◉</button
+      >
+      <button
+        title="Larger bar text and buttons ({Math.round(uiScale * 100)}% — click to step)"
+        aria-label="Bar size"
+        onpointerdown={(e) => control(e, () => cycleUiScale())}>Aa</button
+      >
+
       <span class="spacer"></span>
 
       <button
@@ -393,6 +438,7 @@
      reads from across the room. */
   .glass {
     --mode: #ffc800;
+    --ui: 1;
     position: relative;
     box-sizing: border-box;
     display: flex;
@@ -404,7 +450,7 @@
     overflow: hidden;
     background: #161616;
     box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.7);
-    font: 12px system-ui, sans-serif;
+    font: calc(12px * var(--ui)) system-ui, sans-serif;
     color: #eee;
     user-select: none;
   }
@@ -418,21 +464,22 @@
   .titlebar {
     display: flex;
     align-items: center;
-    gap: 2px;
-    height: 28px;
-    padding: 0 6px 0 8px;
+    gap: 0.17em;
+    height: calc(28px * var(--ui));
+    padding: 0 0.5em 0 0.35em;
     background: #202020;
     border-bottom: 1px solid rgba(255, 255, 255, 0.12);
     cursor: move;
     flex: none;
   }
-  .grab {
-    margin-right: 6px;
-    font-size: 14px;
-    opacity: 0.7;
+  .titlebar button.grab {
+    margin-right: 0.3em;
+    font-size: 1.15em;
+    cursor: move;
+    opacity: 0.8;
   }
   .name {
-    margin-right: 10px;
+    margin-right: 0.8em;
     font-weight: 600;
     letter-spacing: 0.01em;
     opacity: 0.9;
@@ -453,7 +500,7 @@
     background: rgba(255, 255, 255, 0.08);
   }
   .modes button {
-    padding: 2px 9px;
+    padding: 0.15em 0.75em;
     border-radius: 4px;
   }
   .modes button.on {
@@ -462,9 +509,9 @@
     font-weight: 600;
   }
   .titlebar button {
-    min-width: 22px;
-    height: 20px;
-    padding: 0 5px;
+    min-width: 1.85em;
+    height: 1.7em;
+    padding: 0 0.4em;
     border: 0;
     border-radius: 4px;
     background: transparent;
@@ -484,16 +531,19 @@
     background: rgba(200, 40, 40, 0.85);
     color: #fff;
   }
+  .titlebar button.on:not(.modes button) {
+    background: rgba(255, 140, 0, 0.35);
+  }
   .value {
-    min-width: 38px;
+    min-width: 3.2em;
     text-align: center;
     opacity: 0.85;
     font-variant-numeric: tabular-nums;
   }
   .sep {
     width: 1px;
-    height: 14px;
-    margin: 0 4px;
+    height: 1.2em;
+    margin: 0 0.35em;
     background: rgba(255, 255, 255, 0.22);
   }
   .spacer {
@@ -557,12 +607,14 @@
   .grip {
     position: absolute;
   }
-  .grip.n { top: 0; left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
-  .grip.s { bottom: 0; left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
-  .grip.w { left: 0; top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
-  .grip.e { right: 0; top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
-  .grip.nw { top: 0; left: 0; width: 12px; height: 12px; cursor: nwse-resize; }
-  .grip.se { bottom: 0; right: 0; width: 12px; height: 12px; cursor: nwse-resize; }
-  .grip.ne { top: 0; right: 0; width: 12px; height: 12px; cursor: nesw-resize; }
-  .grip.sw { bottom: 0; left: 0; width: 12px; height: 12px; cursor: nesw-resize; }
+  /* The top edge and corners are thin strips on the border itself, so they never sit
+     on a title-bar button; the bottom corners can afford to be generous. */
+  .grip.n { top: 0; left: 10px; right: 10px; height: 4px; cursor: ns-resize; }
+  .grip.s { bottom: 0; left: 10px; right: 10px; height: 6px; cursor: ns-resize; }
+  .grip.w { left: 0; top: 10px; bottom: 10px; width: 4px; cursor: ew-resize; }
+  .grip.e { right: 0; top: 10px; bottom: 10px; width: 4px; cursor: ew-resize; }
+  .grip.nw { top: 0; left: 0; width: 10px; height: 4px; cursor: nwse-resize; }
+  .grip.ne { top: 0; right: 0; width: 10px; height: 4px; cursor: nesw-resize; }
+  .grip.se { bottom: 0; right: 0; width: 14px; height: 14px; cursor: nwse-resize; }
+  .grip.sw { bottom: 0; left: 0; width: 14px; height: 14px; cursor: nesw-resize; }
 </style>

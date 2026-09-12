@@ -17,6 +17,9 @@ use crate::capture::{cursor_pos, Engine, Mode};
 use crate::config::{LoadOutcome, Store};
 
 pub const GLASS_LABEL: &str = "glass";
+pub const HALO_LABEL: &str = "halo";
+/// Steps the chrome scale cycles through.
+const UI_SCALES: [f32; 5] = [1.0, 1.25, 1.5, 1.75, 2.0];
 /// Event sent to the glass when freeze/zoom changes from outside the webview.
 pub const STATE_EVENT: &str = "glass:state";
 /// Event asking the glass to step its zoom (the webview owns the zoom value, since it
@@ -28,15 +31,20 @@ pub struct GlassState {
     pub zoom: f32,
     pub frozen: bool,
     pub lens: bool,
+    pub halo: bool,
+    pub ui_scale: f32,
     pub config: LoadOutcome,
 }
 
 fn state_of(engine: &Engine, store: &Store) -> GlassState {
     let mode = engine.mode();
+    let g = store.get().glass;
     GlassState {
         zoom: engine.zoom(),
         frozen: mode == Mode::Frozen,
         lens: mode == Mode::Lens,
+        halo: g.halo,
+        ui_scale: g.ui_scale,
         config: store.outcome(),
     }
 }
@@ -188,32 +196,72 @@ pub fn set_lens_inner(app: &AppHandle, engine: &Engine, lens: bool) {
 }
 
 /// Ride the cursor on a thread of its own, at a rate the webview's frame poll cannot
-/// match. Moving the window from the poll made it step at 30 Hz with setTimeout jitter
-/// on top; this runs at ~120 Hz and only touches the window when the target changed.
+/// match. Moving a window from the poll made it step at 30 Hz with setTimeout jitter on
+/// top; this runs at ~120 Hz and only touches a window when its target changed.
+///
+/// Two riders share the thread: the lens (the glass itself, in Lens mode) and the halo
+/// (the ring around the pointer, in Follow mode). At most one is riding at a time.
 pub fn spawn_lens_rider(app: AppHandle) {
     thread::Builder::new()
-        .name("reviewglass-lens".into())
-        .spawn(move || loop {
-            let engine = app.state::<Engine>();
-            if engine.mode() == Mode::Lens && engine.is_enabled() {
-                if let Some(w) = app.get_webview_window(GLASS_LABEL) {
-                    let (cx, cy) = cursor_pos();
-                    if let Ok(size) = w.outer_size() {
-                        let target = PhysicalPosition::new(
-                            cx - (size.width / 2) as i32,
-                            cy - (size.height / 2) as i32,
-                        );
-                        if w.outer_position().ok() != Some(target) {
-                            let _ = w.set_position(target);
-                        }
+        .name("reviewglass-rider".into())
+        .spawn(move || {
+            let mut halo_shown = false;
+            loop {
+                let engine = app.state::<Engine>();
+                let mode = engine.mode();
+                let enabled = engine.is_enabled();
+                let halo_wanted =
+                    enabled && mode == Mode::Follow && app.state::<Store>().get().glass.halo;
+
+                let riding = if mode == Mode::Lens && enabled {
+                    Some(GLASS_LABEL)
+                } else if halo_wanted {
+                    Some(HALO_LABEL)
+                } else {
+                    None
+                };
+
+                if let Some(halo) = app.get_webview_window(HALO_LABEL) {
+                    if halo_wanted != halo_shown {
+                        let _ = if halo_wanted {
+                            halo.show()
+                        } else {
+                            halo.hide()
+                        };
+                        halo_shown = halo_wanted;
                     }
                 }
-                thread::sleep(Duration::from_millis(8));
-            } else {
-                thread::sleep(Duration::from_millis(100));
+
+                if let Some(label) = riding {
+                    if let Some(w) = app.get_webview_window(label) {
+                        let (cx, cy) = cursor_pos();
+                        if let Ok(size) = w.outer_size() {
+                            let target = PhysicalPosition::new(
+                                cx - (size.width / 2) as i32,
+                                cy - (size.height / 2) as i32,
+                            );
+                            if w.outer_position().ok() != Some(target) {
+                                let _ = w.set_position(target);
+                            }
+                        }
+                    }
+                    thread::sleep(Duration::from_millis(8));
+                } else {
+                    thread::sleep(Duration::from_millis(100));
+                }
             }
         })
-        .expect("lens rider thread");
+        .expect("rider thread");
+}
+
+/// The halo must never land in the picture, and must never take a click.
+pub fn prepare_halo(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(HALO_LABEL) {
+        if let Err(e) = exclude_from_capture(&w) {
+            eprintln!("reviewglass: halo {e}");
+        }
+        let _ = w.set_ignore_cursor_events(true);
+    }
 }
 
 // ---- context menu ---------------------------------------------------------
@@ -345,6 +393,25 @@ pub fn glass_set_frozen(app: AppHandle, engine: State<Engine>, frozen: bool) {
 #[tauri::command]
 pub fn glass_set_lens(app: AppHandle, engine: State<Engine>, lens: bool) {
     set_lens_inner(&app, &engine, lens);
+}
+
+#[tauri::command]
+pub fn glass_set_halo(store: State<Store>, halo: bool) {
+    let _ = store.update(|c| c.glass.halo = halo);
+}
+
+/// Step the chrome scale to the next size, wrapping back to 100 % after the largest.
+#[tauri::command]
+pub fn glass_cycle_ui_scale(store: State<Store>) -> f32 {
+    let current = store.get().glass.ui_scale;
+    let idx = UI_SCALES
+        .iter()
+        .position(|s| (*s - current).abs() < 0.01)
+        .map(|i| (i + 1) % UI_SCALES.len())
+        .unwrap_or(0);
+    let next = UI_SCALES[idx];
+    let _ = store.update(|c| c.glass.ui_scale = next);
+    next
 }
 
 /// The pointer entered or left the glass. While following, the source holds still so
