@@ -10,10 +10,12 @@
   // picture stops updating so a captured instruction survives the user switching to
   // another application underneath it; drag the still wherever it should live.
   //
-  // The controls live in a bar that appears on hover and fades when the pointer leaves,
-  // because the glass is a reading surface: chrome sitting over magnified text defeats
-  // the point of magnifying it. Every control also has a keyboard, wheel or right-click
-  // equivalent, so nothing is reachable only by hunting for a button.
+  // The controls live in a title bar that is always there, like any other window's:
+  // the first hands-on session found a bar that comes and goes more confusing than a
+  // strip of chrome above the picture. In the lens the cursor is always at the window's
+  // centre, so the title bar's buttons cannot be reached by mouse; there it shows what
+  // the keys and the right button do instead. Every control also has a keyboard, wheel
+  // or right-click equivalent.
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -44,9 +46,17 @@
   let error = $state<string | null>(null);
   let notice = $state<string | null>(null);
   let haveFrame = $state(false);
-  let barPinned = $state(true); // shown at startup so the controls are discoverable
   let hovering = $state(false);
-  const barVisible = $derived(barPinned || hovering);
+  type ModeName = "follow" | "lens" | "still";
+  const mode = $derived<ModeName>(lens ? "lens" : frozen ? "still" : "follow");
+
+  function setMode(next: ModeName) {
+    if (next === mode) return;
+    if (next === "lens") void setLens(true);
+    else if (next === "still") void setFrozen(true);
+    else if (lens) void setLens(false);
+    else void setFrozen(false);
+  }
 
   let seq = 0;
   let unchanged = 0;
@@ -167,6 +177,9 @@
     void invoke("glass_menu");
   }
 
+  // The title bar and the picture both drag the window: the title bar because that is
+  // where every other window is dragged, the picture because a still is a thing one
+  // grabs and moves.
   function onpointerdown(e: PointerEvent) {
     if (e.button === 0 && e.detail === 1) void win.startDragging();
   }
@@ -231,7 +244,13 @@
       }
       await reportView();
       unlisten.push(await win.onMoved(savePosition));
-      unlisten.push(await win.onResized(() => void reportView()));
+      unlisten.push(
+        await win.onResized(async () => {
+          await reportView();
+          const s = await win.innerSize();
+          await invoke("glass_save_size", { width: s.width, height: s.height });
+        }),
+      );
       unlisten.push(
         await listen<number>("glass:zoom", (ev) => void setZoom(zoom + ev.payload)),
       );
@@ -245,10 +264,8 @@
       void poll();
     })();
 
-    const unpin = setTimeout(() => (barPinned = false), 4000);
     return () => {
       stopped = true;
-      clearTimeout(unpin);
       unlisten.forEach((u) => u());
     };
   });
@@ -257,109 +274,107 @@
 <svelte:window {onkeydown} />
 
 <div
-  class="glass"
-  class:frozen
-  class:lens
-  class:dimmed={hovering && !lens}
-  {onpointerdown}
-  {ondblclick}
-  {onwheel}
-  {oncontextmenu}
+  class="glass {mode}"
+  class:dimmed={hovering && mode === "follow"}
   onpointerenter={() => setHover(true)}
   onpointerleave={() => setHover(false)}
   role="presentation"
 >
-  <canvas bind:this={canvas}></canvas>
-  <div class="dim" aria-hidden="true"></div>
+  <header class="titlebar" {onpointerdown} {oncontextmenu} role="toolbar" aria-label="ReviewGlass">
+    <span class="grab" title="Drag to move" aria-hidden="true">✥</span>
+    <span class="name">ReviewGlass</span>
 
-  {#if lens}
-    <div class="lens-badge">Lens · double-click to freeze · right-click for options · L to release</div>
-  {:else if frozen}
-    <div class="lens-badge">Still · drag it anywhere · F or right-click to resume</div>
-  {/if}
+    {#if mode === "lens"}
+      <span class="hint">
+        Lens — <b>double-click</b> to keep as a still · <b>right-click</b> for options ·
+        <b>L</b> to leave
+      </span>
+    {:else}
+      <div class="modes" role="radiogroup" aria-label="Mode">
+        <button
+          class:on={mode === "follow"}
+          role="radio"
+          aria-checked={mode === "follow"}
+          title="The glass stays here and shows what is around the cursor"
+          onpointerdown={(e) => control(e, () => setMode("follow"))}>Follow</button
+        >
+        <button
+          role="radio"
+          aria-checked="false"
+          title="The glass rides on the cursor like a lens (L)"
+          onpointerdown={(e) => control(e, () => setMode("lens"))}>Lens</button
+        >
+        <button
+          class:on={mode === "still"}
+          role="radio"
+          aria-checked={mode === "still"}
+          title="Keep this picture as a still; drag it anywhere (F)"
+          onpointerdown={(e) => control(e, () => setMode("still"))}>Still</button
+        >
+      </div>
 
-  {#if error}
-    <div class="overlay error"><span>{error}</span></div>
-  {:else if !haveFrame}
-    <div class="overlay hint"><span>Waiting for the first frame…</span></div>
-  {/if}
-  {#if notice}
-    <div class="overlay notice">{notice}</div>
-  {/if}
+      <span class="sep"></span>
 
-  <div class="bar" class:visible={barVisible} role="toolbar" tabindex="-1" aria-label="Glass controls">
-    <button
-      class="move"
-      title="Drag to move the glass"
-      aria-label="Move the glass"
-      onpointerdown={(e) => {
-        if (e.button !== 0) return;
-        e.stopPropagation();
-        void win.startDragging();
-      }}>✥</button
-    >
+      <button
+        title="Zoom out (− or wheel down)"
+        aria-label="Zoom out"
+        disabled={frozen || zoom <= ZOOM_MIN}
+        onpointerdown={(e) => control(e, () => setZoom(zoom - ZOOM_STEP))}>−</button
+      >
+      <span class="value" aria-live="polite">{Math.round(zoom * 100)}%</span>
+      <button
+        title="Zoom in (+ or wheel up)"
+        aria-label="Zoom in"
+        disabled={frozen || zoom >= ZOOM_MAX}
+        onpointerdown={(e) => control(e, () => setZoom(zoom + ZOOM_STEP))}>+</button
+      >
 
-    <span class="sep"></span>
+      <span class="sep"></span>
 
-    <button
-      title="Zoom out (− or wheel down)"
-      aria-label="Zoom out"
-      disabled={frozen || zoom <= ZOOM_MIN}
-      onpointerdown={(e) => control(e, () => setZoom(zoom - ZOOM_STEP))}>−</button
-    >
-    <span class="value" aria-live="polite">{Math.round(zoom * 100)}%</span>
-    <button
-      title="Zoom in (+ or wheel up)"
-      aria-label="Zoom in"
-      disabled={frozen || zoom >= ZOOM_MAX}
-      onpointerdown={(e) => control(e, () => setZoom(zoom + ZOOM_STEP))}>+</button
-    >
+      <button
+        title="Smaller window"
+        aria-label="Smaller window"
+        onpointerdown={(e) => control(e, () => resizeBy(1 / SIZE_STEP))}>▭−</button
+      >
+      <button
+        title="Larger window"
+        aria-label="Larger window"
+        onpointerdown={(e) => control(e, () => resizeBy(SIZE_STEP))}>▭+</button
+      >
 
-    <span class="sep"></span>
+      <span class="spacer"></span>
 
-    <button
-      title="Smaller window"
-      aria-label="Smaller window"
-      onpointerdown={(e) => control(e, () => resizeBy(1 / SIZE_STEP))}>▭−</button
-    >
-    <button
-      title="Larger window"
-      aria-label="Larger window"
-      onpointerdown={(e) => control(e, () => resizeBy(SIZE_STEP))}>▭+</button
-    >
+      <button
+        title="Open the sessions panel"
+        aria-label="Open the sessions panel"
+        onpointerdown={(e) => control(e, () => invoke("panel_show"))}>▤</button
+      >
+      <button
+        title="Hide — Ctrl+Alt+G or the tray icon brings it back (Esc)"
+        aria-label="Hide"
+        onpointerdown={(e) => control(e, () => invoke("glass_hide"))}>▁</button
+      >
+      <button
+        class="quit"
+        title="Quit ReviewGlass"
+        aria-label="Quit"
+        onpointerdown={(e) => control(e, () => invoke("app_quit"))}>✕</button
+      >
+    {/if}
+  </header>
 
-    <span class="sep"></span>
+  <div class="picture" {onpointerdown} {ondblclick} {onwheel} {oncontextmenu} role="presentation">
+    <canvas bind:this={canvas}></canvas>
+    <div class="dim" aria-hidden="true"></div>
 
-    <button
-      title="Open the sessions panel"
-      aria-label="Open the sessions panel"
-      onpointerdown={(e) => control(e, () => invoke("panel_show"))}>▤</button
-    >
-    <button
-      class:active={frozen}
-      title={frozen ? "Resume live view (F)" : "Freeze this picture as a still (F)"}
-      aria-label="Freeze"
-      aria-pressed={frozen}
-      onpointerdown={(e) => control(e, () => setFrozen(!frozen))}>{frozen ? "❄" : "⌖"}</button
-    >
-    <button
-      class:active={lens}
-      title={lens ? "Leave the lens (L)" : "Lens: ride on the cursor (L)"}
-      aria-label="Lens mode"
-      aria-pressed={lens}
-      onpointerdown={(e) => control(e, () => setLens(!lens))}>◎</button
-    >
-    <button
-      title="Hide — Ctrl+Alt+G or the tray icon brings it back (Esc)"
-      aria-label="Hide"
-      onpointerdown={(e) => control(e, () => invoke("glass_hide"))}>▁</button
-    >
-    <button
-      class="quit"
-      title="Quit ReviewGlass"
-      aria-label="Quit"
-      onpointerdown={(e) => control(e, () => invoke("app_quit"))}>✕</button
-    >
+    {#if error}
+      <div class="overlay error"><span>{error}</span></div>
+    {:else if !haveFrame}
+      <div class="overlay hint"><span>Waiting for the first frame…</span></div>
+    {/if}
+    {#if notice}
+      <div class="overlay notice">{notice}</div>
+    {/if}
   </div>
 
   {#each GRIPS as [name, dir] (name)}
@@ -373,27 +388,135 @@
     background: transparent;
     overflow: hidden;
   }
+
+  /* One colour per mode, on the border and on the active mode button, so the state
+     reads from across the room. */
   .glass {
+    --mode: #ffc800;
     position: relative;
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
     width: 100vw;
     height: 100vh;
-    border: 2px solid rgba(255, 200, 0, 0.9);
-    border-radius: 4px;
+    border: 3px solid var(--mode);
+    border-radius: 6px;
     overflow: hidden;
-    background: rgba(0, 0, 0, 0.35);
-    cursor: move;
+    background: #161616;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.7);
+    font: 12px system-ui, sans-serif;
+    color: #eee;
     user-select: none;
   }
-  .glass.frozen {
-    border-color: rgba(80, 180, 255, 0.95);
-  }
   .glass.lens {
-    border-color: rgba(255, 255, 255, 0.85);
-    border-radius: 10px;
+    --mode: #ffffff;
   }
-  /* Darken the picture while the controls are up, so they read as controls and not as
-     part of what is being magnified. */
+  .glass.still {
+    --mode: #5ab4ff;
+  }
+
+  .titlebar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 28px;
+    padding: 0 6px 0 8px;
+    background: #202020;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    cursor: move;
+    flex: none;
+  }
+  .grab {
+    margin-right: 6px;
+    font-size: 14px;
+    opacity: 0.7;
+  }
+  .name {
+    margin-right: 10px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    opacity: 0.9;
+  }
+  .hint {
+    opacity: 0.85;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .hint b {
+    color: #fff;
+  }
+  .modes {
+    display: flex;
+    padding: 2px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .modes button {
+    padding: 2px 9px;
+    border-radius: 4px;
+  }
+  .modes button.on {
+    background: var(--mode);
+    color: #111;
+    font-weight: 600;
+  }
+  .titlebar button {
+    min-width: 22px;
+    height: 20px;
+    padding: 0 5px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .titlebar button:hover:not(:disabled):not(.on) {
+    background: rgba(255, 255, 255, 0.16);
+  }
+  .titlebar button:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .titlebar button.quit:hover {
+    background: rgba(200, 40, 40, 0.85);
+    color: #fff;
+  }
+  .value {
+    min-width: 38px;
+    text-align: center;
+    opacity: 0.85;
+    font-variant-numeric: tabular-nums;
+  }
+  .sep {
+    width: 1px;
+    height: 14px;
+    margin: 0 4px;
+    background: rgba(255, 255, 255, 0.22);
+  }
+  .spacer {
+    flex: 1;
+  }
+
+  .picture {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    background: rgba(0, 0, 0, 0.35);
+    cursor: move;
+  }
+  .glass.lens .picture {
+    cursor: default;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  /* Darken the picture while the pointer is over the parked glass: the source holds
+     still meanwhile, and the dim says so. */
   .dim {
     position: absolute;
     inset: 0;
@@ -405,24 +528,6 @@
   .glass.dimmed .dim {
     opacity: 1;
   }
-  .lens-badge {
-    position: absolute;
-    left: 50%;
-    bottom: 6px;
-    transform: translateX(-50%);
-    padding: 3px 8px;
-    border-radius: 6px;
-    background: rgba(20, 20, 20, 0.82);
-    font: 11px system-ui, sans-serif;
-    color: #eee;
-    white-space: nowrap;
-    pointer-events: none;
-  }
-  canvas {
-    display: block;
-    width: 100%;
-    height: 100%;
-  }
 
   .overlay {
     position: absolute;
@@ -430,7 +535,6 @@
     display: grid;
     place-items: center;
     padding: 12px;
-    font: 12px system-ui, sans-serif;
     color: #fff;
     text-align: center;
     pointer-events: none;
@@ -448,68 +552,6 @@
     inset: auto 0 0 0;
     padding: 6px 10px;
     background: rgba(0, 0, 0, 0.75);
-  }
-
-  .bar {
-    position: absolute;
-    top: 4px;
-    right: 6px;
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    padding: 2px 4px;
-    border-radius: 6px;
-    background: rgba(20, 20, 20, 0.82);
-    font: 12px system-ui, sans-serif;
-    color: #eee;
-    opacity: 0;
-    transition: opacity 140ms ease;
-    pointer-events: none;
-  }
-  .bar.visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .bar button {
-    min-width: 22px;
-    height: 20px;
-    padding: 0 4px;
-    border: 0;
-    border-radius: 4px;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    line-height: 1;
-    cursor: pointer;
-  }
-  .bar button:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.18);
-  }
-  .bar button:disabled {
-    opacity: 0.35;
-    cursor: default;
-  }
-  .bar button.active {
-    background: rgba(80, 180, 255, 0.35);
-  }
-  .bar button.quit:hover {
-    background: rgba(200, 40, 40, 0.85);
-  }
-  .bar button.move {
-    cursor: move;
-    font-size: 14px;
-  }
-  .value {
-    min-width: 38px;
-    text-align: center;
-    opacity: 0.85;
-    font-variant-numeric: tabular-nums;
-  }
-  .sep {
-    width: 1px;
-    height: 14px;
-    margin: 0 3px;
-    background: rgba(255, 255, 255, 0.22);
   }
 
   .grip {

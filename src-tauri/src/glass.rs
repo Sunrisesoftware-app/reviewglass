@@ -127,18 +127,18 @@ fn set_frozen_inner(app: &AppHandle, engine: &Engine, frozen: bool) {
     let was_lens = engine.mode() == Mode::Lens;
     if was_lens {
         let store = app.state::<Store>();
-        if let Some(w) = app.get_webview_window(GLASS_LABEL) {
-            if let (Ok(s), Ok(p)) = (w.inner_size(), w.outer_position()) {
-                let _ = store.update(|c| {
-                    c.glass.lens_width = s.width;
-                    c.glass.lens_height = s.height;
-                    c.glass.width = s.width;
-                    c.glass.height = s.height;
-                    c.glass.x = Some(p.x);
-                    c.glass.y = Some(p.y);
-                });
+        let lens_size = (store.get().glass.lens_width, store.get().glass.lens_height);
+        let pos = app
+            .get_webview_window(GLASS_LABEL)
+            .and_then(|w| w.outer_position().ok());
+        let _ = store.update(|c| {
+            c.glass.width = lens_size.0;
+            c.glass.height = lens_size.1;
+            if let Some(p) = pos {
+                c.glass.x = Some(p.x);
+                c.glass.y = Some(p.y);
             }
-        }
+        });
     }
     engine.set_mode(if frozen { Mode::Frozen } else { Mode::Follow });
     let src = engine.source();
@@ -163,37 +163,20 @@ pub fn set_lens_inner(app: &AppHandle, engine: &Engine, lens: bool) {
     let Some(w) = app.get_webview_window(GLASS_LABEL) else {
         return;
     };
+    // Mode first, size second: the resize event the glass reports lands in the slot of
+    // the mode that is current when it arrives.
     if lens {
-        // Remember the parked size before switching to the lens size.
-        if let Ok(s) = w.inner_size() {
-            let _ = store.update(|c| {
-                c.glass.width = s.width;
-                c.glass.height = s.height;
-            });
-        }
-        let _ = w.set_size(PhysicalSize::new(cfg.lens_width, cfg.lens_height));
-        engine.set_view(cfg.lens_width, cfg.lens_height, engine.zoom());
         engine.set_mode(Mode::Lens);
+        let _ = w.set_size(PhysicalSize::new(cfg.lens_width, cfg.lens_height));
     } else {
-        // Remember the lens size the user settled on, then park at the parked size.
-        if engine.mode() == Mode::Lens {
-            if let Ok(s) = w.inner_size() {
-                let _ = store.update(|c| {
-                    c.glass.lens_width = s.width;
-                    c.glass.lens_height = s.height;
-                });
-            }
-        }
-        let parked = store.get().glass;
-        let _ = w.set_size(PhysicalSize::new(parked.width, parked.height));
-        engine.set_view(parked.width, parked.height, engine.zoom());
+        engine.set_mode(Mode::Follow);
+        let _ = w.set_size(PhysicalSize::new(cfg.width, cfg.height));
         if let Ok(p) = w.outer_position() {
             let _ = store.update(|c| {
                 c.glass.x = Some(p.x);
                 c.glass.y = Some(p.y);
             });
         }
-        engine.set_mode(Mode::Follow);
     }
     let _ = store.update(|c| {
         c.glass.lens = lens;
@@ -334,12 +317,24 @@ pub fn glass_set_view(
     zoom: f32,
 ) -> f32 {
     let zoom = engine.set_view(width_px, height_px, zoom);
-    let _ = store.update(|c| {
-        c.glass.width = width_px;
-        c.glass.height = height_px;
-        c.glass.zoom = zoom;
-    });
+    let _ = store.update(|c| c.glass.zoom = zoom);
     zoom
+}
+
+/// The window's inner size, reported by the glass when it changes. Stored under the
+/// current mode's slot: the parked glass and the lens keep separate sizes.
+#[tauri::command]
+pub fn glass_save_size(engine: State<Engine>, store: State<Store>, width: u32, height: u32) {
+    let lens = engine.mode() == Mode::Lens;
+    let _ = store.update(|c| {
+        if lens {
+            c.glass.lens_width = width;
+            c.glass.lens_height = height;
+        } else {
+            c.glass.width = width;
+            c.glass.height = height;
+        }
+    });
 }
 
 #[tauri::command]

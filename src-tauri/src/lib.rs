@@ -63,6 +63,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             glass::glass_state,
             glass::glass_set_view,
+            glass::glass_save_size,
             glass::glass_set_frozen,
             glass::glass_set_lens,
             glass::glass_menu,
