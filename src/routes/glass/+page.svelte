@@ -52,6 +52,7 @@
   const FIT_MIN_WIDTH = 480; // narrower than this the bar itself would not fit
   const FIT_MARGIN = 40; // kept free at the monitor's edges when fitting
   const FIT_SLACK = 16; // a pane that changed by less does not move the window
+  const FIT_SHRINK_AFTER = 2000; // ms a narrower reading must hold before the glass narrows
   const BORDER_CSS = 3; // the glass's border, per side, in CSS px
 
   let canvas: HTMLCanvasElement;
@@ -103,7 +104,14 @@
   // Resize this window so the pane fills it at the current zoom. When even the lowest
   // zoom that still fits the monitor is above the minimum, the zoom comes down to it:
   // Fit promises the whole line, not the number on the zoom control.
+  //
+  // Widen at once, narrow reluctantly: a wider reading means a line was being cut,
+  // a narrower one is as likely a band with short lines as a narrower column, and a
+  // glass that breathes with every row is tiring (the owner's word). A narrower
+  // reading has to hold for FIT_SHRINK_AFTER before the window follows it.
   let fitting = false;
+  let shrinkTimer: ReturnType<typeof setTimeout> | undefined;
+  let shrinkDue = false;
   async function fitToPane() {
     if (fitting) return;
     if (!paneFit || !paneLock || mode !== "follow" || !paneWidth) {
@@ -127,6 +135,16 @@
       want = Math.max(FIT_MIN_WIDTH, Math.min(maxW, want));
       const size = await win.innerSize();
       const zoomChanged = Math.abs(z - zoom) > 0.001;
+      if (want < size.width - FIT_SLACK && !shrinkDue) {
+        // Narrower: wait and see whether it holds.
+        clearTimeout(shrinkTimer);
+        shrinkTimer = setTimeout(() => {
+          shrinkDue = true;
+          void fitToPane().finally(() => (shrinkDue = false));
+        }, FIT_SHRINK_AFTER);
+        return;
+      }
+      clearTimeout(shrinkTimer);
       zoom = z;
       if (Math.abs(want - size.width) > FIT_SLACK) {
         // Keep the window on its monitor: a glass that grew past the right edge would

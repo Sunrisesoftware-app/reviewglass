@@ -86,6 +86,14 @@ UI Automation dependency.
   put as the cursor scrolls past longer and shorter lines, so Fit does not resize the
   glass on every row. On the screenshot: right column 1846–2533, middle 1158–1845, at
   every height, text at 1896–2480 and 1208–1842 inside. Fifteen detector tests.
+- **Calmer, from the owner's verdict that the glass "jumps and flickers".** Three
+  changes. The pane's edge is the level of the line that reaches furthest (the
+  one-slice tolerance cut the ends of the longest lines). Fit widens at once but
+  narrows only after a narrower reading has held for two seconds, so the glass no
+  longer breathes with every row's line length. And a pane wider than 70 % of the
+  screen is not a column: "no column here", the glass keeps its size, no jump to the
+  full screen width. The larger question — a glass on a rubber band to the dock,
+  switched on and off from there — is the dock's (next).
 - **Build stamp on the bar**: `0.1.0 c4c4521`, with `+` when the tree had uncommitted
   changes (`build.rs` asks git), so a test never assumes the wrong build.
 
