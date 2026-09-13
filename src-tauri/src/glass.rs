@@ -2,6 +2,7 @@
 //! calls, the global hotkeys, self-exclusion from capture, and persistence of
 //! geometry, zoom and freeze state through the config store.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -18,6 +19,7 @@ use crate::config::{LoadOutcome, Store};
 
 pub const GLASS_LABEL: &str = "glass";
 pub const HALO_LABEL: &str = "halo";
+pub const FINDER_LABEL: &str = "finder";
 /// Steps the chrome scale cycles through.
 const UI_SCALES: [f32; 5] = [1.0, 1.25, 1.5, 1.75, 2.0];
 /// Event sent to the glass when freeze/zoom changes from outside the webview.
@@ -25,6 +27,10 @@ pub const STATE_EVENT: &str = "glass:state";
 /// Event asking the glass to step its zoom (the webview owns the zoom value, since it
 /// is tied to the canvas size it reports).
 pub const ZOOM_EVENT: &str = "glass:zoom";
+/// Event sent to the glass when the pane under the cursor changed (adr.rg.017).
+pub const PANE_EVENT: &str = "glass:pane";
+/// The last pane sequence the glass was told about; see `glass_frame`.
+static PANE_TOLD: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Serialize)]
 pub struct GlassState {
@@ -33,7 +39,18 @@ pub struct GlassState {
     pub lens: bool,
     pub halo: bool,
     pub ui_scale: f32,
+    pub pane_lock: bool,
+    pub pane_fit: bool,
+    /// Width of the pane under the cursor in source pixels; absent when none is found
+    /// or the lock is off.
+    pub pane_width: Option<u32>,
     pub config: LoadOutcome,
+}
+
+/// Payload of `PANE_EVENT`.
+#[derive(Clone, Serialize)]
+pub struct PaneState {
+    pub width: Option<u32>,
 }
 
 fn state_of(engine: &Engine, store: &Store) -> GlassState {
@@ -45,6 +62,9 @@ fn state_of(engine: &Engine, store: &Store) -> GlassState {
         lens: mode == Mode::Lens,
         halo: g.halo,
         ui_scale: g.ui_scale,
+        pane_lock: g.pane_lock,
+        pane_fit: g.pane_fit,
+        pane_width: engine.pane().map(|p| p.width()),
         config: store.outcome(),
     }
 }
@@ -76,6 +96,7 @@ pub fn restore(app: &AppHandle) {
     }
     engine.set_enabled(cfg.visible);
     engine.set_view(cfg.width, cfg.height, cfg.zoom);
+    engine.set_pane_lock(cfg.pane_lock);
     if cfg.lens {
         set_lens_inner(app, &engine, true);
     } else if cfg.frozen {
@@ -200,18 +221,24 @@ pub fn set_lens_inner(app: &AppHandle, engine: &Engine, lens: bool) {
 /// top; this runs at ~120 Hz and only touches a window when its target changed.
 ///
 /// Two riders share the thread: the lens (the glass itself, in Lens mode) and the halo
-/// (the ring around the pointer, in Follow mode). At most one is riding at a time.
+/// (the ring around the pointer, in Follow mode). At most one is riding at a time. The
+/// finder (adr.rg.017) sits on the engine's source rectangle rather than the cursor,
+/// and moves only when that rectangle does.
 pub fn spawn_lens_rider(app: AppHandle) {
     thread::Builder::new()
         .name("reviewglass-rider".into())
         .spawn(move || {
             let mut halo_shown = false;
+            let mut finder_shown = false;
+            let mut finder_rect: Option<crate::capture::SourceRect> = None;
             loop {
                 let engine = app.state::<Engine>();
                 let mode = engine.mode();
                 let enabled = engine.is_enabled();
-                let halo_wanted =
-                    enabled && mode == Mode::Follow && app.state::<Store>().get().glass.halo;
+                let cfg = app.state::<Store>().get().glass;
+                let following = enabled && mode == Mode::Follow;
+                let halo_wanted = following && cfg.halo;
+                let finder_wanted = following && cfg.pane_lock && engine.pane().is_some();
 
                 let riding = if mode == Mode::Lens && enabled {
                     Some(GLASS_LABEL)
@@ -232,6 +259,25 @@ pub fn spawn_lens_rider(app: AppHandle) {
                     }
                 }
 
+                if let Some(finder) = app.get_webview_window(FINDER_LABEL) {
+                    if finder_wanted {
+                        let src = engine.source();
+                        if finder_rect != Some(src) {
+                            let _ = finder.set_position(PhysicalPosition::new(src.x, src.y));
+                            let _ = finder.set_size(PhysicalSize::new(src.w, src.h));
+                            finder_rect = Some(src);
+                        }
+                    }
+                    if finder_wanted != finder_shown {
+                        let _ = if finder_wanted {
+                            finder.show()
+                        } else {
+                            finder.hide()
+                        };
+                        finder_shown = finder_wanted;
+                    }
+                }
+
                 if let Some(label) = riding {
                     if let Some(w) = app.get_webview_window(label) {
                         let (cx, cy) = cursor_pos();
@@ -246,6 +292,9 @@ pub fn spawn_lens_rider(app: AppHandle) {
                         }
                     }
                     thread::sleep(Duration::from_millis(8));
+                } else if finder_wanted {
+                    // The source rectangle changes at the frame poll's rate at most.
+                    thread::sleep(Duration::from_millis(33));
                 } else {
                     thread::sleep(Duration::from_millis(100));
                 }
@@ -254,13 +303,16 @@ pub fn spawn_lens_rider(app: AppHandle) {
         .expect("rider thread");
 }
 
-/// The halo must never land in the picture, and must never take a click.
-pub fn prepare_halo(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window(HALO_LABEL) {
-        if let Err(e) = exclude_from_capture(&w) {
-            eprintln!("reviewglass: halo {e}");
+/// The halo and the finder must never land in the picture, and must never take a
+/// click.
+pub fn prepare_overlays(app: &AppHandle) {
+    for label in [HALO_LABEL, FINDER_LABEL] {
+        if let Some(w) = app.get_webview_window(label) {
+            if let Err(e) = exclude_from_capture(&w) {
+                eprintln!("reviewglass: {label} {e}");
+            }
+            let _ = w.set_ignore_cursor_events(true);
         }
-        let _ = w.set_ignore_cursor_events(true);
     }
 }
 
@@ -355,7 +407,9 @@ pub fn glass_state(engine: State<Engine>, store: State<Store>) -> GlassState {
 }
 
 /// The glass reports its inner size (physical px) and wanted zoom; the clamped zoom
-/// comes back and is persisted.
+/// comes back and is persisted — unless it is `derived`, a zoom the fit lowered so a
+/// wide column fits the screen. The user's own zoom stays the setting; the derived one
+/// is in effect only while that column is.
 #[tauri::command]
 pub fn glass_set_view(
     engine: State<Engine>,
@@ -363,26 +417,68 @@ pub fn glass_set_view(
     width_px: u32,
     height_px: u32,
     zoom: f32,
+    derived: bool,
 ) -> f32 {
     let zoom = engine.set_view(width_px, height_px, zoom);
-    let _ = store.update(|c| c.glass.zoom = zoom);
+    if !derived {
+        let _ = store.update(|c| c.glass.zoom = zoom);
+    }
     zoom
 }
 
 /// The window's inner size, reported by the glass when it changes. Stored under the
-/// current mode's slot: the parked glass and the lens keep separate sizes.
+/// current mode's slot: the parked glass and the lens keep separate sizes. While Fit
+/// is on in Follow, the width is the pane's choice, not the user's, and is not stored
+/// (a derived value must never be written back as the setting it came from).
 #[tauri::command]
 pub fn glass_save_size(engine: State<Engine>, store: State<Store>, width: u32, height: u32) {
-    let lens = engine.mode() == Mode::Lens;
+    let mode = engine.mode();
     let _ = store.update(|c| {
-        if lens {
+        if mode == Mode::Lens {
             c.glass.lens_width = width;
             c.glass.lens_height = height;
         } else {
-            c.glass.width = width;
+            if !(mode == Mode::Follow && c.glass.pane_fit && c.glass.pane_lock) {
+                c.glass.width = width;
+            }
             c.glass.height = height;
         }
     });
+}
+
+/// Pane lock on or off (adr.rg.017). Off forgets the pane at once, so the picture
+/// returns to following the cursor in both axes on the next tick.
+#[tauri::command]
+pub fn glass_set_pane_lock(app: AppHandle, engine: State<Engine>, store: State<Store>, lock: bool) {
+    engine.set_pane_lock(lock);
+    let _ = store.update(|c| c.glass.pane_lock = lock);
+    if !lock {
+        restore_own_width(&app, &store);
+    }
+    let _ = app.emit_to(GLASS_LABEL, STATE_EVENT, state_of(&engine, &store));
+}
+
+/// Fit on or off. Off restores the user's own width; on lets the glass react to the
+/// next pane event.
+#[tauri::command]
+pub fn glass_set_pane_fit(app: AppHandle, engine: State<Engine>, store: State<Store>, fit: bool) {
+    let _ = store.update(|c| c.glass.pane_fit = fit);
+    if !fit {
+        restore_own_width(&app, &store);
+    }
+    let _ = app.emit_to(GLASS_LABEL, STATE_EVENT, state_of(&engine, &store));
+}
+
+/// Put the parked glass back at its remembered width, keeping the current height.
+fn restore_own_width(app: &AppHandle, store: &Store) {
+    if let Some(w) = app.get_webview_window(GLASS_LABEL) {
+        if let Ok(size) = w.inner_size() {
+            let own = store.get().glass.width;
+            if size.width != own {
+                let _ = w.set_size(PhysicalSize::new(own, size.height));
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -465,8 +561,20 @@ pub fn glass_menu(app: AppHandle, engine: State<Engine>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn glass_frame(engine: State<Engine>, since: u64) -> Result<Response, String> {
+pub fn glass_frame(app: AppHandle, engine: State<Engine>, since: u64) -> Result<Response, String> {
     engine.tick().map_err(|e| e.to_string())?;
+    // The pane is read on the frame poll, which is where the glass already listens;
+    // one event per change, not one per frame.
+    let pane_seq = engine.pane_seq();
+    if PANE_TOLD.swap(pane_seq, Ordering::Relaxed) != pane_seq {
+        let _ = app.emit_to(
+            GLASS_LABEL,
+            PANE_EVENT,
+            PaneState {
+                width: engine.pane().map(|p| p.width()),
+            },
+        );
+    }
     if !engine.is_enabled() {
         let mut idle = Vec::with_capacity(16);
         idle.extend_from_slice(&since.to_le_bytes());

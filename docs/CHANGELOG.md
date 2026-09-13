@@ -4,6 +4,54 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 2: the glass reads the pane — 13.9.2026 (0.1.0)
+
+The owner's verdict on session 1 was that the glass did not yet make the work easier:
+it followed the hand sideways while the eye read down a column, and its width was a
+guess over panes that are twice as wide with two Code-tab columns as with five. This
+session gives the glass a sense of the column (adr.rg.017), without OCR and without a
+UI Automation dependency.
+
+- **Pane detection in the capture engine.** `capture/pane.rs`: a 400 px band around the
+  cursor is classified column by column as uniform or textured; a uniform run wide
+  enough to be a gutter (≥ 28 px), or one that carries a border line, is a boundary;
+  the pane is the textured span between the nearest boundaries. Structure, never
+  content — the band is scanned in the capture callback and dropped. Seven unit tests
+  cover a gutter, a border inside padding, an indentation gap, a caret, a cursor in a
+  gutter, a strip too narrow to be a pane, and an empty band. Scans at most 4/s while
+  the cursor moves, 1/s while it rests; 8 px hysteresis so the picture never nudges.
+- **Pane lock.** In Follow the source rectangle takes its row from the cursor and its
+  column from the pane; a pane wider than the source shows its left part, a narrower
+  one sits centred. Off, or with no pane found, Follow behaves as before.
+- **Fit.** The glass's width follows the pane at the current zoom, capped at the
+  monitor minus a margin and kept on the monitor; when the pane does not fit even so,
+  the zoom in effect comes down (never below 150 %) and the bar shows it as `150%↓`
+  with the reason in the tooltip. The user's own zoom and width are never overwritten
+  by a value the fit derived: `glass_set_view` takes a `derived` flag and
+  `glass_save_size` skips the width while Fit is on; turning either off restores the
+  user's own.
+- **The viewfinder** (`rg.finder-window`, `src/routes/finder`): a fourth window,
+  click-through and excluded from capture, framed on the engine's source rectangle by
+  the rider thread in the Follow colour. It shows what the detector found and where the
+  glass is looking, so a wrong guess is visible instead of silent.
+- **The bar.** Two toggles, `Pane` and `Fit` (Fit disabled without the lock), and a
+  value that says the pane's width in screen pixels or **"no column here"** — the
+  reason, not a number, when nothing is found (adr.rg.011 applied to layout).
+
+Measured on the release build, this machine (2560×1440, one monitor): idle CPU
+2.3–3.7 % of one core over 20 s with the screen not static (the Code tab streaming),
+lock on and off alike — the scan is inside the noise of what the screen is doing.
+Over the empty desktop the detector reports one 2560 px pane and the fit widens the
+glass to 2520 px at 150 %; the finder lands on the source rectangle to the pixel
+(window rects read back with `GetWindowRect`). Over the Code tab's columns: to be
+measured by the owner, since the glass and its overlays are excluded from every
+capture path and cannot be screenshotted by the build agent.
+
+Atlas: adr.rg.017 and `rg.finder-window` merged in Sunrisesoftware-app/atlas#302,
+renumbered from 018 in #303, the guard's retirement record in #304; MCP worker
+redeployed. `docs/adr/` re-rendered. The spec (6.3 `capture-engine`, `glass-window`;
+6.1 topology) is still at v0.2 and now owes both this and session 1's changes.
+
 ## Session 1 (continued): the glass becomes a window — 12.9.2026 (0.1.0)
 
 The first extended hands-on session, and it moved the glass more than the spec did.

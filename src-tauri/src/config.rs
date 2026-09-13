@@ -38,6 +38,12 @@ pub struct GlassConfig {
     /// Scale of the glass's own chrome (title bar text and buttons). The glass exists
     /// because things are too small to read; its own bar must not be one of them.
     pub ui_scale: f32,
+    /// Pane lock (adr.rg.017): in Follow the picture holds the column under the
+    /// cursor horizontally and follows it vertically only; the finder frames it.
+    pub pane_lock: bool,
+    /// Fit: the glass's width follows the pane at the current zoom. The width the fit
+    /// chooses is never stored in `width`, which stays the user's own.
+    pub pane_fit: bool,
 }
 
 impl Default for GlassConfig {
@@ -57,6 +63,8 @@ impl Default for GlassConfig {
             visible: true,
             halo: true,
             ui_scale: 1.0,
+            pane_lock: true,
+            pane_fit: true,
         }
     }
 }

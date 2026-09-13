@@ -10,9 +10,11 @@
 //! `GetCursorPos` and `GetMonitorInfoW` return for a per-monitor-DPI-aware process
 //! (tao declares PerMonitorV2 awareness).
 
+pub mod pane;
+
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 use windows::Win32::Foundation::POINT;
@@ -29,6 +31,8 @@ use windows_capture::settings::{
     MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
 };
 
+pub use pane::Pane;
+
 /// Zoom bounds from the spec (section 6.3, capture-engine): above roughly 400 %
 /// bitmap scaling visibly degrades, so higher factors are not offered.
 pub const ZOOM_MIN: f32 = 1.5;
@@ -37,6 +41,18 @@ pub const ZOOM_MAX: f32 = 4.0;
 /// Frame delivery cap while the source is changing. Idle cost is governed by
 /// Windows.Graphics.Capture itself, which delivers nothing while the screen is static.
 const MAX_FPS: u64 = 30;
+
+/// Height of the band scanned for pane boundaries, centred on the cursor. Tall enough
+/// that a block of indented code rarely fills it, short enough to stay cheap.
+const PANE_BAND: i32 = 400;
+/// Pane detection runs at most this often while the cursor moves (adr.rg.017) …
+const PANE_SCAN_EVERY: Duration = Duration::from_millis(250);
+/// … and this often while it rests: the layout under a resting cursor changes when
+/// the user switches applications, which a second's delay does not hurt.
+const PANE_SCAN_RESTING: Duration = Duration::from_millis(1000);
+/// A pane whose edges moved less than this is the same pane: the scan is not allowed
+/// to nudge the picture by a pixel or two between frames.
+const PANE_JITTER: i32 = 8;
 
 /// A rectangle in virtual-desktop physical pixels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -100,11 +116,80 @@ struct Shared {
     /// Set when a freeze was restored from disk with no pixels in hand: the next
     /// published frame becomes the still.
     freeze_after_publish: AtomicBool,
+    /// Follow mode with the pane lock on: the handler scans for the pane under the
+    /// cursor. Off in every other state, so the scan costs nothing there.
+    want_pane: AtomicBool,
+    /// The pane under the cursor in virtual-desktop coordinates, or none found.
+    pane: Mutex<Option<Pane>>,
+    /// Bumped whenever `pane` changes, so a consumer can notice without comparing.
+    pane_seq: AtomicU64,
 }
 
 struct Handler {
     shared: Arc<Shared>,
     scratch: Vec<u8>,
+    band: Vec<u8>,
+    last_pane_scan: Instant,
+    last_pane_cursor: (i32, i32),
+}
+
+impl Handler {
+    /// Scan a band around the cursor for the pane it is in (adr.rg.017). One crop of
+    /// full width and `PANE_BAND` height, at most four times a second; the band is
+    /// classified and dropped.
+    fn scan_pane(&mut self, frame: &mut Frame, mon: MonitorGeom) {
+        if !self.shared.want_pane.load(Ordering::Relaxed) {
+            return;
+        }
+        let (cx, cy) = cursor_pos();
+        let due = if (cx, cy) == self.last_pane_cursor {
+            PANE_SCAN_RESTING
+        } else {
+            PANE_SCAN_EVERY
+        };
+        if self.last_pane_scan.elapsed() < due {
+            return;
+        }
+        self.last_pane_scan = Instant::now();
+        self.last_pane_cursor = (cx, cy);
+        let fw = frame.width() as i32;
+        let fh = frame.height() as i32;
+        let lx = cx - mon.left;
+        let ly = cy - mon.top;
+        if lx < 0 || lx >= fw || ly < 0 || ly >= fh {
+            return; // the cursor is on another monitor; the capture re-attaches there
+        }
+        let y0 = (ly - PANE_BAND / 2).clamp(0, fh);
+        let y1 = (ly + PANE_BAND / 2).clamp(0, fh);
+        if y1 - y0 < 8 {
+            return;
+        }
+        let found = frame
+            .buffer_crop(0, y0 as u32, fw as u32, y1 as u32)
+            .ok()
+            .and_then(|b| {
+                let w = b.width() as usize;
+                let h = b.height() as usize;
+                let bytes = b.as_nopadding_buffer(&mut self.band);
+                pane::detect(bytes, w, h, lx)
+            })
+            .map(|p| Pane {
+                x0: p.x0 + mon.left,
+                x1: p.x1 + mon.left,
+            });
+        let mut current = self.shared.pane.lock();
+        let changed = match (*current, found) {
+            (Some(a), Some(b)) => {
+                (a.x0 - b.x0).abs() > PANE_JITTER || (a.x1 - b.x1).abs() > PANE_JITTER
+            }
+            (None, None) => false,
+            _ => true,
+        };
+        if changed {
+            *current = found;
+            self.shared.pane_seq.fetch_add(1, Ordering::Relaxed);
+        }
+    }
 }
 
 impl GraphicsCaptureApiHandler for Handler {
@@ -115,6 +200,9 @@ impl GraphicsCaptureApiHandler for Handler {
         Ok(Self {
             shared: ctx.flags,
             scratch: Vec::new(),
+            band: Vec::new(),
+            last_pane_scan: Instant::now() - PANE_SCAN_RESTING,
+            last_pane_cursor: (i32::MIN, i32::MIN),
         })
     }
 
@@ -129,6 +217,7 @@ impl GraphicsCaptureApiHandler for Handler {
         let Some(mon) = *self.shared.monitor.lock() else {
             return Ok(());
         };
+        self.scan_pane(frame, mon);
         let src = *self.shared.source.lock();
 
         // Monitor-local crop box, clamped to the frame so a rectangle hanging off the
@@ -266,6 +355,9 @@ struct View {
     /// picture does not jump to "what is under the glass" the moment the user reaches
     /// for a control.
     hovered: bool,
+    /// Follow tracks the cursor vertically only and holds the detected pane
+    /// horizontally (adr.rg.017).
+    pane_lock: bool,
 }
 
 impl Default for Engine {
@@ -283,6 +375,9 @@ impl Engine {
                 last_rect: Mutex::new(None),
                 still: AtomicBool::new(false),
                 freeze_after_publish: AtomicBool::new(false),
+                want_pane: AtomicBool::new(false),
+                pane: Mutex::new(None),
+                pane_seq: AtomicU64::new(0),
                 source: Mutex::new(SourceRect {
                     x: 0,
                     y: 0,
@@ -302,6 +397,7 @@ impl Engine {
                 mode: Mode::Follow,
                 frozen_origin: (0, 0),
                 hovered: false,
+                pane_lock: false,
             }),
         }
     }
@@ -367,6 +463,28 @@ impl Engine {
         self.view.lock().hovered = hovered;
     }
 
+    pub fn set_pane_lock(&self, lock: bool) {
+        self.view.lock().pane_lock = lock;
+        if !lock {
+            // A lock switched off forgets its pane: the next lock starts from a scan.
+            let mut p = self.shared.pane.lock();
+            if p.take().is_some() {
+                self.shared.pane_seq.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    }
+
+    /// The pane under the cursor, virtual-desktop coordinates; none when the lock is
+    /// off or nothing was found.
+    pub fn pane(&self) -> Option<Pane> {
+        *self.shared.pane.lock()
+    }
+
+    /// Changes whenever `pane()` would answer differently.
+    pub fn pane_seq(&self) -> u64 {
+        self.shared.pane_seq.load(Ordering::Relaxed)
+    }
+
     /// Scroll the frozen rectangle by a delta in source pixels. No-op while following.
     pub fn scroll(&self, dx: i32, dy: i32) {
         let mut v = self.view.lock();
@@ -409,6 +527,10 @@ impl Engine {
         let src_w = ((v.width_px as f32 / v.zoom).round() as u32).max(2);
         let src_h = ((v.height_px as f32 / v.zoom).round() as u32).max(2);
 
+        let want_pane = v.mode == Mode::Follow && v.pane_lock && !v.hovered;
+        self.shared.want_pane.store(want_pane, Ordering::Relaxed);
+        let pane = if want_pane { self.pane() } else { None };
+
         let rect = match v.mode {
             Mode::Follow if v.hovered => {
                 // Hold the last rectangle; only its size may change (zoom).
@@ -419,6 +541,14 @@ impl Engine {
                     w: src_w,
                     h: src_h,
                 }
+            }
+            Mode::Follow if pane.is_some() => {
+                // Locked to the pane: the cursor sets the row, the pane sets the
+                // column. A pane wider than the source shows its left part, where a
+                // line of code begins; a narrower one sits centred.
+                let p = pane.unwrap_or(Pane { x0: 0, x1: 0 });
+                let (_, cy) = cursor_pos();
+                pane_rect(p, cy, src_w, src_h)
             }
             Mode::Follow | Mode::Lens => {
                 let (cx, cy) = cursor_pos();
@@ -500,6 +630,24 @@ impl Engine {
             let _ = c.stop();
         }
         *self.shared.monitor.lock() = None;
+    }
+}
+
+/// The source rectangle for a pane-locked Follow: row from the cursor, column from
+/// the pane. A pane wider than the source shows its left part, where a line begins;
+/// a narrower one sits centred in the source.
+fn pane_rect(p: Pane, cy: i32, src_w: u32, src_h: u32) -> SourceRect {
+    let pw = p.width() as i32;
+    let x = if pw >= src_w as i32 {
+        p.x0
+    } else {
+        p.x0 - (src_w as i32 - pw) / 2
+    };
+    SourceRect {
+        x,
+        y: cy - (src_h / 2) as i32,
+        w: src_w,
+        h: src_h,
     }
 }
 
@@ -594,6 +742,26 @@ mod tests {
         assert_ne!(sampled_hash(&[0; 16]), sampled_hash(&[0; 32]));
         assert_ne!(sampled_hash(&[0; 16]), sampled_hash(&[1; 16]));
         assert_eq!(sampled_hash(&[7; 100]), sampled_hash(&[7; 100]));
+    }
+
+    #[test]
+    fn pane_rect_left_aligns_a_wide_pane_and_centres_a_narrow_one() {
+        let wide = Pane { x0: 100, x1: 1100 };
+        let r = pane_rect(wide, 500, 600, 200);
+        assert_eq!((r.x, r.y, r.w, r.h), (100, 400, 600, 200));
+        let narrow = Pane { x0: 100, x1: 300 };
+        let r = pane_rect(narrow, 500, 600, 200);
+        assert_eq!((r.x, r.y), (-100, 400));
+    }
+
+    #[test]
+    fn pane_lock_off_forgets_the_pane() {
+        let e = Engine::new();
+        *e.shared.pane.lock() = Some(Pane { x0: 0, x1: 500 });
+        let seq = e.pane_seq();
+        e.set_pane_lock(false);
+        assert_eq!(e.pane(), None);
+        assert_ne!(e.pane_seq(), seq);
     }
 
     #[test]
