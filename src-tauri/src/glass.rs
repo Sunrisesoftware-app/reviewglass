@@ -44,7 +44,15 @@ pub struct GlassState {
     /// Width of the pane under the cursor in source pixels; absent when none is found
     /// or the lock is off.
     pub pane_width: Option<u32>,
+    /// "0.1.0 c4c4521", with a "+" after the hash when the tree had uncommitted
+    /// changes: which build is being looked at, so a test never assumes the wrong one.
+    pub build: String,
     pub config: LoadOutcome,
+}
+
+/// The version and the commit the binary was built from (see build.rs).
+pub fn build_stamp() -> String {
+    format!("{} {}", env!("CARGO_PKG_VERSION"), env!("RG_BUILD_COMMIT"))
 }
 
 /// Payload of `PANE_EVENT`.
@@ -65,6 +73,7 @@ fn state_of(engine: &Engine, store: &Store) -> GlassState {
         pane_lock: g.pane_lock,
         pane_fit: g.pane_fit,
         pane_width: engine.pane().map(|p| p.width()),
+        build: build_stamp(),
         config: store.outcome(),
     }
 }
