@@ -76,6 +76,16 @@ UI Automation dependency.
   same screen): the right column 1896–2470 px and the middle column 1208–1842 px at
   every height from the tab strip to the input box, where the first version had
   found them at one height in five. Fourteen detector tests.
+- **Margins, and an edge that does not breathe.** The pane had been the textured
+  span exactly: the picture began on the first glyph and the longest lines lost their
+  ends, because a column only the longest line reaches counts as blank in most slices.
+  Now the text's edge is the gutter's last *clear* column (as blank as the gutter's
+  blankest, give or take one slice), a 5 % margin (12 px at least) is added into the
+  gutter, and where the gutter carries a line — a border, a scrollbar — within three
+  margins' reach, the edge sits on the line: that is the pane's own edge and it stays
+  put as the cursor scrolls past longer and shorter lines, so Fit does not resize the
+  glass on every row. On the screenshot: right column 1846–2533, middle 1158–1845, at
+  every height, text at 1896–2480 and 1208–1842 inside. Fifteen detector tests.
 - **Build stamp on the bar**: `0.1.0 c4c4521`, with `+` when the tree had uncommitted
   changes (`build.rs` asks git), so a test never assumes the wrong build.
 
