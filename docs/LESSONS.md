@@ -5,6 +5,17 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## A build that works right after building is not a build that works (2026-09-13)
+
+The glass's first `invoke` raced the core's `setup`: config windows are created before
+`setup` runs, and a webview that is quick enough calls `glass_state` before the state
+is managed. A freshly compiled exe is never quick — WebView2 and Defender see to that —
+so every check made right after a build passed, and every launch from the Desktop
+shortcut afterwards failed (3 of 3 measured). Lesson: verify on a *warm* second and
+third launch, not on the first one after the build; and a first call to the core
+retries and says why it is waiting, instead of leaving an empty state that looks like
+"still loading".
+
 ## A release webview is not a black box: WebView2 remote debugging shows it (2026-09-13)
 
 A CSP without `connect-src ipc: http://ipc.localhost` blocks Tauri's IPC over the custom

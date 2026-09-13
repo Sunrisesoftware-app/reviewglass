@@ -51,6 +51,15 @@ UI Automation dependency.
   a release build that was fine in dev. Found through WebView2 remote debugging (CDP),
   which is now the way to see inside a release webview (`docs/LESSONS.md`).
 
+- **Start-up race fixed.** The windows in `tauri.conf.json` are created before `setup`
+  runs, so the glass's first `invoke` can land before the core has registered its
+  state and is rejected with no message; the page then sat on "Waiting for the first
+  frame…" for good. It had passed every earlier check because a freshly built exe
+  loads its webview slowly enough to lose the race the right way. Measured: the build
+  without the fix failed 3 of 3 warm launches from the Desktop shortcut; with the
+  retry (`stateWhenReady`, 250 ms steps, the reason shown on the picture after a
+  second) 4 of 4 launches show the picture within six seconds.
+
 Measured on the release build, this machine (2560×1440, one monitor): idle CPU
 2.3–3.7 % of one core over 20 s with the screen not static (the Code tab streaming),
 lock on and off alike — the scan is inside the noise of what the screen is doing.

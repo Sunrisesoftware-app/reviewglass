@@ -351,8 +351,25 @@
       }, 400);
     };
 
+    // The webview can be up before the core has registered its state (the windows
+    // in tauri.conf.json are created before setup runs), and the first invoke is
+    // then rejected. Ask again until it answers, and say so meanwhile rather than
+    // sit on "waiting for the first frame" forever.
+    async function stateWhenReady(): Promise<GlassState> {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await invoke<GlassState>("glass_state");
+        } catch (e) {
+          if (stopped) throw e;
+          if (attempt >= 4) error = `The app core is not answering yet (${e instanceof Error ? e.message : String(e)})`;
+          await new Promise((r) => setTimeout(r, 250));
+        }
+      }
+    }
+
     (async () => {
-      const s = await invoke<GlassState>("glass_state");
+      const s = await stateWhenReady();
+      error = null;
       zoom = s.zoom;
       userZoom = s.zoom;
       frozen = s.frozen;
