@@ -12,6 +12,8 @@ use crate::config::Store;
 use crate::glass::{self, GLASS_LABEL};
 
 pub const DOCK_LABEL: &str = "dock";
+/// Menu id: the glass on or off, as the RG mark and the hotkey do.
+pub const M_TOGGLE: &str = "dock-toggle";
 /// Gap between the dock and the screen's edges, physical pixels.
 const DOCK_MARGIN: i32 = 8;
 
@@ -156,9 +158,10 @@ pub fn dock_snap(app: AppHandle, store: State<Store>) -> Corner {
     corner
 }
 
-/// Switch the glass on in a mode ("follow", "lens", "still") or off ("off"). The
-/// glass belongs to the dock: this is the one place it is switched on from, and the
-/// same button switches it off.
+/// Switch the glass on in a mode ("follow", "lens", "still"), on as it last was
+/// ("last" — the RG mark and the hotkey), or off ("off"). The glass belongs to the
+/// dock: this is the one place it is switched on from, and the same control switches
+/// it off.
 #[tauri::command]
 pub fn dock_activate(app: AppHandle, engine: State<Engine>, store: State<Store>, mode: String) {
     match mode.as_str() {
@@ -166,7 +169,7 @@ pub fn dock_activate(app: AppHandle, engine: State<Engine>, store: State<Store>,
             glass::hide_glass(&app);
             return;
         }
-        "follow" | "lens" | "still" => {}
+        "follow" | "lens" | "still" | "last" => {}
         _ => return,
     }
     if let Some(w) = app.get_webview_window(GLASS_LABEL) {
@@ -175,6 +178,7 @@ pub fn dock_activate(app: AppHandle, engine: State<Engine>, store: State<Store>,
     engine.set_enabled(true);
     let _ = store.update(|c| c.glass.visible = true);
     match mode.as_str() {
+        "last" => {}
         "lens" => glass::set_lens_inner(&app, &engine, true),
         "still" => {
             if engine.mode() == Mode::Lens {
@@ -195,10 +199,19 @@ pub fn dock_activate(app: AppHandle, engine: State<Engine>, store: State<Store>,
 
 /// The dock's right-click menu: the panel, and the real quit.
 #[tauri::command]
-pub fn dock_menu(app: AppHandle) -> Result<(), String> {
+pub fn dock_menu(app: AppHandle, store: State<Store>) -> Result<(), String> {
+    let visible = store.get().glass.visible;
+    let hotkey = store.get().hotkeys.toggle_glass;
+    let toggle = if visible {
+        format!("Glass off\t{hotkey}")
+    } else {
+        format!("Glass on\t{hotkey}")
+    };
     let menu = Menu::with_items(
         &app,
         &[
+            &MenuItem::with_id(&app, M_TOGGLE, toggle, true, None::<&str>)
+                .map_err(|e| e.to_string())?,
             &MenuItem::with_id(
                 &app,
                 glass::M_PANEL,

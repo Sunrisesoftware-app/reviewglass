@@ -7,12 +7,33 @@
   type AlertConfig = { enabled: boolean; thresholds: number[] };
 
   let cfg = $state<AlertConfig | null>(null);
+  let hotkey = $state("");
+  let hotkeyDraft = $state("");
+  let hotkeyError = $state<string | null>(null);
+  let hotkeySaved = $state(false);
   let saving = $state(false);
   let testResult = $state<"idle" | "sent" | "failed">("idle");
   let testError = $state<string | null>(null);
 
   async function load() {
     cfg = await invoke<AlertConfig>("alerts_get");
+    const s = await invoke<{ hotkey_toggle: string }>("glass_state");
+    hotkey = s.hotkey_toggle;
+    hotkeyDraft = hotkey;
+  }
+
+  // The glass on/off shortcut. Applied on purpose, not on every keystroke: a half-typed
+  // combination must not be registered.
+  async function applyHotkey() {
+    hotkeyError = null;
+    hotkeySaved = false;
+    try {
+      hotkey = await invoke<string>("hotkey_set_toggle", { shortcut: hotkeyDraft });
+      hotkeyDraft = hotkey;
+      hotkeySaved = true;
+    } catch (e) {
+      hotkeyError = e instanceof Error ? e.message : String(e);
+    }
   }
 
   async function save(next: AlertConfig) {
@@ -66,6 +87,32 @@
 {#if !cfg}
   <p class="state">Reading settings…</p>
 {:else}
+  <section>
+    <h2>Glass on / off</h2>
+    <p class="help">
+      The shortcut that switches the glass on (as it last was) and off, from any
+      application — the same as the <b>RG</b> mark on the dock. Modifiers and a key, e.g.
+      <code>Ctrl+Alt+G</code>, <code>Ctrl+Shift+Space</code>, <code>F9</code>. A combination
+      another application already holds cannot be taken, and the old one stays.
+    </p>
+    <div class="hotkey">
+      <input
+        type="text"
+        value={hotkeyDraft}
+        aria-label="Glass on/off shortcut"
+        spellcheck="false"
+        oninput={(e) => (hotkeyDraft = e.currentTarget.value)}
+        onkeydown={(e) => e.key === "Enter" && applyHotkey()}
+      />
+      <button onclick={applyHotkey} disabled={hotkeyDraft.trim() === hotkey}>Apply</button>
+      {#if hotkeySaved}
+        <span class="ok">Now {hotkey}.</span>
+      {:else if hotkeyError}
+        <span class="bad">{hotkeyError}</span>
+      {/if}
+    </div>
+  </section>
+
   <section>
     <h2>Quota alerts</h2>
     <p class="help">
@@ -128,6 +175,20 @@
 {/if}
 
 <style>
+  section + section {
+    margin-top: 22px;
+  }
+  .hotkey {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .hotkey input {
+    width: 14em;
+    font: inherit;
+    padding: 3px 6px;
+  }
   h2 {
     margin: 0 0 4px;
     font-size: 14px;
