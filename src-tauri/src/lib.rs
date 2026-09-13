@@ -4,6 +4,7 @@
 
 mod capture;
 mod config;
+mod dock;
 mod glass;
 mod notifier;
 mod panel;
@@ -53,6 +54,7 @@ pub fn run() {
             tray::install(app.handle())?;
             glass::prepare_overlays(app.handle());
             glass::restore(app.handle());
+            dock::prepare(app.handle());
             if let Err(e) = glass::register_hotkeys(app.handle()) {
                 eprintln!("reviewglass: hotkeys not registered: {e}");
             }
@@ -78,6 +80,9 @@ pub fn run() {
             glass::glass_hide,
             glass::app_quit,
             glass::glass_frame,
+            dock::dock_snap,
+            dock::dock_activate,
+            dock::dock_menu,
             panel::panel_usage,
             panel::panel_show,
             panel::alerts_get,

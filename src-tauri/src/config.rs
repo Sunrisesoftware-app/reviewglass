@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
+pub use crate::dock::DockConfig;
 pub use crate::notifier::AlertConfig;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -31,6 +32,8 @@ pub struct GlassConfig {
     /// Origin of the frozen source rectangle, kept only while `frozen`.
     pub frozen_x: i32,
     pub frozen_y: i32,
+    /// Shown on screen right now. Not restored at start since adr.rg.018: the glass
+    /// starts hidden and the dock shows it.
     pub visible: bool,
     /// The cursor halo in Follow mode: a ring around the pointer so the eye, on the
     /// glass, still knows where the hand is.
@@ -60,7 +63,7 @@ impl Default for GlassConfig {
             lens_height: 442,
             frozen_x: 0,
             frozen_y: 0,
-            visible: true,
+            visible: false,
             halo: true,
             ui_scale: 1.0,
             pane_lock: true,
@@ -91,6 +94,7 @@ impl Default for Hotkeys {
 #[serde(default)]
 pub struct Config {
     pub glass: GlassConfig,
+    pub dock: DockConfig,
     pub hotkeys: Hotkeys,
     pub alerts: AlertConfig,
 }

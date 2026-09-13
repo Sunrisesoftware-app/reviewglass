@@ -18,7 +18,8 @@
         "width": 900,
         "height": 640,
         "minWidth": 480,
-        "minHeight": 320
+        "minHeight": 320,
+        "visible": false
       },
       {
         "label": "glass",
@@ -33,6 +34,21 @@
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "resizable": true,
+        "visible": false,
+        "shadow": false
+      },
+      {
+        "label": "dock",
+        "title": "ReviewGlass Dock",
+        "url": "/dock",
+        "width": 470,
+        "height": 44,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "focus": false,
         "shadow": false
       },
       {

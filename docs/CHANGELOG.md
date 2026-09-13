@@ -4,6 +4,33 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 2 (continued): the dock — 13.9.2026 (0.1.0)
+
+The owner's verdict after a day with the pane build: the glass, alone on the screen,
+demanded attention — it appeared at start wanted or not, its controls sat on the thing
+being read, and it resized itself. Agreed: a control panel in a corner, from which the
+glass is switched on and off; the glass on a rubber band to it (adr.rg.018, Atlas
+#305/#306).
+
+- **The dock** (`rg.dock-window`, `src/routes/dock`): a 470×44 strip, always on top,
+  excluded from capture, snapped to a screen corner (top-left by default; dragged
+  anywhere it snaps to the nearest corner of its monitor's work area and the corner is
+  remembered). One button per glass mode — **Follow · Lens · Still** — lit in the mode's
+  colour when the glass is on in that mode; a click on the lit button switches the
+  glass off. The account gauge in miniature (5-hour percentage, time to reset, dimmed
+  when stale) or the reason there is none ("no CLI session", "not reported yet"), the
+  panel button, and the build stamp behind the `RG` mark. Right-click: panel, quit.
+- **The glass and the panel start hidden.** `glass.visible` is no longer restored;
+  every start begins with the dock alone. The glass's bar keeps its controls
+  (adr.rg.013) so the glass can still be left from itself; the tray remains the
+  fallback. The glass's state is now broadcast to every window (`glass:state`), so the
+  dock's lit button is always the glass's mode, whichever way it was changed.
+- **Verified on the release build** by reading window rects and the dock's DOM over
+  CDP: at start the dock is at (8,8) and the glass hidden; `dock_activate` Follow shows
+  the glass and lights Follow, Still relights, off hides everything; a
+  `SetWindowPos` to (1500,900) snapped the dock to (2082,1340) — bottom-right of the
+  work area, above the taskbar — with `corner: bottom-right` in the config, and back.
+
 ## Session 2: the glass reads the pane — 13.9.2026 (0.1.0)
 
 The owner's verdict on session 1 was that the glass did not yet make the work easier:
