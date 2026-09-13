@@ -60,6 +60,25 @@ UI Automation dependency.
   retry (`stateWhenReady`, 250 ms steps, the reason shown on the picture after a
   second) 4 of 4 launches show the picture within six seconds.
 
+- **Detector, second version, from the owner's test over real columns.** The right
+  Code column was found only in the middle fifth of the screen; near the top and
+  bottom the pane jumped to the whole width, and on the left the sidebar and chat
+  merged. Two causes, both in the "uniform over every row" rule. (1) A tab strip, an
+  input box or a hover highlight crosses every gutter on its rows; the band is now
+  cut into 25 px slices and a column is *blank* when uniform in the cursor's slice
+  and *strong* when uniform in ≥ 60 % of them (a plain gutter without a border line
+  needs ≥ 80 %, so a block indented for most of the band still does not pass). (2) The
+  end of a short line leaves a pane's text area blank on the cursor's row too, so a
+  blank run reached far into the text and its weakest column sank the whole run; a
+  boundary is now the run's strong core alone. The band also slides onto the screen
+  at the edges instead of being clipped. Checked offline on a screenshot with the
+  Python port of the same rules (`scratchpad/detect2.py`; live and port agree on the
+  same screen): the right column 1896–2470 px and the middle column 1208–1842 px at
+  every height from the tab strip to the input box, where the first version had
+  found them at one height in five. Fourteen detector tests.
+- **Build stamp on the bar**: `0.1.0 c4c4521`, with `+` when the tree had uncommitted
+  changes (`build.rs` asks git), so a test never assumes the wrong build.
+
 Measured on the release build, this machine (2560×1440, one monitor): idle CPU
 2.3–3.7 % of one core over 20 s with the screen not static (the Code tab streaming),
 lock on and off alike — the scan is inside the noise of what the screen is doing.

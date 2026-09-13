@@ -159,8 +159,12 @@ impl Handler {
         if lx < 0 || lx >= fw || ly < 0 || ly >= fh {
             return; // the cursor is on another monitor; the capture re-attaches there
         }
-        let y0 = (ly - PANE_BAND / 2).clamp(0, fh);
-        let y1 = (ly + PANE_BAND / 2).clamp(0, fh);
+        // The band keeps its full height at the screen's edges by sliding onto the
+        // screen rather than being cut: near the top the rows below the cursor are
+        // the pane, and a clipped band would be mostly toolbar.
+        let y0 = (ly - PANE_BAND / 2).max(0);
+        let y1 = (y0 + PANE_BAND).min(fh);
+        let y0 = (y1 - PANE_BAND).max(0);
         if y1 - y0 < 8 {
             return;
         }
@@ -171,7 +175,7 @@ impl Handler {
                 let w = b.width() as usize;
                 let h = b.height() as usize;
                 let bytes = b.as_nopadding_buffer(&mut self.band);
-                pane::detect(bytes, w, h, lx)
+                pane::detect(bytes, w, h, lx, ly - y0)
             })
             .map(|p| Pane {
                 x0: p.x0 + mon.left,

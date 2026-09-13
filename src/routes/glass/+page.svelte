@@ -36,6 +36,7 @@
     pane_lock: boolean;
     pane_fit: boolean;
     pane_width: number | null;
+    build: string;
     config: "loaded" | "fresh" | "reset-corrupt";
   };
 
@@ -64,6 +65,7 @@
   let paneLock = $state(true);
   let paneFit = $state(true);
   let paneWidth = $state<number | null>(null);
+  let build = $state("");
   let error = $state<string | null>(null);
   let notice = $state<string | null>(null);
   let haveFrame = $state(false);
@@ -379,6 +381,7 @@
       paneLock = s.pane_lock;
       paneFit = s.pane_fit;
       paneWidth = s.pane_width;
+      build = s.build;
       if (s.config === "reset-corrupt") {
         notice = "Settings were unreadable; defaults are in effect (the old file is kept as config.json.bak).";
         setTimeout(() => (notice = null), 8000);
@@ -447,7 +450,9 @@
         void win.startDragging();
       }}>✥</button
     >
-    <span class="name">ReviewGlass</span>
+    <span class="name" title={build ? `Build ${build} — version, commit; a + means uncommitted changes` : ""}
+      >ReviewGlass{#if build}<span class="build">{build}</span>{/if}</span
+    >
 
     {#if mode === "lens"}
       <span class="hint">
@@ -656,6 +661,14 @@
     font-weight: 600;
     letter-spacing: 0.01em;
     opacity: 0.9;
+    white-space: nowrap;
+  }
+  .build {
+    margin-left: 0.5em;
+    font-weight: 400;
+    font-size: 0.85em;
+    opacity: 0.6;
+    font-variant-numeric: tabular-nums;
   }
   .hint {
     opacity: 0.85;
