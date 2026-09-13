@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 use tauri::ipc::Response;
-use tauri::menu::{ContextMenu, Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, ContextMenu, Menu, MenuItem, PredefinedMenuItem};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use windows::Win32::Foundation::HWND;
@@ -20,7 +20,7 @@ use crate::config::{LoadOutcome, Store};
 pub const GLASS_LABEL: &str = "glass";
 pub const HALO_LABEL: &str = "halo";
 pub const FINDER_LABEL: &str = "finder";
-/// Steps the chrome scale cycles through.
+/// The bar sizes offered.
 const UI_SCALES: [f32; 5] = [1.0, 1.25, 1.5, 1.75, 2.0];
 /// Event sent to the glass when freeze/zoom changes from outside the webview.
 pub const STATE_EVENT: &str = "glass:state";
@@ -325,6 +325,8 @@ const M_ZOOM_OUT: &str = "glass-zoom-out";
 const M_HIDE: &str = "glass-hide";
 const M_PANEL: &str = "glass-panel";
 const M_QUIT: &str = "glass-quit";
+/// Bar-size menu items carry their scale after this prefix ("glass-ui-1.25").
+const M_UI_PREFIX: &str = "glass-ui-";
 
 /// Build and pop the glass's right-click menu at the cursor. Every entry mirrors a
 /// control on the bar or a hotkey; the menu exists so the same actions are one click
@@ -375,10 +377,43 @@ pub fn popup_menu(app: &AppHandle, engine: &Engine) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Pop a menu of bar sizes at the cursor, the current one checked. A blind cycle
+/// through five steps meant four more clicks to come back from the largest; a menu
+/// shows every size at once and takes one.
+pub fn popup_ui_scale_menu(app: &AppHandle) -> tauri::Result<()> {
+    let current = app.state::<Store>().get().glass.ui_scale;
+    let mut items: Vec<CheckMenuItem<tauri::Wry>> = Vec::new();
+    for s in UI_SCALES {
+        items.push(CheckMenuItem::with_id(
+            app,
+            format!("{M_UI_PREFIX}{s}"),
+            format!("Bar size {} %", (s * 100.0).round()),
+            true,
+            (s - current).abs() < 0.01,
+            None::<&str>,
+        )?);
+    }
+    let refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
+        items.iter().map(|i| i as _).collect();
+    let menu = Menu::with_items(app, &refs)?;
+    if let Some(w) = app.get_webview_window(GLASS_LABEL) {
+        menu.popup(w.as_ref().window())?;
+    }
+    Ok(())
+}
+
 /// Handle a pick from the glass menu. Wired in lib.rs; ids that are not ours fall
 /// through untouched so the tray's own handler still sees its events.
 pub fn on_menu(app: &AppHandle, id: &str) {
     let engine = app.state::<Engine>();
+    if let Some(scale) = id.strip_prefix(M_UI_PREFIX) {
+        if let Ok(s) = scale.parse::<f32>() {
+            let store = app.state::<Store>();
+            let _ = store.update(|c| c.glass.ui_scale = s);
+            let _ = app.emit_to(GLASS_LABEL, STATE_EVENT, state_of(&engine, &store));
+        }
+        return;
+    }
     match id {
         M_FREEZE => {
             let frozen = engine.mode() != Mode::Frozen;
@@ -496,18 +531,10 @@ pub fn glass_set_halo(store: State<Store>, halo: bool) {
     let _ = store.update(|c| c.glass.halo = halo);
 }
 
-/// Step the chrome scale to the next size, wrapping back to 100 % after the largest.
+/// Open the bar-size menu (the Aa button).
 #[tauri::command]
-pub fn glass_cycle_ui_scale(store: State<Store>) -> f32 {
-    let current = store.get().glass.ui_scale;
-    let idx = UI_SCALES
-        .iter()
-        .position(|s| (*s - current).abs() < 0.01)
-        .map(|i| (i + 1) % UI_SCALES.len())
-        .unwrap_or(0);
-    let next = UI_SCALES[idx];
-    let _ = store.update(|c| c.glass.ui_scale = next);
-    next
+pub fn glass_ui_scale_menu(app: AppHandle) -> Result<(), String> {
+    popup_ui_scale_menu(&app).map_err(|e| e.to_string())
 }
 
 /// The pointer entered or left the glass. While following, the source holds still so

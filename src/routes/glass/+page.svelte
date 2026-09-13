@@ -21,7 +21,7 @@
   // from pixels. Locked, Follow tracks the cursor vertically only; Fit lets this
   // window's width follow the column at the current zoom, capped at the monitor. The
   // finder window frames the source rectangle on screen so a wrong guess is visible.
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -70,6 +70,16 @@
   let hovering = $state(false);
   type ModeName = "follow" | "lens" | "still";
   const mode = $derived<ModeName>(lens ? "lens" : frozen ? "still" : "follow");
+  // The bar reflows when the mode or the column value changes: keep the picture area's
+  // reported size in step. Not before the saved state is in: a report sent earlier
+  // would write the defaults over the settings.
+  let ready = $state(false);
+  $effect(() => {
+    void mode;
+    void paneLock;
+    void paneWidth;
+    if (ready) void relayout();
+  });
 
   async function setHalo(next: boolean) {
     halo = next;
@@ -136,11 +146,19 @@
     }
   }
 
-  // The chrome grows in steps. The glass exists because things are too small to read;
-  // its own bar must not be one of them.
-  async function cycleUiScale() {
-    uiScale = await invoke<number>("glass_cycle_ui_scale");
-    await reportView(); // the bar's height changed, so the picture area did too
+  // The chrome grows in steps, picked from a menu. The glass exists because things
+  // are too small to read; its own bar must not be one of them. The bar wraps to a
+  // second row when its buttons no longer fit the window, so a larger size never
+  // pushes a control out of sight.
+  function uiScaleMenu() {
+    void invoke("glass_ui_scale_menu");
+  }
+
+  // After a state change that can reflow the bar (its size, a toggle appearing), the
+  // picture area may have changed height: re-measure once the DOM has settled.
+  async function relayout() {
+    await tick();
+    await reportView();
   }
 
   function setMode(next: ModeName) {
@@ -371,6 +389,7 @@
           paneLock = ev.payload.pane_lock;
           paneFit = ev.payload.pane_fit;
           paneWidth = ev.payload.pane_width;
+          void relayout();
         }),
       );
       unlisten.push(
@@ -379,6 +398,7 @@
           void fitToPane();
         }),
       );
+      ready = true;
       void poll();
     })();
 
@@ -487,9 +507,10 @@
         onpointerdown={(e) => control(e, () => setHalo(!halo))}>◉</button
       >
       <button
-        title="Larger bar text and buttons ({Math.round(uiScale * 100)}% — click to step)"
+        title="Bar size ({Math.round(uiScale * 100)}%) — click for a menu of sizes"
         aria-label="Bar size"
-        onpointerdown={(e) => control(e, () => cycleUiScale())}>Aa</button
+        aria-haspopup="menu"
+        onpointerdown={(e) => control(e, () => uiScaleMenu())}>Aa</button
       >
 
       <span class="sep"></span>
@@ -497,17 +518,17 @@
       <button
         class:on={paneLock}
         title={paneLock
-          ? "Pane lock is on: the picture holds the column under the cursor and follows it up and down; the frame on screen shows the column"
+          ? "Column lock is on: the picture holds the column under the cursor and follows it up and down; the frame on screen shows the column"
           : "Lock the picture to the column under the cursor; a frame on screen shows what was found"}
-        aria-label="Pane lock"
+        aria-label="Column lock"
         aria-pressed={paneLock}
-        onpointerdown={(e) => control(e, () => setPaneLock(!paneLock))}>Pane</button
+        onpointerdown={(e) => control(e, () => setPaneLock(!paneLock))}>Column</button
       >
       <button
         class:on={paneFit && paneLock}
         disabled={!paneLock}
         title={!paneLock
-          ? "Fit needs the pane lock"
+          ? "Fit needs the column lock"
           : paneFit
             ? "Fit is on: the window's width follows the column at this zoom; the zoom comes down when a column is too wide for the screen"
             : "Let the window's width follow the column at this zoom"}
@@ -597,9 +618,10 @@
 
   .titlebar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.17em;
-    height: calc(28px * var(--ui));
+    min-height: calc(28px * var(--ui));
     padding: 0 0.5em 0 0.35em;
     background: #202020;
     border-bottom: 1px solid rgba(255, 255, 255, 0.12);
