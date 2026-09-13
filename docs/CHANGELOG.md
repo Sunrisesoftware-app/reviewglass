@@ -4,6 +4,30 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 2, closing: observed with the dock in use, not yet fixed — 13.9.2026
+
+The owner's verdict at the end of the day: "the direction is good now." Four things
+seen in use, recorded here as the start of session 3, in the owner's order:
+
+1. **Follow still drifts, and the text in the glass changes width — restless.** The
+   two-second shrink delay and the anchored edge were not enough. To be taken as one
+   conversation with measurements (the owner's ask): candidates are a longer hold, a
+   width that only ever grows within one column visit, Fit off by default with a
+   one-click fit, and row snapping so the picture moves by whole lines.
+2. **Lens: a right-click should hold the lens still while the menu is open.** The menu
+   pops at the cursor, below and to the right, and the lens rides after the cursor as
+   the user reaches for it, so the menu has to be chased. The rider should pause from
+   the click until the menu closes (the X, or a pick), then ride again.
+3. **Still from the dock is black.** `dock_activate("still")` on a hidden glass freezes
+   an engine that has published no frame, so nothing ever shows. "Freeze this picture"
+   from the menu works because a frame is in hand. The restore path already solves
+   this (`freeze_after_publish`: let one frame through, then hold) and Still-from-off
+   must take it. Not intended; a bug.
+4. **The still keeps the menu in the picture.** Freezing from the right-click menu
+   captures the menu itself — a system popup, not excluded from capture — into the
+   still ("Freeze this picture, Leave lens…" visible in it). Freeze the frame from
+   before the menu opened, or freeze a beat after the menu has closed.
+
 ## Session 2 (continued): the dock — 13.9.2026 (0.1.0)
 
 The owner's verdict after a day with the pane build: the glass, alone on the screen,
