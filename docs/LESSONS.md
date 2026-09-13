@@ -5,6 +5,29 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## A window that is excluded from capture cannot be verified by capture — and a fresh binary is not running when its process is (2026-09-13)
+
+Verifying the viewfinder from the build agent's side: `FindWindow` and `GetWindowRect`
+show where the glass and the finder are and whether they are visible, but no screenshot
+path — `CopyFromScreen`, `PrintWindow`, Windows.Graphics.Capture — shows what they
+draw, because `WDA_EXCLUDEFROMCAPTURE` is exactly what they are set to. The first
+read-back after a rebuild then said the finder was hidden and the glass unfitted, and an
+hour went into a bug that did not exist: a freshly built exe takes over ten seconds to
+show its first frame (WebView2 start-up plus Defender scanning a new binary), and the
+windows were read eight seconds after launch. The rider and the halo were already up,
+which made the state look settled. Lesson: verify geometry by reading window rects back,
+verify pixels by asking the owner, and wait for the first frame — not for a timer —
+before reading anything. A debug line written to a file under `%TEMP%` was what
+finally showed the pipeline whole; `eprintln!` reaches nowhere from a
+`windows_subsystem = "windows"` release build.
+
+## A merge command does not wait for CI unless the branch says so (2026-09-13)
+
+`gh pr merge` on the Atlas repo went through with the model guard red: the branch has
+no required check, and the guard had a real finding — a decision id renumbered is, to
+the guard, a decision lost. Lesson: read `gh pr checks` before merging, every time, and
+treat a rename of a model id as a retirement that `model/retired.json` records first.
+
 ## Persisting a derived size as the setting it was derived from shrinks the window on every restart (2026-09-12)
 
 `glass_set_view` stored the canvas size — the picture area — as the window's size, and

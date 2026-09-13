@@ -49,6 +49,21 @@
         "focus": false,
         "visible": false,
         "shadow": false
+      },
+      {
+        "label": "finder",
+        "title": "ReviewGlass Finder",
+        "url": "/finder",
+        "width": 400,
+        "height": 200,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "focus": false,
+        "visible": false,
+        "shadow": false
       }
     ],
     "security": {

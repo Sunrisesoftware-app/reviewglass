@@ -16,11 +16,16 @@
   // centre, so the title bar's buttons cannot be reached by mouse; there it shows what
   // the keys and the right button do instead. Every control also has a keyboard, wheel
   // or right-click equivalent.
+  //
+  // Pane lock and Fit (adr.rg.017): the engine detects the column under the cursor
+  // from pixels. Locked, Follow tracks the cursor vertically only; Fit lets this
+  // window's width follow the column at the current zoom, capped at the monitor. The
+  // finder window frames the source rectangle on screen so a wrong guess is visible.
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { PhysicalSize } from "@tauri-apps/api/dpi";
+  import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 
   type GlassState = {
     zoom: number;
@@ -28,6 +33,9 @@
     lens: boolean;
     halo: boolean;
     ui_scale: number;
+    pane_lock: boolean;
+    pane_fit: boolean;
+    pane_width: number | null;
     config: "loaded" | "fresh" | "reset-corrupt";
   };
 
@@ -40,13 +48,22 @@
   const ZOOM_MAX = 4.0;
   const ZOOM_STEP = 0.25;
   const SIZE_STEP = 1.25; // one press grows or shrinks the window by a quarter
+  const FIT_MIN_WIDTH = 480; // narrower than this the bar itself would not fit
+  const FIT_MARGIN = 40; // kept free at the monitor's edges when fitting
+  const FIT_SLACK = 16; // a pane that changed by less does not move the window
+  const BORDER_CSS = 3; // the glass's border, per side, in CSS px
 
   let canvas: HTMLCanvasElement;
-  let zoom = $state(2);
+  let zoom = $state(2); // in effect
+  let userZoom = $state(2); // the setting; the fit may show less, never more
+  const zoomDerived = $derived(Math.abs(zoom - userZoom) > 0.001);
   let frozen = $state(false);
   let lens = $state(false);
   let halo = $state(true);
   let uiScale = $state(1);
+  let paneLock = $state(true);
+  let paneFit = $state(true);
+  let paneWidth = $state<number | null>(null);
   let error = $state<string | null>(null);
   let notice = $state<string | null>(null);
   let haveFrame = $state(false);
@@ -57,6 +74,66 @@
   async function setHalo(next: boolean) {
     halo = next;
     await invoke("glass_set_halo", { halo: next });
+  }
+
+  async function setPaneLock(next: boolean) {
+    paneLock = next;
+    if (!next) paneWidth = null;
+    await invoke("glass_set_pane_lock", { lock: next });
+  }
+
+  async function setPaneFit(next: boolean) {
+    paneFit = next;
+    await invoke("glass_set_pane_fit", { fit: next });
+    if (next) await fitToPane();
+  }
+
+  // Resize this window so the pane fills it at the current zoom. When even the lowest
+  // zoom that still fits the monitor is above the minimum, the zoom comes down to it:
+  // Fit promises the whole line, not the number on the zoom control.
+  let fitting = false;
+  async function fitToPane() {
+    if (fitting) return;
+    if (!paneFit || !paneLock || mode !== "follow" || !paneWidth) {
+      if (zoomDerived) {
+        zoom = userZoom; // no column to fit: the user's own zoom is back
+        await reportView();
+      }
+      return;
+    }
+    fitting = true;
+    try {
+      const scale = dpr();
+      const border = Math.round(BORDER_CSS * 2 * scale);
+      const maxW = Math.round(screen.availWidth * scale) - FIT_MARGIN;
+      let z = userZoom;
+      let want = Math.round(paneWidth * z) + border;
+      if (want > maxW) {
+        z = Math.max(ZOOM_MIN, Math.floor((maxW - border) / paneWidth / ZOOM_STEP) * ZOOM_STEP);
+        want = Math.round(paneWidth * z) + border;
+      }
+      want = Math.max(FIT_MIN_WIDTH, Math.min(maxW, want));
+      const size = await win.innerSize();
+      const zoomChanged = Math.abs(z - zoom) > 0.001;
+      zoom = z;
+      if (Math.abs(want - size.width) > FIT_SLACK) {
+        // Keep the window on its monitor: a glass that grew past the right edge would
+        // show its picture off screen.
+        const pos = await win.outerPosition();
+        // availLeft is non-standard but every Chromium ships it: the monitor's left
+        // edge in the virtual desktop, CSS px.
+        const availLeft = (screen as Screen & { availLeft?: number }).availLeft ?? 0;
+        const left = Math.round(availLeft * scale);
+        const right = left + Math.round(screen.availWidth * scale);
+        const x = Math.max(left, Math.min(pos.x, right - want - Math.round(FIT_MARGIN / 2)));
+        if (x !== pos.x) await win.setPosition(new PhysicalPosition(x, pos.y));
+        await win.setSize(new PhysicalSize(want, size.height)); // onResized reports the view
+      } else if (zoomChanged) {
+        await reportView();
+      }
+    } finally {
+      fitting = false;
+    }
   }
 
   // The chrome grows in steps. The glass exists because things are too small to read;
@@ -99,7 +176,12 @@
     const h = Math.max(2, Math.round(canvas.clientHeight * dpr()));
     canvas.width = w;
     canvas.height = h;
-    zoom = await invoke<number>("glass_set_view", { widthPx: w, heightPx: h, zoom });
+    zoom = await invoke<number>("glass_set_view", {
+      widthPx: w,
+      heightPx: h,
+      zoom,
+      derived: zoomDerived,
+    });
   }
 
   function draw(w: number, h: number, rgba: Uint8ClampedArray<ArrayBuffer>) {
@@ -147,8 +229,10 @@
 
   async function setZoom(next: number) {
     if (frozen) return; // a still has fixed pixels; zoom returns when it resumes
-    zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(next / ZOOM_STEP) * ZOOM_STEP));
+    userZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(next / ZOOM_STEP) * ZOOM_STEP));
+    zoom = userZoom;
     await reportView();
+    await fitToPane(); // the same pane at a new zoom is a new width
   }
 
   async function setFrozen(next: boolean) {
@@ -252,10 +336,14 @@
     (async () => {
       const s = await invoke<GlassState>("glass_state");
       zoom = s.zoom;
+      userZoom = s.zoom;
       frozen = s.frozen;
       lens = s.lens;
       halo = s.halo;
       uiScale = s.ui_scale;
+      paneLock = s.pane_lock;
+      paneFit = s.pane_fit;
+      paneWidth = s.pane_width;
       if (s.config === "reset-corrupt") {
         notice = "Settings were unreadable; defaults are in effect (the old file is kept as config.json.bak).";
         setTimeout(() => (notice = null), 8000);
@@ -275,10 +363,20 @@
       unlisten.push(
         await listen<GlassState>("glass:state", (ev) => {
           zoom = ev.payload.zoom;
+          if (!zoomDerived) userZoom = zoom;
           frozen = ev.payload.frozen;
           lens = ev.payload.lens;
           halo = ev.payload.halo;
           uiScale = ev.payload.ui_scale;
+          paneLock = ev.payload.pane_lock;
+          paneFit = ev.payload.pane_fit;
+          paneWidth = ev.payload.pane_width;
+        }),
+      );
+      unlisten.push(
+        await listen<{ width: number | null }>("glass:pane", (ev) => {
+          paneWidth = ev.payload.width;
+          void fitToPane();
         }),
       );
       void poll();
@@ -351,11 +449,18 @@
         disabled={frozen || zoom <= ZOOM_MIN}
         onpointerdown={(e) => control(e, () => setZoom(zoom - ZOOM_STEP))}>−</button
       >
-      <span class="value" aria-live="polite">{Math.round(zoom * 100)}%</span>
+      <span
+        class="value"
+        class:derived={zoomDerived}
+        aria-live="polite"
+        title={zoomDerived
+          ? `Lowered from ${Math.round(userZoom * 100)}% so the whole column fits the screen (Fit)`
+          : "Zoom"}>{Math.round(zoom * 100)}%{zoomDerived ? "↓" : ""}</span
+      >
       <button
-        title="Zoom in (+ or wheel up)"
+        title={zoomDerived ? "The column would not fit the screen at a higher zoom (Fit is on)" : "Zoom in (+ or wheel up)"}
         aria-label="Zoom in"
-        disabled={frozen || zoom >= ZOOM_MAX}
+        disabled={frozen || zoom >= ZOOM_MAX || zoomDerived}
         onpointerdown={(e) => control(e, () => setZoom(zoom + ZOOM_STEP))}>+</button
       >
 
@@ -386,6 +491,35 @@
         aria-label="Bar size"
         onpointerdown={(e) => control(e, () => cycleUiScale())}>Aa</button
       >
+
+      <span class="sep"></span>
+
+      <button
+        class:on={paneLock}
+        title={paneLock
+          ? "Pane lock is on: the picture holds the column under the cursor and follows it up and down; the frame on screen shows the column"
+          : "Lock the picture to the column under the cursor; a frame on screen shows what was found"}
+        aria-label="Pane lock"
+        aria-pressed={paneLock}
+        onpointerdown={(e) => control(e, () => setPaneLock(!paneLock))}>Pane</button
+      >
+      <button
+        class:on={paneFit && paneLock}
+        disabled={!paneLock}
+        title={!paneLock
+          ? "Fit needs the pane lock"
+          : paneFit
+            ? "Fit is on: the window's width follows the column at this zoom; the zoom comes down when a column is too wide for the screen"
+            : "Let the window's width follow the column at this zoom"}
+        aria-label="Fit width to the column"
+        aria-pressed={paneFit && paneLock}
+        onpointerdown={(e) => control(e, () => setPaneFit(!paneFit))}>Fit</button
+      >
+      {#if paneLock && mode === "follow"}
+        <span class="value pane" aria-live="polite" title={paneWidth ? "Width of the column under the cursor, in screen pixels" : "No column boundaries were found around the cursor; the picture follows the cursor in both directions meanwhile"}>
+          {paneWidth ? `${paneWidth} px` : "no column here"}
+        </span>
+      {/if}
 
       <span class="spacer"></span>
 
@@ -539,6 +673,15 @@
     text-align: center;
     opacity: 0.85;
     font-variant-numeric: tabular-nums;
+  }
+  .value.derived {
+    color: #ffc800;
+  }
+  .value.pane {
+    min-width: 0;
+    padding: 0 0.3em;
+    white-space: nowrap;
+    opacity: 0.7;
   }
   .sep {
     width: 1px;
