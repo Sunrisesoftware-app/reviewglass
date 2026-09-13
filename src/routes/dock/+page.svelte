@@ -16,6 +16,7 @@
     frozen: boolean;
     lens: boolean;
     build: string;
+    hotkey_toggle: string;
   };
   type QuotaWindow = {
     used_percentage: number;
@@ -37,6 +38,7 @@
   let frozen = $state(false);
   let lens = $state(false);
   let build = $state("");
+  let hotkey = $state("");
   let usage = $state<UsageView | null | undefined>(undefined); // undefined: not asked yet
   let now = $state(Date.now());
   const mode = $derived<ModeName>(lens ? "lens" : frozen ? "still" : "follow");
@@ -107,6 +109,7 @@
           frozen = s.frozen;
           lens = s.lens;
           build = s.build;
+          hotkey = s.hotkey_toggle;
           break;
         } catch {
           await new Promise((r) => setTimeout(r, 250));
@@ -119,6 +122,7 @@
           frozen = ev.payload.frozen;
           lens = ev.payload.lens;
           build = ev.payload.build;
+          hotkey = ev.payload.hotkey_toggle;
         }),
       );
       // Dragged: once the drag has settled, snap to the nearest corner.
@@ -146,7 +150,18 @@
   <button class="grab" title="Drag to another corner" aria-label="Move the dock" onpointerdown={startDrag}
     >✥</button
   >
-  <span class="name" title={build ? `ReviewGlass build ${build}` : "ReviewGlass"}>RG</span>
+  <!-- The RG mark is the one-click switch: the glass on as it last was, or off. The
+       hotkey does the same from anywhere, and this is where it is said. -->
+  <button
+    class="name"
+    class:on={visible}
+    aria-pressed={visible}
+    title={(visible ? "Glass off" : "Glass on") +
+      (hotkey ? ` — ${hotkey} from anywhere` : "") +
+      (build ? `\nReviewGlass build ${build}` : "")}
+    onpointerdown={(e) => control(e, () => invoke("dock_activate", { mode: visible ? "off" : "last" }))}
+    >RG</button
+  >
 
   <div class="modes" role="group" aria-label="Glass">
     <button
@@ -258,6 +273,13 @@
     letter-spacing: 0.04em;
     opacity: 0.85;
     margin-right: 0.35em;
+    padding: 0 0.55em;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+  }
+  .name.on {
+    background: #eee;
+    color: #111;
+    opacity: 1;
   }
   .modes {
     display: flex;

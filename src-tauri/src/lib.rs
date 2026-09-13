@@ -84,6 +84,7 @@ pub fn run() {
             dock::dock_activate,
             dock::dock_menu,
             dock::panel_save_size,
+            glass::hotkey_set_toggle,
             panel::panel_usage,
             panel::panel_show,
             panel::alerts_get,

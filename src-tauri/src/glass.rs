@@ -50,6 +50,9 @@ pub struct GlassState {
     /// "0.1.0 c4c4521", with a "+" after the hash when the tree had uncommitted
     /// changes: which build is being looked at, so a test never assumes the wrong one.
     pub build: String,
+    /// The global shortcut that switches the glass on and off, as configured — so the
+    /// dock can say it. A shortcut nobody was told about is not a feature.
+    pub hotkey_toggle: String,
     pub config: LoadOutcome,
 }
 
@@ -78,6 +81,7 @@ fn state_of(engine: &Engine, store: &Store) -> GlassState {
         pane_fit: g.pane_fit,
         pane_width: engine.pane().map(|p| p.width()),
         build: build_stamp(),
+        hotkey_toggle: store.get().hotkeys.toggle_glass.clone(),
         config: store.outcome(),
     }
 }
@@ -118,6 +122,33 @@ pub fn restore(app: &AppHandle) {
     // A restored still has no pixels in hand until one frame arrives; the engine lets
     // exactly one through and then holds (see Engine::freeze_at).
     let _ = engine.is_still();
+}
+
+/// Change the glass on/off shortcut at runtime: parse it, drop every registered
+/// shortcut, register the new set, and only then store it. A combination that cannot
+/// be parsed or is taken by another application is reported and nothing changes.
+#[tauri::command]
+pub fn hotkey_set_toggle(
+    app: AppHandle,
+    store: State<Store>,
+    shortcut: String,
+) -> Result<String, String> {
+    let wanted = shortcut.trim().to_string();
+    let parsed: Shortcut = wanted.parse().map_err(|e| format!("not a shortcut: {e}"))?;
+    let previous = store.get().hotkeys.toggle_glass;
+    let _ = store.update(|c| c.hotkeys.toggle_glass = wanted.clone());
+    let gs = app.global_shortcut();
+    let _ = gs.unregister_all();
+    if let Err(e) = register_hotkeys(&app) {
+        // Back to the previous set, which did register.
+        let _ = store.update(|c| c.hotkeys.toggle_glass = previous);
+        let _ = gs.unregister_all();
+        let _ = register_hotkeys(&app);
+        return Err(format!("could not register {}: {e}", parsed.into_string()));
+    }
+    let engine = app.state::<Engine>();
+    broadcast_state(&app, &engine, &store);
+    Ok(wanted)
 }
 
 pub fn register_hotkeys(app: &AppHandle) -> Result<(), String> {
@@ -449,6 +480,7 @@ pub fn on_menu(app: &AppHandle, id: &str) {
         return;
     }
     match id {
+        crate::dock::M_TOGGLE => toggle_visible(app),
         M_FREEZE => {
             let frozen = engine.mode() != Mode::Frozen;
             set_frozen_inner(app, &engine, frozen);

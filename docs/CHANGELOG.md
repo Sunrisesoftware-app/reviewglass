@@ -25,6 +25,14 @@ glass is switched on and off; the glass on a rubber band to it (adr.rg.018, Atla
   (adr.rg.013) so the glass can still be left from itself; the tray remains the
   fallback. The glass's state is now broadcast to every window (`glass:state`), so the
   dock's lit button is always the glass's mode, whichever way it was changed.
+- **One click, one key.** The `RG` mark on the dock is a switch: a click shows the
+  glass as it last was (mode and all), a click on the lit mark hides it. The global
+  shortcut does the same from any application — `Ctrl+Alt+G` had existed since session
+  1 without being said anywhere; it is now in the mark's tooltip and the dock's menu,
+  and the Settings tab lets the owner change it (parsed and registered before it is
+  stored; a combination another application holds is refused with the reason and the
+  old one stays). Verified over CDP: `last` restores Still after an off; `NotAKey` is
+  refused; `Ctrl+Alt+R` takes effect at once and reads in the dock.
 - **The panel is the dock's drawer.** The owner saw the panel land in the middle of
   the screen at every click on the shortcut: the single-instance hook still showed the
   glass and the panel (session 1's behaviour). It now brings the dock forward and
