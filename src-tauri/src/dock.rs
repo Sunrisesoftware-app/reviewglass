@@ -31,14 +31,61 @@ pub enum Corner {
 #[serde(default)]
 pub struct DockConfig {
     pub corner: Corner,
+    /// The panel's size when it opens under the dock. Stored when the user resizes
+    /// it; the position is always the dock's, never stored.
+    pub panel_width: u32,
+    pub panel_height: u32,
 }
 
 impl Default for DockConfig {
     fn default() -> Self {
         Self {
             corner: Corner::TopLeft,
+            panel_width: 500,
+            panel_height: 620,
         }
     }
+}
+
+/// Gap between the dock and the panel that opens beside it, physical pixels.
+const PANEL_GAP: i32 = 6;
+
+/// Put the panel next to the dock, on the side away from the screen's edge — under a
+/// dock at the top, above one at the bottom — flush with the dock's outer edge and at
+/// its remembered size. The panel is a drawer of the dock, not a window that lands
+/// wherever Windows puts it.
+pub fn place_panel(app: &AppHandle) {
+    let (Some(dock), Some(panel)) = (
+        app.get_webview_window(DOCK_LABEL),
+        app.get_webview_window(crate::panel::PANEL_LABEL),
+    ) else {
+        return;
+    };
+    let cfg = app.state::<Store>().get().dock;
+    let _ = panel.set_size(tauri::PhysicalSize::new(cfg.panel_width, cfg.panel_height));
+    let (Ok(dpos), Ok(dsize), Ok(psize)) =
+        (dock.outer_position(), dock.outer_size(), panel.outer_size())
+    else {
+        return;
+    };
+    let x = match cfg.corner {
+        Corner::TopLeft | Corner::BottomLeft => dpos.x,
+        Corner::TopRight | Corner::BottomRight => dpos.x + dsize.width as i32 - psize.width as i32,
+    };
+    let y = match cfg.corner {
+        Corner::TopLeft | Corner::TopRight => dpos.y + dsize.height as i32 + PANEL_GAP,
+        Corner::BottomLeft | Corner::BottomRight => dpos.y - PANEL_GAP - psize.height as i32,
+    };
+    let _ = panel.set_position(PhysicalPosition::new(x, y));
+}
+
+/// The panel's outer size, reported by the panel when the user resizes it.
+#[tauri::command]
+pub fn panel_save_size(store: State<Store>, width: u32, height: u32) {
+    let _ = store.update(|c| {
+        c.dock.panel_width = width;
+        c.dock.panel_height = height;
+    });
 }
 
 /// Exclude the dock from capture and put it in its corner. The glass never shows the

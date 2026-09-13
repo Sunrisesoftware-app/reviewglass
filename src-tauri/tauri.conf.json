@@ -15,9 +15,9 @@
         "label": "panel",
         "title": "ReviewGlass",
         "url": "/panel",
-        "width": 900,
-        "height": 640,
-        "minWidth": 480,
+        "width": 500,
+        "height": 620,
+        "minWidth": 420,
         "minHeight": 320,
         "visible": false
       },
