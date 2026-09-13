@@ -33,6 +33,15 @@ const MIN_GUTTER: usize = 28;
 const MIN_LINED_RUN: usize = 4;
 /// Narrower than this is not a pane worth locking to: a scrollbar, an icon rail.
 const MIN_PANE: usize = 120;
+/// Margin kept around the text on each side, as a share of the text's width, and its
+/// floor in pixels. A picture that starts on the first glyph's edge reads worse than
+/// one with a little of the gutter in it (the owner asked for about 5 %).
+const MARGIN: f32 = 0.05;
+const MARGIN_MIN: usize = 12;
+/// A gutter column is *clear* when it is as blank as the gutter's blankest column,
+/// give or take one slice: a column the longest line reaches is not clear, and the
+/// pane's edge is the last clear column, so the longest line is inside the pane.
+const CLEAR_TOLERANCE: f32 = 0.07;
 /// Height of one slice of the band. Two or three text lines: a slice is small enough
 /// that a toolbar occupies few of them, large enough that a word gap does not make a
 /// column uniform by accident.
@@ -169,21 +178,68 @@ fn find(cols: &[Column], cx: usize) -> Option<Pane> {
     if boundaries.iter().any(|&(a, b)| a <= cx && cx < b) {
         return None; // the cursor is in a gutter, not in a pane
     }
-    let x0 = boundaries
+    let left = boundaries
         .iter()
         .filter(|&&(_, b)| b <= cx)
-        .map(|&(_, b)| b)
-        .max()
-        .unwrap_or(0);
-    let x1 = boundaries
+        .max_by_key(|&&(_, b)| b);
+    let right = boundaries
         .iter()
         .filter(|&&(a, _)| a > cx)
-        .map(|&(a, _)| a)
-        .min()
+        .min_by_key(|&&(a, _)| a);
+
+    // The text's edges: the last clear column of each gutter, so a line that reaches
+    // further than most is still inside.
+    let clear_floor = |&(a, b): &(usize, usize)| {
+        cols[a..b].iter().map(share).fold(0.0f32, f32::max) - CLEAR_TOLERANCE
+    };
+    let text_x0 = left
+        .map(|run| {
+            let floor = clear_floor(run);
+            (run.0..run.1)
+                .rev()
+                .find(|&x| share(&cols[x]) >= floor)
+                .map(|g| g + 1)
+                .unwrap_or(run.1)
+        })
+        .unwrap_or(0);
+    let text_x1 = right
+        .map(|run| {
+            let floor = clear_floor(run);
+            (run.0..run.1)
+                .find(|&x| share(&cols[x]) >= floor)
+                .unwrap_or(run.0)
+        })
         .unwrap_or(n);
-    if x1 - x0 < MIN_PANE {
+    if text_x1 <= text_x0 || text_x1 - text_x0 < MIN_PANE {
         return None;
     }
+
+    // Then a margin into each gutter, never past the gutter's far side. Where the
+    // gutter carries a line — a border, a scrollbar — within reach, the edge sits on
+    // the line instead: that is the pane's own edge, and unlike the text's it does not
+    // move as the cursor scrolls to rows with longer or shorter lines.
+    let pad = ((text_x1 - text_x0) as f32 * MARGIN)
+        .round()
+        .max(MARGIN_MIN as f32) as usize;
+    let reach = 3 * pad;
+    let differs = |x: usize| match (cols[x - 1], cols[x]) {
+        (Column::Blank(p, _), Column::Blank(q, _)) => !same(p, q),
+        _ => false,
+    };
+    let x0 = left.map_or(0, |&(a, _)| {
+        let base = text_x0.saturating_sub(pad).max(a);
+        match (a + 1..text_x0).rev().find(|&x| differs(x)) {
+            Some(e) if text_x0 - e <= reach => e,
+            _ => base,
+        }
+    });
+    let x1 = right.map_or(n, |&(_, b)| {
+        let base = (text_x1 + pad).min(b);
+        match (text_x1.max(1)..b).find(|&x| differs(x)) {
+            Some(e) if e - text_x1 <= reach => e,
+            _ => base,
+        }
+    });
     Some(Pane {
         x0: x0 as i32,
         x1: x1 as i32,
@@ -246,11 +302,29 @@ mod tests {
     fn two_panes_split_by_a_gutter() {
         // pane A 400 | gutter 40 | pane B 600
         let (px, w) = band(&[(400, 't'), (40, 'b'), (600, 't')], 60);
-        assert_eq!(detect(&px, w, 60, 100, 30), Some(Pane { x0: 0, x1: 400 }));
+        // Each pane takes a 5 % margin into the gutter, never past its far side.
+        assert_eq!(detect(&px, w, 60, 100, 30), Some(Pane { x0: 0, x1: 420 }));
         assert_eq!(
             detect(&px, w, 60, 700, 30),
-            Some(Pane { x0: 440, x1: 1040 })
+            Some(Pane { x0: 410, x1: 1040 })
         );
+    }
+
+    #[test]
+    fn the_longest_line_is_inside_the_pane() {
+        // Pane A's lines end at 400, but on rows 190..215 one line runs on to 430,
+        // into a 100 px gutter: the pane's edge lies beyond that line, plus margin.
+        let (px, w) = band(&[(400, 't'), (100, 'b'), (600, 't')], 400);
+        let mut px = px;
+        for y in (190..215).filter(|y| y % 3 == 1) {
+            for x in 400..430 {
+                let i = (y * w + x) * 4;
+                px[i..i + 3].copy_from_slice(&[INK.0, INK.1, INK.2]);
+            }
+        }
+        let pane = detect(&px, w, 400, 100, 300).expect("pane A");
+        assert!(pane.x1 >= 430 + 12, "edge {} cuts the long line", pane.x1);
+        assert!(pane.x1 <= 500, "edge {} reaches pane B", pane.x1);
     }
 
     #[test]
@@ -261,10 +335,10 @@ mod tests {
             400,
             100,
         );
-        assert_eq!(detect(&px, w, 400, 50, 250), Some(Pane { x0: 0, x1: 400 }));
+        assert_eq!(detect(&px, w, 400, 50, 250), Some(Pane { x0: 0, x1: 404 }));
         assert_eq!(
             detect(&px, w, 400, 500, 250),
-            Some(Pane { x0: 409, x1: 709 })
+            Some(Pane { x0: 405, x1: 709 })
         );
     }
 
@@ -273,7 +347,7 @@ mod tests {
         // A 30 px hover highlight across a 400 px band: 7.5 %, under the plain gutter's
         // allowance.
         let (px, w) = band_with(&[(400, 't'), (40, 'b'), (600, 't')], 400, 30);
-        assert_eq!(detect(&px, w, 400, 100, 250), Some(Pane { x0: 0, x1: 400 }));
+        assert_eq!(detect(&px, w, 400, 100, 250), Some(Pane { x0: 0, x1: 420 }));
     }
 
     #[test]
@@ -292,7 +366,7 @@ mod tests {
         );
         assert_eq!(
             detect(&lined, w2, 400, 100, 250),
-            Some(Pane { x0: 0, x1: 400 })
+            Some(Pane { x0: 0, x1: 420 })
         );
     }
 
@@ -315,9 +389,9 @@ mod tests {
         }
         assert_eq!(
             detect(&px, w, 400, 700, 200),
-            Some(Pane { x0: 440, x1: 1040 })
+            Some(Pane { x0: 421, x1: 1040 })
         );
-        assert_eq!(detect(&px, w, 400, 100, 200), Some(Pane { x0: 0, x1: 400 }));
+        assert_eq!(detect(&px, w, 400, 100, 200), Some(Pane { x0: 0, x1: 420 }));
     }
 
     #[test]
@@ -337,7 +411,7 @@ mod tests {
             detect(&px, w, 400, 100, 210),
             Some(Pane { x0: 0, x1: 1040 })
         );
-        assert_eq!(detect(&px, w, 400, 100, 300), Some(Pane { x0: 0, x1: 400 }));
+        assert_eq!(detect(&px, w, 400, 100, 300), Some(Pane { x0: 0, x1: 420 }));
     }
 
     #[test]
@@ -345,8 +419,9 @@ mod tests {
         // pane A 400 | 4 bg | 1 line | 4 bg | pane B 300 — a 9 px run, narrower than
         // a gutter, but it carries a line.
         let (px, w) = band(&[(400, 't'), (4, 'b'), (1, 'l'), (4, 'b'), (300, 't')], 60);
-        assert_eq!(detect(&px, w, 60, 50, 30), Some(Pane { x0: 0, x1: 400 }));
-        assert_eq!(detect(&px, w, 60, 500, 30), Some(Pane { x0: 409, x1: 709 }));
+        // Each pane's edge sits on the border line, which is excluded from both.
+        assert_eq!(detect(&px, w, 60, 50, 30), Some(Pane { x0: 0, x1: 404 }));
+        assert_eq!(detect(&px, w, 60, 500, 30), Some(Pane { x0: 405, x1: 709 }));
     }
 
     #[test]
