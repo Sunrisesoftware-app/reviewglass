@@ -8,6 +8,7 @@
   // is a sentence the user can act on where a grey "0%" is not.
   import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import Sessions from "./Sessions.svelte";
   import Settings from "./Settings.svelte";
   import type { UsageView } from "./types";
@@ -37,8 +38,25 @@
     timer = setTimeout(refresh, 2000);
   }
 
-  onMount(refresh);
-  onDestroy(() => clearTimeout(timer));
+  // The panel opens beside the dock at its remembered size (dock.rs places it); a
+  // resize by the user is what changes that size, so it is stored from here.
+  let unlistenResize: (() => void) | undefined;
+  let sizeTimer: ReturnType<typeof setTimeout> | undefined;
+  onMount(() => {
+    void refresh();
+    void getCurrentWindow()
+      .onResized(async (ev) => {
+        clearTimeout(sizeTimer);
+        const { width, height } = ev.payload;
+        sizeTimer = setTimeout(() => void invoke("panel_save_size", { width, height }), 400);
+      })
+      .then((u) => (unlistenResize = u));
+  });
+  onDestroy(() => {
+    clearTimeout(timer);
+    clearTimeout(sizeTimer);
+    unlistenResize?.();
+  });
 </script>
 
 <div class="panel">

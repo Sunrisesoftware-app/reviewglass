@@ -87,9 +87,20 @@ pub fn show_glass_window(app: &AppHandle) {
 
 pub fn show_panel_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(PANEL_LABEL) {
+        // Beside the dock, every time: a hidden panel forgets nothing, but the dock
+        // may have moved to another corner meanwhile.
+        crate::dock::place_panel(app);
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
+    }
+}
+
+/// A second launch, or the shortcut clicked while the app runs: bring the dock
+/// forward. Nothing else appears until the dock is asked (adr.rg.018).
+pub fn show_dock_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(crate::dock::DOCK_LABEL) {
+        let _ = w.show();
     }
 }
 

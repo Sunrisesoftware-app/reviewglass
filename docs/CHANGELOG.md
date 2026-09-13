@@ -25,8 +25,15 @@ glass is switched on and off; the glass on a rubber band to it (adr.rg.018, Atla
   (adr.rg.013) so the glass can still be left from itself; the tray remains the
   fallback. The glass's state is now broadcast to every window (`glass:state`), so the
   dock's lit button is always the glass's mode, whichever way it was changed.
+- **The panel is the dock's drawer.** The owner saw the panel land in the middle of
+  the screen at every click on the shortcut: the single-instance hook still showed the
+  glass and the panel (session 1's behaviour). It now brings the dock forward and
+  nothing else. And the panel opens beside the dock — under a dock at the top, above one
+  at the bottom, flush with its outer edge — at a remembered size (500×620 by default,
+  stored when the user resizes it); its position is never stored, the dock's is.
 - **Verified on the release build** by reading window rects and the dock's DOM over
-  CDP: at start the dock is at (8,8) and the glass hidden; `dock_activate` Follow shows
+  CDP: at start the dock is at (8,8) and the glass and the panel hidden; a second
+  launch of the exe changes nothing; `panel_show` opens the panel at (8,58); `dock_activate` Follow shows
   the glass and lights Follow, Still relights, off hides everything; a
   `SetWindowPos` to (1500,900) snapped the dock to (2082,1340) — bottom-right of the
   work area, above the taskbar — with `corner: bottom-right` in the config, and back.
