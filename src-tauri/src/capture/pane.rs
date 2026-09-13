@@ -38,10 +38,16 @@ const MIN_PANE: usize = 120;
 /// one with a little of the gutter in it (the owner asked for about 5 %).
 const MARGIN: f32 = 0.05;
 const MARGIN_MIN: usize = 12;
-/// A gutter column is *clear* when it is as blank as the gutter's blankest column,
-/// give or take one slice: a column the longest line reaches is not clear, and the
-/// pane's edge is the last clear column, so the longest line is inside the pane.
-const CLEAR_TOLERANCE: f32 = 0.07;
+/// A gutter column is *clear* when it is as blank as the gutter's blankest column: a
+/// column that even one line reaches is not clear, and the pane's edge is the last
+/// clear column, so the line that reaches furthest is inside the pane. (A one-slice
+/// tolerance was tried first and cut the ends of the longest lines.)
+const CLEAR_TOLERANCE: f32 = 0.01;
+/// A pane wider than this share of the band is not a column: an empty desktop, a
+/// maximised single-pane window, a band with no boundaries. Locking to it would
+/// stretch the glass across the screen, which is the opposite of what the lock is
+/// for; the glass keeps its size and follows the cursor instead.
+const MAX_PANE_SHARE: f32 = 0.7;
 /// Height of one slice of the band. Two or three text lines: a slice is small enough
 /// that a toolbar occupies few of them, large enough that a word gap does not make a
 /// column uniform by accident.
@@ -213,6 +219,9 @@ fn find(cols: &[Column], cx: usize) -> Option<Pane> {
     if text_x1 <= text_x0 || text_x1 - text_x0 < MIN_PANE {
         return None;
     }
+    if (text_x1 - text_x0) as f32 > n as f32 * MAX_PANE_SHARE {
+        return None; // the whole screen is not a column
+    }
 
     // Then a margin into each gutter, never past the gutter's far side. Where the
     // gutter carries a line — a border, a scrollbar — within reach, the edge sits on
@@ -355,10 +364,8 @@ mod tests {
         // A toolbar over a quarter of the band: a plain gutter no longer vouches for
         // itself, a border line still does.
         let (plain, w1) = band_with(&[(400, 't'), (40, 'b'), (600, 't')], 400, 100);
-        assert_eq!(
-            detect(&plain, w1, 400, 100, 250),
-            Some(Pane { x0: 0, x1: 1040 })
-        );
+        // (the whole band, which is not a column: None)
+        assert_eq!(detect(&plain, w1, 400, 100, 250), None);
         let (lined, w2) = band_with(
             &[(400, 't'), (20, 'b'), (1, 'l'), (19, 'b'), (600, 't')],
             400,
@@ -407,10 +414,7 @@ mod tests {
                 px[i..i + 3].copy_from_slice(&[INK.0, INK.1, INK.2]);
             }
         }
-        assert_eq!(
-            detect(&px, w, 400, 100, 210),
-            Some(Pane { x0: 0, x1: 1040 })
-        );
+        assert_eq!(detect(&px, w, 400, 100, 210), None); // the whole band: no column
         assert_eq!(detect(&px, w, 400, 100, 300), Some(Pane { x0: 0, x1: 420 }));
     }
 
@@ -426,17 +430,24 @@ mod tests {
 
     #[test]
     fn an_indentation_gap_is_not_a_boundary() {
-        // line numbers 40 | gap 20 | code 500: one pane, the gap is too narrow.
-        let (px, w) = band(&[(40, 't'), (20, 'b'), (500, 't')], 60);
-        assert_eq!(detect(&px, w, 60, 300, 30), Some(Pane { x0: 0, x1: 560 }));
+        // line numbers 40 | gap 20 | code 500 | gutter 40 | other 400: one pane on
+        // the left, the gap is too narrow to split it.
+        let (px, w) = band(
+            &[(40, 't'), (20, 'b'), (500, 't'), (40, 'b'), (400, 't')],
+            60,
+        );
+        assert_eq!(detect(&px, w, 60, 300, 30), Some(Pane { x0: 0, x1: 588 }));
     }
 
     #[test]
     fn a_caret_is_not_a_boundary() {
-        // text | 2 px caret | text: a lone thin stripe carries no line and is too
-        // narrow to be a gutter.
-        let (px, w) = band(&[(300, 't'), (2, 'l'), (300, 't')], 60);
-        assert_eq!(detect(&px, w, 60, 100, 30), Some(Pane { x0: 0, x1: 602 }));
+        // text | 2 px caret | text | gutter | other: a lone thin stripe carries no
+        // line and is too narrow to be a gutter.
+        let (px, w) = band(
+            &[(300, 't'), (2, 'l'), (300, 't'), (40, 'b'), (400, 't')],
+            60,
+        );
+        assert_eq!(detect(&px, w, 60, 100, 30), Some(Pane { x0: 0, x1: 632 }));
     }
 
     #[test]
@@ -450,6 +461,13 @@ mod tests {
         // 60 px of icons between two gutters: too narrow to lock to.
         let (px, w) = band(&[(40, 'b'), (60, 't'), (40, 'b'), (600, 't')], 60);
         assert_eq!(detect(&px, w, 60, 70, 30), None);
+    }
+
+    #[test]
+    fn the_whole_screen_is_not_a_column() {
+        // Text across 90 % of the band with no boundary inside it: nothing to lock to.
+        let (px, w) = band(&[(50, 'b'), (900, 't'), (50, 'b')], 60);
+        assert_eq!(detect(&px, w, 60, 500, 30), None);
     }
 
     #[test]
