@@ -78,8 +78,11 @@ pub fn show_glass_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(GLASS_LABEL) {
         let _ = w.show();
     }
-    app.state::<Engine>().set_enabled(true);
-    let _ = app.state::<Store>().update(|c| c.glass.visible = true);
+    let engine = app.state::<Engine>();
+    engine.set_enabled(true);
+    let store = app.state::<Store>();
+    let _ = store.update(|c| c.glass.visible = true);
+    crate::glass::broadcast_state(app, &engine, &store);
 }
 
 pub fn show_panel_window(app: &AppHandle) {

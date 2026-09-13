@@ -28,3 +28,4 @@ here. A hand edit here is lost on the next run.
 - [ADR-0015](0015-a-hideable-app-stays-findable-a-tray-icon-and-a-.md) — A hideable app stays findable: a tray icon and a single instance *(accepted)*
 - [ADR-0016](0016-the-usage-loop-runs-on-its-own-thread-not-on-the.md) — The usage loop runs on its own thread, not on the panel's poll *(accepted)*
 - [ADR-0017](0017-the-glass-reads-the-pane-column-boundaries-from-.md) — The glass reads the pane: column boundaries from pixels, structure never content *(accepted)*
+- [ADR-0018](0018-the-dock-is-the-control-panel-and-the-fixed-poin.md) — The dock is the control panel and the fixed point: the glass hangs from it *(accepted)*

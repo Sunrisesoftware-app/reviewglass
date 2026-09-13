@@ -34,6 +34,9 @@ static PANE_TOLD: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Serialize)]
 pub struct GlassState {
+    /// Shown on screen. Since adr.rg.018 this is the dock's state, not a setting: the
+    /// glass starts hidden at every start.
+    pub visible: bool,
     pub zoom: f32,
     pub frozen: bool,
     pub lens: bool,
@@ -65,6 +68,7 @@ fn state_of(engine: &Engine, store: &Store) -> GlassState {
     let mode = engine.mode();
     let g = store.get().glass;
     GlassState {
+        visible: g.visible,
         zoom: engine.zoom(),
         frozen: mode == Mode::Frozen,
         lens: mode == Mode::Lens,
@@ -89,7 +93,8 @@ pub fn exclude_from_capture(window: &WebviewWindow) -> Result<(), String> {
     }
 }
 
-/// Restore geometry and mode from the config store at startup.
+/// Restore geometry and mode from the config store at startup. The glass itself
+/// starts hidden: the dock is what shows it (adr.rg.018).
 pub fn restore(app: &AppHandle) {
     let store = app.state::<Store>();
     let engine = app.state::<Engine>();
@@ -99,11 +104,10 @@ pub fn restore(app: &AppHandle) {
         if let (Some(x), Some(y)) = (cfg.x, cfg.y) {
             let _ = w.set_position(PhysicalPosition::new(x, y));
         }
-        if !cfg.visible {
-            let _ = w.hide();
-        }
+        let _ = w.hide();
     }
-    engine.set_enabled(cfg.visible);
+    engine.set_enabled(false);
+    let _ = store.update(|c| c.glass.visible = false);
     engine.set_view(cfg.width, cfg.height, cfg.zoom);
     engine.set_pane_lock(cfg.pane_lock);
     if cfg.lens {
@@ -154,12 +158,33 @@ fn toggle_visible(app: &AppHandle) {
     };
     let visible = w.is_visible().unwrap_or(true);
     let _ = if visible { w.hide() } else { w.show() };
-    app.state::<Engine>().set_enabled(!visible);
+    let engine = app.state::<Engine>();
+    engine.set_enabled(!visible);
     let store = app.state::<Store>();
     let _ = store.update(|c| c.glass.visible = !visible);
+    broadcast_state(app, &engine, &store);
 }
 
-fn set_frozen_inner(app: &AppHandle, engine: &Engine, frozen: bool) {
+/// Hide the glass and stop its capture. The dock, the hotkey and the tray bring it
+/// back.
+pub fn hide_glass(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(GLASS_LABEL) {
+        let _ = w.hide();
+    }
+    let engine = app.state::<Engine>();
+    engine.set_enabled(false);
+    let store = app.state::<Store>();
+    let _ = store.update(|c| c.glass.visible = false);
+    broadcast_state(app, &engine, &store);
+}
+
+/// Tell every window the glass's state: the glass redraws its bar, the dock lights
+/// the right button.
+pub fn broadcast_state(app: &AppHandle, engine: &Engine, store: &Store) {
+    let _ = app.emit(STATE_EVENT, state_of(engine, store));
+}
+
+pub fn set_frozen_inner(app: &AppHandle, engine: &Engine, frozen: bool) {
     // Freezing from the lens keeps the lens's size and position: the still is what the
     // lens was showing, and the user is about to drag it somewhere to keep it.
     let was_lens = engine.mode() == Mode::Lens;
@@ -187,7 +212,7 @@ fn set_frozen_inner(app: &AppHandle, engine: &Engine, frozen: bool) {
         c.glass.frozen_x = src.x;
         c.glass.frozen_y = src.y;
     });
-    let _ = app.emit_to(GLASS_LABEL, STATE_EVENT, state_of(engine, &store));
+    broadcast_state(app, engine, &store);
 }
 
 /// Enter or leave lens mode. In the lens the window rides on the cursor at its own,
@@ -222,7 +247,7 @@ pub fn set_lens_inner(app: &AppHandle, engine: &Engine, lens: bool) {
             c.glass.frozen = false;
         }
     });
-    let _ = app.emit_to(GLASS_LABEL, STATE_EVENT, state_of(engine, &store));
+    broadcast_state(app, engine, &store);
 }
 
 /// Ride the cursor on a thread of its own, at a rate the webview's frame poll cannot
@@ -332,8 +357,8 @@ const M_LENS: &str = "glass-lens";
 const M_ZOOM_IN: &str = "glass-zoom-in";
 const M_ZOOM_OUT: &str = "glass-zoom-out";
 const M_HIDE: &str = "glass-hide";
-const M_PANEL: &str = "glass-panel";
-const M_QUIT: &str = "glass-quit";
+pub const M_PANEL: &str = "glass-panel";
+pub const M_QUIT: &str = "glass-quit";
 /// Bar-size menu items carry their scale after this prefix ("glass-ui-1.25").
 const M_UI_PREFIX: &str = "glass-ui-";
 
@@ -419,7 +444,7 @@ pub fn on_menu(app: &AppHandle, id: &str) {
         if let Ok(s) = scale.parse::<f32>() {
             let store = app.state::<Store>();
             let _ = store.update(|c| c.glass.ui_scale = s);
-            let _ = app.emit_to(GLASS_LABEL, STATE_EVENT, state_of(&engine, &store));
+            broadcast_state(app, &engine, &store);
         }
         return;
     }
@@ -499,7 +524,7 @@ pub fn glass_set_pane_lock(app: AppHandle, engine: State<Engine>, store: State<S
     if !lock {
         restore_own_width(&app, &store);
     }
-    let _ = app.emit_to(GLASS_LABEL, STATE_EVENT, state_of(&engine, &store));
+    broadcast_state(&app, &engine, &store);
 }
 
 /// Fit on or off. Off restores the user's own width; on lets the glass react to the
@@ -510,7 +535,7 @@ pub fn glass_set_pane_fit(app: AppHandle, engine: State<Engine>, store: State<St
     if !fit {
         restore_own_width(&app, &store);
     }
-    let _ = app.emit_to(GLASS_LABEL, STATE_EVENT, state_of(&engine, &store));
+    broadcast_state(&app, &engine, &store);
 }
 
 /// Put the parked glass back at its remembered width, keeping the current height.
@@ -563,14 +588,11 @@ pub fn glass_scroll(engine: State<Engine>, store: State<Store>, dx: i32, dy: i32
     });
 }
 
-/// Hide the glass. The global hotkey brings it back; the capture stops meanwhile.
+/// Hide the glass. The dock, the hotkey and the tray bring it back; the capture stops
+/// meanwhile.
 #[tauri::command]
 pub fn glass_hide(app: AppHandle) {
-    if let Some(w) = app.get_webview_window(GLASS_LABEL) {
-        let _ = w.hide();
-    }
-    app.state::<Engine>().set_enabled(false);
-    let _ = app.state::<Store>().update(|c| c.glass.visible = false);
+    hide_glass(&app);
 }
 
 /// Quit ReviewGlass entirely. Distinct from hiding: the hotkey does not bring it back.
