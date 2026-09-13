@@ -5,6 +5,21 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## A release webview is not a black box: WebView2 remote debugging shows it (2026-09-13)
+
+A CSP without `connect-src ipc: http://ipc.localhost` blocks Tauri's IPC over the custom
+protocol; the JS side logs a warning and falls back to postMessage, and whether the
+first calls survive depends on how many are in flight. In dev everything worked; the
+release glass showed "Waiting for the first frame…" and nothing else, and the Rust side
+had nothing to say because nothing ever reached it. What showed it in a minute, after an
+hour of guessing: launch the release exe with
+`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222 --remote-allow-origins=*"`,
+read `http://127.0.0.1:9222/json`, and speak CDP over the page's websocket —
+`Runtime.evaluate` for DOM state, `Runtime.enable` + `Log.enable` + `Page.reload` for
+the console and CSP violations. Lesson: when a release build behaves differently from
+dev and the Rust side sees nothing, look inside the webview first, and add
+`connect-src ipc: http://ipc.localhost` to any CSP that names `default-src`.
+
 ## A window that is excluded from capture cannot be verified by capture — and a fresh binary is not running when its process is (2026-09-13)
 
 Verifying the viewfinder from the build agent's side: `FindWindow` and `GetWindowRect`

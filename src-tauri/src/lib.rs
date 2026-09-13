@@ -70,7 +70,7 @@ pub fn run() {
             glass::glass_set_halo,
             glass::glass_set_pane_lock,
             glass::glass_set_pane_fit,
-            glass::glass_cycle_ui_scale,
+            glass::glass_ui_scale_menu,
             glass::glass_menu,
             glass::glass_set_hovered,
             glass::glass_scroll,

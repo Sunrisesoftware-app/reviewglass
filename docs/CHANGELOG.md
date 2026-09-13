@@ -38,12 +38,26 @@ UI Automation dependency.
   value that says the pane's width in screen pixels or **"no column here"** — the
   reason, not a number, when nothing is found (adr.rg.011 applied to layout).
 
+- **Second pass the same afternoon, from the owner's first look.** The lock is labelled
+  **Column**, not "Pane" (a vulgar homonym in spoken Finnish; the code keeps `pane`).
+  The **Aa** button opens a menu of bar sizes (100–200 %, the current one checked)
+  instead of a blind five-step cycle, and the bar **wraps** to a second row when its
+  buttons no longer fit, so a larger size never pushes a control out of sight — checked
+  in a 700 px glass at 150 % and 200 %: three rows, nothing hidden.
+- **CSP fix.** `connect-src ipc: http://ipc.localhost` was missing: Tauri's IPC over the
+  custom protocol was blocked, every first `invoke` failed and fell back to postMessage.
+  One first call survived that; two concurrent ones (a relayout effect added this pass)
+  both rejected and the poll never started — "Waiting for the first frame…" forever on
+  a release build that was fine in dev. Found through WebView2 remote debugging (CDP),
+  which is now the way to see inside a release webview (`docs/LESSONS.md`).
+
 Measured on the release build, this machine (2560×1440, one monitor): idle CPU
 2.3–3.7 % of one core over 20 s with the screen not static (the Code tab streaming),
 lock on and off alike — the scan is inside the noise of what the screen is doing.
 Over the empty desktop the detector reports one 2560 px pane and the fit widens the
-glass to 2520 px at 150 %; the finder lands on the source rectangle to the pixel
-(window rects read back with `GetWindowRect`). Over the Code tab's columns: to be
+glass to 2520 px at 150 %; over the Desktop app's sidebar + chat column it reports
+0–1365 px and the glass fits to 2395 px at 175 %; the finder lands on the source
+rectangle to the pixel (window rects read back with `GetWindowRect`). Over the Code tab's columns: to be
 measured by the owner, since the glass and its overlays are excluded from every
 capture path and cannot be screenshotted by the build agent.
 
