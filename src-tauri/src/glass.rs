@@ -331,6 +331,24 @@ pub fn spawn_lens_rider(app: AppHandle) {
                 let enabled = engine.is_enabled();
                 let cfg = app.state::<Store>().get().glass;
                 let following = enabled && mode == Mode::Follow;
+                // Reaching for the dock is not reading: while the cursor is over it,
+                // Follow holds (see Engine::set_over_dock).
+                let over_dock = following
+                    && app
+                        .get_webview_window(crate::dock::DOCK_LABEL)
+                        .and_then(|d| {
+                            let p = d.outer_position().ok()?;
+                            let s = d.outer_size().ok()?;
+                            let (cx, cy) = cursor_pos();
+                            Some(
+                                cx >= p.x
+                                    && cx < p.x + s.width as i32
+                                    && cy >= p.y
+                                    && cy < p.y + s.height as i32,
+                            )
+                        })
+                        .unwrap_or(false);
+                engine.set_over_dock(over_dock);
                 let halo_wanted = following && cfg.halo;
                 let finder_wanted = following && cfg.pane_lock && engine.pane().is_some();
 

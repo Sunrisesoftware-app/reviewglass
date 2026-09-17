@@ -5,6 +5,17 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## A verification that takes the mouse is an interruption (2026-09-17)
+
+The release-build checks drive the app from outside: they launch it, move the cursor
+with `SetCursorPos`, show the glass and the dock, and pick menu items by keyboard —
+30 to 60 seconds each, several times in an evening. The owner was at the same machine,
+in the middle of settings in a browser, and could not even reach the window's close
+button until the run was stopped. Lesson: a live check is run at most once per change
+and only after asking whether it is a good moment; everything that can be verified
+without the screen — the replay tests on the recordings, the unit tests — comes first,
+and a weak live assertion is fixed in the script, not re-run on the owner's mouse.
+
 ## A held value is not a confirmation: the wait must outlast the hold (2026-09-17)
 
 The lock now holds a lost column for two seconds, and Fit waits before widening the

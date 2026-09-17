@@ -132,6 +132,14 @@ struct Shared {
     /// Follow mode with the pane lock on: the handler scans for the pane under the
     /// cursor. Off in every other state, so the scan costs nothing there.
     want_pane: AtomicBool,
+    /// The cursor is over the dock. Reaching for the dock is not reading: Follow
+    /// holds its source rectangle and scans nothing, as it does while the pointer is
+    /// over the glass itself. Both recordings had every leap to a wide "column" with
+    /// the cursor on the dock or the strip beside it.
+    over_dock: AtomicBool,
+    /// The lock was switched off: the column tracker forgets its column on the next
+    /// scan. A pause (hover, a menu, the dock) keeps the memory, which ages by itself.
+    tracker_reset: AtomicBool,
     /// The pane under the cursor in virtual-desktop coordinates, or none found.
     pane: Mutex<Option<Pane>>,
     /// Bumped whenever `pane` changes, so a consumer can notice without comparing.
@@ -154,10 +162,10 @@ impl Handler {
     /// full width and `PANE_BAND` height, at most four times a second; the band is
     /// classified and dropped.
     fn scan_pane(&mut self, frame: &mut Frame, mon: MonitorGeom) {
-        if !self.shared.want_pane.load(Ordering::Relaxed) {
-            // The lock is off, or the glass is hovered or held: the next scan starts
-            // from a fresh reading, not from a column remembered across the gap.
+        if self.shared.tracker_reset.swap(false, Ordering::Relaxed) {
             self.tracker.reset();
+        }
+        if !self.shared.want_pane.load(Ordering::Relaxed) {
             return;
         }
         let (cx, cy) = cursor_pos();
@@ -429,6 +437,8 @@ impl Engine {
                 resume_at: Mutex::new(None),
                 attached_seq: AtomicU64::new(0),
                 want_pane: AtomicBool::new(false),
+                over_dock: AtomicBool::new(false),
+                tracker_reset: AtomicBool::new(false),
                 pane: Mutex::new(None),
                 pane_seq: AtomicU64::new(0),
                 source: Mutex::new(SourceRect {
@@ -571,11 +581,20 @@ impl Engine {
         crate::measure::log(|| format!("hover {}", hovered as u8));
     }
 
+    /// The cursor entered or left the dock (reported by the rider thread, which
+    /// watches the cursor anyway).
+    pub fn set_over_dock(&self, over: bool) {
+        if self.shared.over_dock.swap(over, Ordering::Relaxed) != over {
+            crate::measure::log(|| format!("dock {}", over as u8));
+        }
+    }
+
     pub fn set_pane_lock(&self, lock: bool) {
         self.view.lock().pane_lock = lock;
         crate::measure::log(|| format!("lock {}", lock as u8));
         if !lock {
             // A lock switched off forgets its pane: the next lock starts from a scan.
+            self.shared.tracker_reset.store(true, Ordering::Relaxed);
             let mut p = self.shared.pane.lock();
             if p.take().is_some() {
                 self.shared.pane_seq.fetch_add(1, Ordering::Relaxed);
@@ -637,12 +656,16 @@ impl Engine {
         let src_h = ((v.height_px as f32 / v.zoom).round() as u32).max(2);
 
         let held = self.shared.held.load(Ordering::Relaxed);
-        let want_pane = v.mode == Mode::Follow && v.pane_lock && !v.hovered && !held;
+        let over_dock = self.shared.over_dock.load(Ordering::Relaxed);
+        // Follow holds while the pointer is over the glass or the dock; every mode
+        // holds while a menu is open.
+        let hold = held || (v.mode == Mode::Follow && (v.hovered || over_dock));
+        let want_pane = v.mode == Mode::Follow && v.pane_lock && !hold;
         self.shared.want_pane.store(want_pane, Ordering::Relaxed);
         let pane = if want_pane { self.pane() } else { None };
 
         let rect = match v.mode {
-            Mode::Follow | Mode::Lens if held || (v.mode == Mode::Follow && v.hovered) => {
+            Mode::Follow | Mode::Lens if hold => {
                 // Hold the last rectangle; only its size may change (zoom).
                 let s = *self.shared.source.lock();
                 SourceRect {
