@@ -53,6 +53,10 @@ const PANE_SCAN_RESTING: Duration = Duration::from_millis(1000);
 /// A pane whose edges moved less than this is the same pane: the scan is not allowed
 /// to nudge the picture by a pixel or two between frames.
 const PANE_JITTER: i32 = 8;
+/// After a menu over the glass closes, publishing waits this long: the compositor
+/// may still deliver a frame composed while the menu was up, and a still taken from
+/// the menu must not carry the menu (the frame after the grace is forced through).
+const HOLD_GRACE: Duration = Duration::from_millis(120);
 
 /// A rectangle in virtual-desktop physical pixels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -113,9 +117,17 @@ struct Shared {
     /// view of a locked region. That is what lets a captured instruction survive the
     /// user switching to another application underneath it.
     still: AtomicBool,
-    /// Set when a freeze was restored from disk with no pixels in hand: the next
-    /// published frame becomes the still.
+    /// Set when a freeze was asked for with no frame in hand (a still restored from
+    /// disk, or the glass switched on straight into Still): the next published frame
+    /// becomes the still.
     freeze_after_publish: AtomicBool,
+    /// A menu is open over the glass: no frame is published and the source rectangle
+    /// holds, so what the user right-clicked on is what the menu's pick applies to.
+    held: AtomicBool,
+    /// After a hold is released, no frame is published before this instant.
+    resume_at: Mutex<Option<Instant>>,
+    /// `seq` at the last attach: a frame is in hand once `seq` has gone past it.
+    attached_seq: AtomicU64,
     /// Follow mode with the pane lock on: the handler scans for the pane under the
     /// cursor. Off in every other state, so the scan costs nothing there.
     want_pane: AtomicBool,
@@ -215,8 +227,17 @@ impl GraphicsCaptureApiHandler for Handler {
         frame: &mut Frame,
         _control: InternalCaptureControl,
     ) -> Result<(), Self::Error> {
-        if self.shared.still.load(Ordering::Relaxed) {
+        if self.shared.still.load(Ordering::Relaxed) || self.shared.held.load(Ordering::Relaxed) {
             return Ok(());
+        }
+        {
+            let mut resume_at = self.shared.resume_at.lock();
+            if let Some(t) = *resume_at {
+                if Instant::now() < t {
+                    return Ok(());
+                }
+                *resume_at = None;
+            }
         }
         let Some(mon) = *self.shared.monitor.lock() else {
             return Ok(());
@@ -379,6 +400,9 @@ impl Engine {
                 last_rect: Mutex::new(None),
                 still: AtomicBool::new(false),
                 freeze_after_publish: AtomicBool::new(false),
+                held: AtomicBool::new(false),
+                resume_at: Mutex::new(None),
+                attached_seq: AtomicU64::new(0),
                 want_pane: AtomicBool::new(false),
                 pane: Mutex::new(None),
                 pane_seq: AtomicU64::new(0),
@@ -436,14 +460,46 @@ impl Engine {
             v.frozen_origin = (s.x, s.y);
         }
         v.mode = mode;
-        // Frozen means a still. Leaving it forces the next frame through, whatever the
-        // dirty regions say, so the picture goes live again immediately.
-        self.shared
-            .still
-            .store(mode == Mode::Frozen, Ordering::Relaxed);
-        if mode != Mode::Frozen {
+        drop(v);
+        if mode == Mode::Frozen {
+            self.freeze();
+        } else {
+            // Leaving a still forces the next frame through, whatever the dirty
+            // regions say, so the picture goes live again immediately. A freeze that
+            // was still waiting for its frame is cancelled with it, or the next frame
+            // to arrive would freeze a glass that is following.
+            self.shared.still.store(false, Ordering::Relaxed);
+            self.shared
+                .freeze_after_publish
+                .store(false, Ordering::Relaxed);
             *self.shared.last_rect.lock() = None;
         }
+    }
+
+    /// Become a still. With a frame of the running capture in hand the picture holds
+    /// at once: it is the picture the user is looking at. Without one (the glass
+    /// switched on straight into Still from the dock, or a still restored from disk)
+    /// holding at once would hold nothing and the glass would stay black, so one frame
+    /// is let through and the hold starts after it.
+    fn freeze(&self) {
+        if self.frame_in_hand() {
+            self.shared.still.store(true, Ordering::Relaxed);
+            self.shared
+                .freeze_after_publish
+                .store(false, Ordering::Relaxed);
+        } else {
+            self.shared.still.store(false, Ordering::Relaxed);
+            self.shared
+                .freeze_after_publish
+                .store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// The capture is running and has published at least one frame since it attached.
+    fn frame_in_hand(&self) -> bool {
+        self.shared.monitor.lock().is_some()
+            && self.shared.seq.load(Ordering::Relaxed)
+                > self.shared.attached_seq.load(Ordering::Relaxed)
     }
 
     pub fn is_still(&self) -> bool {
@@ -455,12 +511,30 @@ impl Engine {
         let mut v = self.view.lock();
         v.mode = Mode::Frozen;
         v.frozen_origin = (x, y);
-        // A still restored from disk has no pixels yet: let one frame through, then
-        // hold.
-        self.shared.still.store(false, Ordering::Relaxed);
-        self.shared
-            .freeze_after_publish
-            .store(true, Ordering::Relaxed);
+        drop(v);
+        self.freeze();
+    }
+
+    /// A menu opened over the glass (or the dock). Until it closes no frame is
+    /// published, the source rectangle holds and the lens does not ride: what the
+    /// user right-clicked on is what the menu's pick applies to, and the menu stays
+    /// where it opened instead of having to be chased.
+    pub fn hold(&self) {
+        self.shared.held.store(true, Ordering::Relaxed);
+    }
+
+    /// The menu closed. Publishing resumes after `HOLD_GRACE`, and the frame after it
+    /// is forced through: the picture may have changed under the menu. A freeze picked
+    /// from the menu lands before the grace is over and keeps the frame from before
+    /// the menu opened.
+    pub fn release(&self) {
+        *self.shared.resume_at.lock() = Some(Instant::now() + HOLD_GRACE);
+        *self.shared.last_rect.lock() = None;
+        self.shared.held.store(false, Ordering::Relaxed);
+    }
+
+    pub fn is_held(&self) -> bool {
+        self.shared.held.load(Ordering::Relaxed)
     }
 
     pub fn set_hovered(&self, hovered: bool) {
@@ -531,12 +605,13 @@ impl Engine {
         let src_w = ((v.width_px as f32 / v.zoom).round() as u32).max(2);
         let src_h = ((v.height_px as f32 / v.zoom).round() as u32).max(2);
 
-        let want_pane = v.mode == Mode::Follow && v.pane_lock && !v.hovered;
+        let held = self.shared.held.load(Ordering::Relaxed);
+        let want_pane = v.mode == Mode::Follow && v.pane_lock && !v.hovered && !held;
         self.shared.want_pane.store(want_pane, Ordering::Relaxed);
         let pane = if want_pane { self.pane() } else { None };
 
         let rect = match v.mode {
-            Mode::Follow if v.hovered => {
+            Mode::Follow | Mode::Lens if held || (v.mode == Mode::Follow && v.hovered) => {
                 // Hold the last rectangle; only its size may change (zoom).
                 let s = *self.shared.source.lock();
                 SourceRect {
@@ -584,6 +659,9 @@ impl Engine {
         *self.shared.monitor.lock() = Some(geom);
         self.shared.last_hash.store(0, Ordering::Relaxed);
         *self.shared.last_rect.lock() = None;
+        self.shared
+            .attached_seq
+            .store(self.shared.seq.load(Ordering::Relaxed), Ordering::Relaxed);
 
         let monitor = Monitor::from_raw_hmonitor(geom.handle as *mut std::ffi::c_void);
         let settings = Settings::new(
@@ -729,6 +807,72 @@ mod tests {
         assert_eq!(e.set_view(100, 100, 9.0), ZOOM_MAX);
         assert_eq!(e.set_view(100, 100, f32::NAN), 2.0);
         assert_eq!(e.set_view(100, 100, 2.5), 2.5);
+    }
+
+    fn pretend_running(e: &Engine, frames_published: u64) {
+        *e.shared.monitor.lock() = Some(MonitorGeom {
+            handle: 1,
+            left: 0,
+            top: 0,
+        });
+        e.shared.attached_seq.store(0, Ordering::Relaxed);
+        e.shared.seq.store(frames_published, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn freeze_without_a_frame_in_hand_waits_for_one() {
+        // The glass switched on straight into Still: the capture has not attached.
+        let e = Engine::new();
+        e.set_mode(Mode::Frozen);
+        assert!(!e.is_still(), "a hold with no frame would hold nothing");
+        assert!(e.shared.freeze_after_publish.load(Ordering::Relaxed));
+        // Attached, nothing published yet: still waiting.
+        let e = Engine::new();
+        pretend_running(&e, 0);
+        e.set_mode(Mode::Frozen);
+        assert!(!e.is_still());
+        assert!(e.shared.freeze_after_publish.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn freeze_with_a_frame_in_hand_holds_at_once() {
+        let e = Engine::new();
+        pretend_running(&e, 3);
+        e.set_mode(Mode::Frozen);
+        assert!(e.is_still());
+        assert!(!e.shared.freeze_after_publish.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn leaving_a_still_cancels_a_pending_freeze() {
+        let e = Engine::new();
+        e.set_mode(Mode::Frozen);
+        assert!(e.shared.freeze_after_publish.load(Ordering::Relaxed));
+        e.set_mode(Mode::Follow);
+        assert!(!e.is_still());
+        assert!(!e.shared.freeze_after_publish.load(Ordering::Relaxed));
+        assert_eq!(*e.shared.last_rect.lock(), None);
+    }
+
+    #[test]
+    fn a_hold_pauses_and_a_release_forces_the_next_frame() {
+        let e = Engine::new();
+        pretend_running(&e, 5);
+        *e.shared.last_rect.lock() = Some(e.source());
+        e.hold();
+        assert!(e.is_held());
+        e.release();
+        assert!(!e.is_held());
+        let resume_at = e.shared.resume_at.lock().expect("a grace period is set");
+        assert!(resume_at > Instant::now());
+        assert_eq!(
+            *e.shared.last_rect.lock(),
+            None,
+            "the frame after the grace goes through"
+        );
+        // A freeze picked from the menu still counts the pre-menu frame as in hand.
+        e.set_mode(Mode::Frozen);
+        assert!(e.is_still());
     }
 
     #[test]

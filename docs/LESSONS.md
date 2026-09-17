@@ -5,6 +5,29 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## A symptom can be the visible half of a bug you have not seen (2026-09-17)
+
+"The still keeps the menu in the picture" read as a capture problem: freeze the frame
+from before the menu. It was two bugs. The glass page assigned the canvas size on every
+state change, and assigning a size wipes a canvas; a following glass repaints within a
+frame, a still gets no frame, so the wipe was always refilled by the last frame still
+pending in the engine — the one with the menu in it. Holding the picture while the menu
+is open took that pending frame away and the wipe showed itself: a black still. Lesson:
+when a fix makes a *different* symptom appear in the same place, the first symptom was
+being masked, not caused, by what the fix removed; look for the state change that
+clears something only a frame can restore.
+
+## The owner's mouse is live during a test from outside (2026-09-17)
+
+A verification script moved the cursor with `SetCursorPos`, read the lens's window rect,
+and found the lens hundreds of pixels from where the cursor had been put: the owner was
+using the machine, and every cursor placement lasted well under a second. The first run
+failed five checks that compared a read from before a menu with one from after it.
+Lesson: from the agent's side, a check that involves the cursor compares two reads taken
+in the *same* state (both while the menu is open, both after the pick), never a read
+from before a state change with one from after it; and it records where the cursor
+actually was at each read, so a failure says whose hand moved it.
+
 ## A build that works right after building is not a build that works (2026-09-13)
 
 The glass's first `invoke` raced the core's `setup`: config windows are created before

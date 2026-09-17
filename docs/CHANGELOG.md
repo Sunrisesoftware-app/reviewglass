@@ -4,6 +4,63 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 3: a still that holds, a menu that stays put — 17.9.2026 (0.1.0)
+
+Three of the four observations from session 2's close (2, 3 and 4), taken as one change
+in the engine and the rider, and a fourth cause found on the way that sat under two of
+them.
+
+- **Still from the dock was black** (observation 3). `dock_activate("still")` on a
+  glass that was off froze an engine that had published no frame: the still flag
+  stopped every frame before one had arrived. A freeze now asks whether a frame is *in
+  hand* — the capture is running and has published since it attached — and with none
+  it lets one frame through and starts the hold after it, the path a still restored
+  from disk already took. Leaving a still cancels a freeze still waiting for its frame,
+  or the next frame would have frozen a glass that was following again. Semantics as
+  they fall out: Still from the dock is a still of where the glass last looked, since
+  at the click the cursor is on the dock; at a first start with nothing looked at yet,
+  the top-left corner of the screen. What the dock's Still *should* mean is open.
+- **The picture and the lens hold while a menu is open** (observations 2 and 4). Every
+  ReviewGlass menu — the glass's right-click menu, the `Aa` sizes, the dock's — holds
+  the engine for as long as it is open: no frame is published, the source rectangle
+  stays where it was at the click, the pane scan pauses, and the rider does not move
+  the lens, so the menu no longer has to be chased. `popup` blocks until the menu
+  closes, so the hold is a bracket around it; a pick reaches `on_menu` afterwards
+  through the event loop, inside a 120 ms grace in which nothing is published either,
+  so a frame composed while the menu was closing cannot slip into a still. After the
+  grace the next frame is forced through. "Freeze this picture" therefore keeps the
+  frame that was right-clicked on — never the menu.
+- **The canvas was wiped on every state change** (found on the way). `reportView`
+  assigned the canvas size on every relayout, and assigning a size clears a canvas. A
+  following glass repaints within a frame; a still gets no frame, so it stayed black —
+  and that is why the old still showed the menu: the last frame published before the
+  freeze, menu and all, was the one that refilled the canvas after the wipe. The canvas
+  is now sized only when the picture area really changed, and the last frame is painted
+  back at the new size, so a resized still scales instead of going blank.
+
+Measured on the release build (warm launch, the second start after the build), from
+outside over CDP and window rects, with the owner's mouse in use at the same time — so
+every check compares two reads taken in the same state, never a read from before a menu
+with one from after it:
+
+- Still from the dock with the glass off since start: still mode, a picture within
+  0.6 s, the same canvas hash a second later. Off, then Still again: a picture within
+  0.3 s.
+- Lens with the menu open: the window rect unchanged after the cursor moved 500 px and
+  the canvas hash unchanged; "Freeze this picture" picked from the menu by keyboard:
+  the still's hash equals the hash read under the menu, holds a second later, and the
+  window is where the lens was.
+- Follow with the menu open: the canvas hash unchanged; after Esc the glass is still
+  visible and following, and the hash changes with the cursor again.
+- The first run of the same checks, before the canvas fix, showed the still as a black
+  canvas (hash 0) after the menu pick — the wipe made visible by the hold, which had
+  taken away the pending frame that used to refill it.
+
+Four new engine tests (a freeze without a frame waits for one, a freeze with one holds
+at once, leaving a still cancels a pending freeze, a hold pauses and a release forces
+the next frame); 72 tests in all. Observation 1 (Follow restless, the width changes)
+is untouched and is the next conversation, with measurements.
+
 ## Session 2, closing: observed with the dock in use, not yet fixed — 13.9.2026
 
 The owner's verdict at the end of the day: "the direction is good now." Four things
