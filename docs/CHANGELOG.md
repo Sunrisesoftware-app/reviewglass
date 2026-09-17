@@ -4,6 +4,44 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 3 (continued): a measurement log for Follow — 17.9.2026 (0.1.0)
+
+Observation 1 — Follow still drifts and the text in the glass changes width — is to be
+taken as one conversation with measurements (the owner's ask). The measurements need a
+source, so this is the instrument: temporary tooling, to be removed once the tuning is
+settled.
+
+- **The log** (`src-tauri/src/measure.rs`): one line per event, seconds since switch-on
+  first. `scan` is every run of the detector with the cursor and the column it read
+  (`x0..x1/width` or `none`) and whether the reading counted as a change beyond the
+  8 px jitter; `src` is the source rectangle when it moved, at most ten a second, with
+  the mode and the hover and hold flags; `pane-event` is what the glass was told;
+  `fit` is Fit's decision from the glass page (the column, the zoom, the width it
+  wants against the width it has, and `widen`, `shrink`, `shrink-wait`, `none` or
+  `skip` with the reason); `view`, `resized`, `hover`, `hold`, `release`, `mode`,
+  `lock` and `fit-toggle` are the state changes around them. Structure only: never a
+  pixel, never a character of text.
+- **The affordance**: Settings → *Measurements* → "Record Follow measurements", with
+  the path shown (`%TEMP%\reviewglass-follow.log`). Off by default; switching it on
+  starts the file over; it stays on across a restart (a new file per run) and stops
+  itself after 200 000 lines. Nothing is written while it is off — one atomic load on
+  the hot paths.
+- **The reader**, `scripts/analyze-follow-log.py`: counts and distributions of the
+  detector's readings (width, edges, how long a reading held, the largest edge jumps),
+  how often the glass was told, Fit's decisions by kind, resizes and the gaps between
+  them, and a timeline of changes. It is what the conversation reads from.
+- **Checked on the release build** over CDP: the switch creates the file with its
+  header, Follow over a column with the lock and Fit on writes every kind of line
+  (13 scans, 5 pane events, 5 Fit decisions, 2 resizes in 14 s of cursor movement),
+  and nothing is written after the switch is off. A first hint in that small sample,
+  to be confirmed on the owner's reading: the detector alternated between the column
+  and `none` as the cursor moved down the same column, and with `none` the lock has
+  nothing to hold, so the source rectangle fell back to the cursor's x — a sideways
+  jump that Fit never sees (it keeps the width on `none`).
+
+Next: the owner reads a Code-tab column with the log on for a few minutes, in the
+situations that felt restless, and the conversation happens over the analysis.
+
 ## Session 3: a still that holds, a menu that stays put — 17.9.2026 (0.1.0)
 
 Three of the four observations from session 2's close (2, 3 and 4), taken as one change

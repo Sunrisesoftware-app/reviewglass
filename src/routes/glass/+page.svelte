@@ -37,6 +37,7 @@
     pane_fit: boolean;
     pane_width: number | null;
     build: string;
+    follow_log: boolean;
     config: "loaded" | "fresh" | "reset-corrupt";
   };
 
@@ -67,6 +68,13 @@
   let paneFit = $state(true);
   let paneWidth = $state<number | null>(null);
   let build = $state("");
+  let followLog = $state(false);
+
+  // The measurement log (Settings, Measurements): Fit's side of the story, so the
+  // detector's readings and the glass's reaction to them read in one file.
+  function mlog(line: string) {
+    if (followLog) void invoke("glass_log", { line });
+  }
   let error = $state<string | null>(null);
   let notice = $state<string | null>(null);
   let haveFrame = $state(false);
@@ -115,6 +123,7 @@
   async function fitToPane() {
     if (fitting) return;
     if (!paneFit || !paneLock || mode !== "follow" || !paneWidth) {
+      mlog(`fit skip fit=${paneFit ? 1 : 0} lock=${paneLock ? 1 : 0} mode=${mode} pane=${paneWidth ?? "none"} zoomBack=${zoomDerived ? 1 : 0}`);
       if (zoomDerived) {
         zoom = userZoom; // no column to fit: the user's own zoom is back
         await reportView();
@@ -135,8 +144,10 @@
       want = Math.max(FIT_MIN_WIDTH, Math.min(maxW, want));
       const size = await win.innerSize();
       const zoomChanged = Math.abs(z - zoom) > 0.001;
+      const facts = `fit pane=${paneWidth} z=${z} want=${want} size=${size.width} max=${maxW}`;
       if (want < size.width - FIT_SLACK && !shrinkDue) {
         // Narrower: wait and see whether it holds.
+        mlog(`${facts} -> shrink-wait ${FIT_SHRINK_AFTER}ms`);
         clearTimeout(shrinkTimer);
         shrinkTimer = setTimeout(() => {
           shrinkDue = true;
@@ -146,6 +157,9 @@
       }
       clearTimeout(shrinkTimer);
       zoom = z;
+      mlog(
+        `${facts} -> ${Math.abs(want - size.width) > FIT_SLACK ? (want > size.width ? "widen" : "shrink") : "none"}${shrinkDue ? " after-wait" : ""}${zoomChanged ? " zoom-changed" : ""}`,
+      );
       if (Math.abs(want - size.width) > FIT_SLACK) {
         // Keep the window on its monitor: a glass that grew past the right edge would
         // show its picture off screen.
@@ -413,6 +427,7 @@
       paneFit = s.pane_fit;
       paneWidth = s.pane_width;
       build = s.build;
+      followLog = s.follow_log;
       if (s.config === "reset-corrupt") {
         notice = "Settings were unreadable; defaults are in effect (the old file is kept as config.json.bak).";
         setTimeout(() => (notice = null), 8000);
@@ -423,6 +438,7 @@
         await win.onResized(async () => {
           await reportView();
           const s = await win.innerSize();
+          mlog(`resized ${s.width}x${s.height}`);
           await invoke("glass_save_size", { width: s.width, height: s.height });
         }),
       );
@@ -440,6 +456,7 @@
           paneLock = ev.payload.pane_lock;
           paneFit = ev.payload.pane_fit;
           paneWidth = ev.payload.pane_width;
+          followLog = ev.payload.follow_log;
           void relayout();
         }),
       );

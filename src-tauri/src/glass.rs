@@ -31,6 +31,9 @@ pub const ZOOM_EVENT: &str = "glass:zoom";
 pub const PANE_EVENT: &str = "glass:pane";
 /// The last pane sequence the glass was told about; see `glass_frame`.
 static PANE_TOLD: AtomicU64 = AtomicU64::new(0);
+/// The last view the measurement log recorded (size, zoom bits, derived).
+static VIEW_LOGGED: parking_lot::Mutex<Option<(u32, u32, u32, bool)>> =
+    parking_lot::Mutex::new(None);
 
 #[derive(Clone, Serialize)]
 pub struct GlassState {
@@ -53,6 +56,9 @@ pub struct GlassState {
     /// The global shortcut that switches the glass on and off, as configured — so the
     /// dock can say it. A shortcut nobody was told about is not a feature.
     pub hotkey_toggle: String,
+    /// The Follow measurement log (temporary tooling, session 3) and where it writes.
+    pub follow_log: bool,
+    pub follow_log_path: String,
     pub config: LoadOutcome,
 }
 
@@ -82,8 +88,25 @@ fn state_of(engine: &Engine, store: &Store) -> GlassState {
         pane_width: engine.pane().map(|p| p.width()),
         build: build_stamp(),
         hotkey_toggle: store.get().hotkeys.toggle_glass.clone(),
+        follow_log: g.follow_log,
+        follow_log_path: crate::measure::path().display().to_string(),
         config: store.outcome(),
     }
+}
+
+/// The header line of the measurement log: the build and the settings that shape Fit.
+fn log_header(cfg: &crate::config::GlassConfig) -> String {
+    format!(
+        "build {}; zoom={} pane_lock={} pane_fit={} glass={}x{} lens={}x{}",
+        build_stamp(),
+        cfg.zoom,
+        cfg.pane_lock as u8,
+        cfg.pane_fit as u8,
+        cfg.width,
+        cfg.height,
+        cfg.lens_width,
+        cfg.lens_height
+    )
 }
 
 /// Exclude the glass from every screen-capture path so it never captures itself.
@@ -103,6 +126,12 @@ pub fn restore(app: &AppHandle) {
     let store = app.state::<Store>();
     let engine = app.state::<Engine>();
     let cfg = store.get().glass;
+    if cfg.follow_log {
+        // Left on at the last quit: a new file for this run.
+        if let Err(e) = crate::measure::set_on(true, &log_header(&cfg)) {
+            eprintln!("reviewglass: follow log: {e}");
+        }
+    }
     if let Some(w) = app.get_webview_window(GLASS_LABEL) {
         let _ = w.set_size(PhysicalSize::new(cfg.width, cfg.height));
         if let (Some(x), Some(y)) = (cfg.x, cfg.y) {
@@ -545,6 +574,18 @@ pub fn glass_set_view(
     derived: bool,
 ) -> f32 {
     let zoom = engine.set_view(width_px, height_px, zoom);
+    if crate::measure::is_on() {
+        // Reported on every relayout; only a change is worth a line.
+        let now = (width_px, height_px, zoom.to_bits(), derived);
+        if VIEW_LOGGED.lock().replace(now) != Some(now) {
+            crate::measure::log(|| {
+                format!(
+                    "view {width_px}x{height_px} zoom={zoom} derived={}",
+                    derived as u8
+                )
+            });
+        }
+    }
     if !derived {
         let _ = store.update(|c| c.glass.zoom = zoom);
     }
@@ -587,6 +628,7 @@ pub fn glass_set_pane_lock(app: AppHandle, engine: State<Engine>, store: State<S
 /// next pane event.
 #[tauri::command]
 pub fn glass_set_pane_fit(app: AppHandle, engine: State<Engine>, store: State<Store>, fit: bool) {
+    crate::measure::log(|| format!("fit-toggle {}", fit as u8));
     let _ = store.update(|c| c.glass.pane_fit = fit);
     if !fit {
         restore_own_width(&app, &store);
@@ -604,6 +646,29 @@ fn restore_own_width(app: &AppHandle, store: &Store) {
             }
         }
     }
+}
+
+/// Switch the Follow measurement log on or off (Settings tab). On starts the file
+/// over; the answer is the state, with the path the log is written to.
+#[tauri::command]
+pub fn follow_log_set(
+    app: AppHandle,
+    engine: State<Engine>,
+    store: State<Store>,
+    on: bool,
+) -> Result<GlassState, String> {
+    let cfg = store.get().glass;
+    crate::measure::set_on(on, &log_header(&cfg))?;
+    let _ = store.update(|c| c.glass.follow_log = on);
+    broadcast_state(&app, &engine, &store);
+    Ok(state_of(&engine, &store))
+}
+
+/// A line from the glass page for the measurement log: Fit's decisions and resizes,
+/// stamped with the same clock as the engine's lines.
+#[tauri::command]
+pub fn glass_log(line: String) {
+    crate::measure::log(|| line);
 }
 
 #[tauri::command]
@@ -681,6 +746,13 @@ pub fn glass_frame(app: AppHandle, engine: State<Engine>, since: u64) -> Result<
     // one event per change, not one per frame.
     let pane_seq = engine.pane_seq();
     if PANE_TOLD.swap(pane_seq, Ordering::Relaxed) != pane_seq {
+        crate::measure::log(|| {
+            let width = engine
+                .pane()
+                .map(|p| p.width().to_string())
+                .unwrap_or_else(|| "none".into());
+            format!("pane-event width={width}")
+        });
         let _ = app.emit_to(
             GLASS_LABEL,
             PANE_EVENT,
