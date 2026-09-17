@@ -12,6 +12,9 @@
 //!   replaces the held one at once, so a column switch goes column to column with no
 //!   cursor-centred picture in between.
 //!
+//! A pause in scanning (the pointer over the glass or the dock, a menu) keeps the
+//! memory, which ages out by itself; only the lock going off forgets the column.
+//!
 //! Pure: no frames, no clock of its own. The capture thread feeds it every scan.
 
 use std::collections::VecDeque;
@@ -175,20 +178,45 @@ mod tests {
         assert_eq!(tr.observe(pane(1463, 2001), at(t0, 200)), pane(1463, 2001));
     }
 
-    /// The owner's first recording, replayed: the raw readings go in, what the lock
-    /// would have held comes out. The numbers are the ones the change was made for.
-    #[test]
-    fn replay_of_the_first_recording() {
-        const LOG: &str = include_str!("../../../docs/measurements/follow-2026-09-17-owner-1.log");
+    /// The dock's window rect in the recordings (top-left corner, 470x44 at 8,8).
+    /// Scans with the cursor over it are skipped, as the engine skips them now.
+    fn over_dock(cx: i32, cy: i32) -> bool {
+        (8..=478).contains(&cx) && (8..=52).contains(&cy)
+    }
+
+    struct Replay {
+        scans: usize,
+        raw_changes: u32,
+        out_changes: u32,
+        raw_none: u32,
+        out_none: u32,
+        /// Distinct right edges the lock held for the column at 1463, ascending.
+        edges_1463: Vec<i32>,
+    }
+
+    /// A recording replayed: the band's raw readings go in, what the lock would have
+    /// held comes out. The numbers are the ones the change was made for.
+    fn replay(log: &str) -> Replay {
         let t0 = Instant::now();
         let mut scans: Vec<(u64, Option<Pane>)> = Vec::new();
-        for line in LOG.lines() {
+        for line in log.lines() {
             let mut parts = line.splitn(3, ' ');
             let (Some(t), Some("scan"), Some(rest)) = (parts.next(), parts.next(), parts.next())
             else {
                 continue;
             };
             let ms = (t.parse::<f64>().unwrap() * 1000.0) as u64;
+            let cur = rest
+                .split(' ')
+                .find_map(|f| f.strip_prefix("cur="))
+                .and_then(|c| {
+                    let (x, y) = c.split_once(',')?;
+                    Some((x.parse::<i32>().ok()?, y.parse::<i32>().ok()?))
+                })
+                .expect("a scan line carries the cursor");
+            if over_dock(cur.0, cur.1) {
+                continue;
+            }
             let pane = rest
                 .split(' ')
                 .find_map(|f| f.strip_prefix("pane="))
@@ -202,7 +230,6 @@ mod tests {
                 });
             scans.push((ms, pane));
         }
-        assert_eq!(scans.len(), 218, "the recording has 218 scans");
 
         fn changed(a: Option<Pane>, b: Option<Pane>) -> bool {
             match (a, b) {
@@ -213,44 +240,70 @@ mod tests {
         }
         let mut tr = ColumnTracker::new();
         let (mut raw_prev, mut out_prev) = (None, None);
-        let (mut raw_changes, mut out_changes) = (0, 0);
-        let (mut raw_none, mut out_none) = (0, 0);
-        let mut col_1463: Vec<i32> = Vec::new();
+        let mut r = Replay {
+            scans: scans.len(),
+            raw_changes: 0,
+            out_changes: 0,
+            raw_none: 0,
+            out_none: 0,
+            edges_1463: Vec::new(),
+        };
         for &(ms, raw) in &scans {
             let out = tr.observe(raw, at(t0, ms));
-            if changed(raw_prev, raw) {
-                raw_changes += 1;
-            }
-            if changed(out_prev, out) {
-                out_changes += 1;
-            }
-            raw_none += raw.is_none() as u32;
-            out_none += out.is_none() as u32;
+            r.raw_changes += changed(raw_prev, raw) as u32;
+            r.out_changes += changed(out_prev, out) as u32;
+            r.raw_none += raw.is_none() as u32;
+            r.out_none += out.is_none() as u32;
             if let Some(p) = out {
                 if p.x0 == 1463 {
-                    col_1463.push(p.x1);
+                    r.edges_1463.push(p.x1);
                 }
             }
             raw_prev = raw;
             out_prev = out;
         }
-        // What the glass was told: 50 changes became 23, the owner's own column
+        r.edges_1463.sort_unstable();
+        r.edges_1463.dedup();
+        r
+    }
+
+    #[test]
+    fn replay_of_the_first_recording() {
+        let r = replay(include_str!(
+            "../../../docs/measurements/follow-2026-09-17-owner-1.log"
+        ));
+        // 218 scans, 7 of them with the cursor over the dock.
+        assert_eq!(r.scans, 211);
+        // What the glass was told: 48 changes became 22, the owner's own column
         // switches and a right edge growing to a longer line.
-        assert_eq!(raw_changes, 50);
-        assert_eq!(out_changes, 23, "tracked changes");
+        assert_eq!(r.raw_changes, 48);
+        assert_eq!(r.out_changes, 22, "tracked changes");
         // The column at 1463 read four different right edges (1998..2036); the lock
         // held two: the furthest line, and the edge after the outlier aged out.
-        let mut distinct = col_1463.clone();
-        distinct.sort_unstable();
-        distinct.dedup();
-        assert_eq!(
-            distinct,
-            vec![2010, 2036],
-            "right edges held for column 1463"
-        );
+        assert_eq!(r.edges_1463, vec![2010, 2036]);
         // Twelve nones were read; none of them outlasted the hold, so the lock never
         // let go and the picture never fell back to the cursor's x.
-        assert_eq!(raw_none, 12);
-        assert_eq!(out_none, 0, "nones that reached the lock");
+        assert_eq!(r.raw_none, 12);
+        assert_eq!(r.out_none, 0, "nones that reached the lock");
+    }
+
+    #[test]
+    fn replay_of_the_second_recording() {
+        // Recorded with the tracker already in place, 50 s of Follow: the band's
+        // readings replayed the same way, 146 scans with 11 over the dock.
+        let r = replay(include_str!(
+            "../../../docs/measurements/follow-2026-09-17-owner-2-follow.log"
+        ));
+        assert_eq!(r.scans, 135);
+        assert_eq!(r.raw_changes, 20);
+        assert_eq!(r.out_changes, 11, "tracked changes");
+        // The band read 1975 on twelve scans and 2010 on thirty; the lock held 2010.
+        assert_eq!(r.edges_1463, vec![2010]);
+        assert_eq!(r.raw_none, 3);
+        assert!(
+            r.out_none <= 2,
+            "nones that reached the lock: {}",
+            r.out_none
+        );
     }
 }

@@ -4,6 +4,50 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 3 (continued): the second recording, and the dock holds the glass — 17.9.2026 (0.1.0)
+
+The owner recorded again with build `2ed3568`: 50 s in Follow
+(`docs/measurements/follow-2026-09-17-owner-2-follow.log`) and 36 s in Lens
+(`…-owner-3-lens.log`; the lens does not scan, so there is nothing to hold and nothing
+to measure beyond the ride). What the Follow recording says:
+
+- **Reading is calm now.** From 9.6 s to 45 s — the reading itself — the window did not
+  resize once. The lock held the right edge of the column at 1463 at 2010 on all 43
+  scans while the band read 1975 on twelve of them (a 35 px range); the column at 2011
+  at 2557 or 2560 against the band's 37 px range; `none` reached the lock once in 146
+  scans (three were read). Seventeen changes reached the glass in 50 s against fifty in
+  84 s before, and every one between the settling of the first six seconds and the end
+  was a "none" decision for Fit.
+- **What remained was the trip to the dock.** At 45–48 s the cursor went to the dock's
+  corner to stop the recording; over the dock the band read 0..1456 (the wide-column
+  wait held that) and then 0..912 — 36 % of the screen, so it widened at once, to
+  1374 px. Eleven of the 146 scans had the cursor over the dock; seven of 218 in the
+  first recording, and the rest of that recording's top-strip readings came from the
+  strip right beside it.
+- **The dock holds the glass.** While the cursor is over the dock, Follow holds its
+  source rectangle and scans nothing, as it does while the pointer is over the glass
+  itself: reaching for the dock is not reading. The rider thread, which watches the
+  cursor anyway, reports the dock's rect to the engine. Replayed against both
+  recordings with the dock's scans left out: the second recording's widening to
+  1374 px is gone (880 → 825 → 1326, the last with the cursor in the sidebar on the way
+  out), the first recording's numbers hold (48 changes to 22, no `none` to the lock).
+- **A pause keeps the column's memory.** The tracker now forgets its column only when
+  the lock is switched off; a hover, a menu or the dock keeps the furthest line in
+  memory, which ages out by itself, so a column comes back after a trip to the dock
+  exactly as it was.
+- **And the dock's Still has a meaning.** With the source held over the dock, Still
+  from the dock freezes what the glass was showing before the cursor left for the dock
+  — the answer to the question left open this morning, to be confirmed by the owner
+  and, if kept, recorded as a decision.
+
+Both replays are pinned in Rust tests (`replay_of_the_first_recording`,
+`replay_of_the_second_recording`), scans over the dock skipped as the engine now skips
+them. Verified on the release build over CDP: in Follow, the picture's hash is unchanged
+while the cursor sits on the dock. The return to following was not proven by that run
+(the check moved the cursor vertically over a white page, which hashes the same twice),
+and no further live run was made: the owner was working at the machine, and a
+verification that takes the mouse is an interruption (LESSONS).
+
 ## Session 3 (continued): the column holds — three tunings from the first recording — 17.9.2026 (0.1.0)
 
 The owner's call on the three proposals: all three as one change, verified against
