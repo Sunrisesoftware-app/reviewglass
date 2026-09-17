@@ -6,6 +6,7 @@ mod capture;
 mod config;
 mod dock;
 mod glass;
+mod measure;
 mod notifier;
 mod panel;
 pub mod session;
@@ -85,6 +86,8 @@ pub fn run() {
             dock::dock_menu,
             dock::panel_save_size,
             glass::hotkey_set_toggle,
+            glass::follow_log_set,
+            glass::glass_log,
             panel::panel_usage,
             panel::panel_show,
             panel::alerts_get,

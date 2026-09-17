@@ -201,6 +201,13 @@ impl Handler {
             (None, None) => false,
             _ => true,
         };
+        crate::measure::log(|| {
+            let pane = match found {
+                Some(p) => format!("{}..{}/{}", p.x0, p.x1, p.width()),
+                None => "none".into(),
+            };
+            format!("scan cur={cx},{cy} pane={pane} changed={}", changed as u8)
+        });
         if changed {
             *current = found;
             self.shared.pane_seq.fetch_add(1, Ordering::Relaxed);
@@ -365,6 +372,8 @@ pub struct Engine {
     enabled: Mutex<bool>,
     control: Mutex<Option<CaptureControl<Handler, CaptureError>>>,
     view: Mutex<View>,
+    /// When the source rectangle last went to the measurement log (at most 10/s).
+    src_logged: Mutex<Instant>,
 }
 
 /// What the glass wants to show: its own size in physical pixels and the zoom.
@@ -418,6 +427,7 @@ impl Engine {
                 last_hash: AtomicU64::new(0),
             }),
             control: Mutex::new(None),
+            src_logged: Mutex::new(Instant::now()),
             view: Mutex::new(View {
                 width_px: 640,
                 height_px: 240,
@@ -461,6 +471,7 @@ impl Engine {
         }
         v.mode = mode;
         drop(v);
+        crate::measure::log(|| format!("mode {}", mode_name(mode)));
         if mode == Mode::Frozen {
             self.freeze();
         } else {
@@ -521,6 +532,7 @@ impl Engine {
     /// where it opened instead of having to be chased.
     pub fn hold(&self) {
         self.shared.held.store(true, Ordering::Relaxed);
+        crate::measure::log(|| "hold".into());
     }
 
     /// The menu closed. Publishing resumes after `HOLD_GRACE`, and the frame after it
@@ -531,6 +543,7 @@ impl Engine {
         *self.shared.resume_at.lock() = Some(Instant::now() + HOLD_GRACE);
         *self.shared.last_rect.lock() = None;
         self.shared.held.store(false, Ordering::Relaxed);
+        crate::measure::log(|| "release".into());
     }
 
     pub fn is_held(&self) -> bool {
@@ -539,10 +552,12 @@ impl Engine {
 
     pub fn set_hovered(&self, hovered: bool) {
         self.view.lock().hovered = hovered;
+        crate::measure::log(|| format!("hover {}", hovered as u8));
     }
 
     pub fn set_pane_lock(&self, lock: bool) {
         self.view.lock().pane_lock = lock;
+        crate::measure::log(|| format!("lock {}", lock as u8));
         if !lock {
             // A lock switched off forgets its pane: the next lock starts from a scan.
             let mut p = self.shared.pane.lock();
@@ -640,7 +655,28 @@ impl Engine {
                 h: src_h,
             },
         };
-        *self.shared.source.lock() = rect;
+        let prev = std::mem::replace(&mut *self.shared.source.lock(), rect);
+        if prev != rect && crate::measure::is_on() {
+            let mut at = self.src_logged.lock();
+            if at.elapsed() >= Duration::from_millis(100) {
+                *at = Instant::now();
+                let pane_s = pane
+                    .map(|p| format!("{}..{}", p.x0, p.x1))
+                    .unwrap_or_else(|| "none".into());
+                crate::measure::log(|| {
+                    format!(
+                        "src {},{},{},{} mode={} hovered={} held={} pane={pane_s}",
+                        rect.x,
+                        rect.y,
+                        rect.w,
+                        rect.h,
+                        mode_name(v.mode),
+                        v.hovered as u8,
+                        held as u8
+                    )
+                });
+            }
+        }
 
         let center = (rect.x + (rect.w / 2) as i32, rect.y + (rect.h / 2) as i32);
         let geom = monitor_at(center).ok_or(CaptureError::NoMonitor)?;
@@ -734,6 +770,15 @@ fn pane_rect(p: Pane, cy: i32, src_w: u32, src_h: u32) -> SourceRect {
 }
 
 /// The cursor in virtual-desktop physical pixels.
+/// The mode as the measurement log names it.
+fn mode_name(mode: Mode) -> &'static str {
+    match mode {
+        Mode::Follow => "follow",
+        Mode::Lens => "lens",
+        Mode::Frozen => "still",
+    }
+}
+
 pub fn cursor_pos() -> (i32, i32) {
     let mut p = POINT::default();
     // SAFETY: GetCursorPos writes into a valid POINT.

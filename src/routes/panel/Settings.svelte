@@ -14,12 +14,32 @@
   let saving = $state(false);
   let testResult = $state<"idle" | "sent" | "failed">("idle");
   let testError = $state<string | null>(null);
+  let followLog = $state(false);
+  let followLogPath = $state("");
+  let followLogError = $state<string | null>(null);
+
+  type LogState = { follow_log: boolean; follow_log_path: string };
 
   async function load() {
     cfg = await invoke<AlertConfig>("alerts_get");
-    const s = await invoke<{ hotkey_toggle: string }>("glass_state");
+    const s = await invoke<{ hotkey_toggle: string } & LogState>("glass_state");
     hotkey = s.hotkey_toggle;
     hotkeyDraft = hotkey;
+    followLog = s.follow_log;
+    followLogPath = s.follow_log_path;
+  }
+
+  // The Follow measurement log (temporary tooling for tuning the column detector and
+  // Fit together). Switching it on starts the file over.
+  async function setFollowLog(on: boolean) {
+    followLogError = null;
+    try {
+      const s = await invoke<LogState>("follow_log_set", { on });
+      followLog = s.follow_log;
+      followLogPath = s.follow_log_path;
+    } catch (e) {
+      followLogError = e instanceof Error ? e.message : String(e);
+    }
   }
 
   // The glass on/off shortcut. Applied on purpose, not on every keystroke: a half-typed
@@ -171,6 +191,24 @@
         <span class="bad">Could not show it: {testError}</span>
       {/if}
     </div>
+  </section>
+
+  <section>
+    <h2>Measurements</h2>
+    <p class="help">
+      A log of what the column detector reads and what Fit does with it, for tuning the
+      two together: the cursor, the column's edges, the source rectangle, the glass's size
+      and zoom, and Fit's decisions. Structure only — never pixels, never text. Switching
+      it on starts the file over; it stops itself after 200 000 lines.
+    </p>
+    <label class="row">
+      <input type="checkbox" checked={followLog} onchange={(e) => setFollowLog(e.currentTarget.checked)} />
+      <span>Record Follow measurements</span>
+    </label>
+    <p class="help">Written to <code>{followLogPath}</code>.</p>
+    {#if followLogError}
+      <p class="bad">{followLogError}</p>
+    {/if}
   </section>
 {/if}
 
