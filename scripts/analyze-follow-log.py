@@ -84,17 +84,34 @@ if found:
     print("  largest edge jumps between consecutive scans (left px, right px, at t): " + ", ".join(f"({l},{r},{t:.1f})" for l, r, t in big))
 
 # --- per column: is it the left edge or the right edge that moves? (left edge exact)
-cols = collections.defaultdict(list)
-for t, a, b, w, ch in found:
-    cols[a].append(b)
-if cols:
-    print("  per column (grouped by the exact left edge), the right edge as read:")
+def per_column(pairs, label):
+    cols = collections.defaultdict(list)
+    for a, b in pairs:
+        cols[a].append(b)
+    if not cols:
+        return
+    print(f"  per column (grouped by the exact left edge), the right edge {label}:")
     for x0, rs in sorted(cols.items(), key=lambda kv: -len(kv[1]))[:8]:
         med = statistics.median(rs)
         off = sum(1 for r in rs if abs(r - med) > 8)
         dist = ", ".join(f"{v}x{n}" for v, n in sorted(collections.Counter(rs).items()))
         print(f"    x0={x0:5d}: {len(rs):3d} readings, right edge {min(rs)}..{max(rs)} (range {max(rs) - min(rs)} px), "
               f"{off} more than 8 px off the median {med:.0f}; values {dist}")
+
+
+per_column([(a, b) for t, a, b, w, ch in found], "as the band read it")
+# What the lock held (logs from the tracker onward carry lock=…)
+locks = []
+for t, f in scans:
+    l = field(f, "lock")
+    if l and l != "none":
+        a, rest = l.split("..")
+        b, w = rest.split("/")
+        locks.append((int(a), int(b)))
+if locks:
+    lock_none = sum(1 for t, f in scans if field(f, "lock") == "none")
+    print(f"  the lock held a column on {len(locks)} scans and none on {lock_none}")
+    per_column(locks, "as the lock held it")
 
 # --- 'none' inside a column: does the source rectangle jump sideways?
 srcs = [(t, int(f.split(" ")[0].split(",")[0])) for t, k, f in rows if k == "src"]

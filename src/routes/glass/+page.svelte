@@ -57,6 +57,8 @@
   const FIT_MARGIN = 40; // kept free at the monitor's edges when fitting
   const FIT_SLACK = 16; // a pane that changed by less does not move the window
   const FIT_SHRINK_AFTER = 2000; // ms a narrower reading must hold before the glass narrows
+  const FIT_WIDE_COLUMN = 0.5; // a column wider than this share of the screen is suspect (a toolbar band read as one column) …
+  const FIT_WIDEN_WAIT = 3000; // … and widening to it waits this long: longer than the lock holds a lost column (2 s), so a reading that only persisted through a hold never widens the glass
   const BORDER_CSS = 3; // the glass's border, per side, in CSS px
 
   let canvas: HTMLCanvasElement;
@@ -119,10 +121,14 @@
   // Widen at once, narrow reluctantly: a wider reading means a line was being cut,
   // a narrower one is as likely a band with short lines as a narrower column, and a
   // glass that breathes with every row is tiring (the owner's word). A narrower
-  // reading has to hold for FIT_SHRINK_AFTER before the window follows it.
+  // reading has to hold for FIT_SHRINK_AFTER before the window follows it. One
+  // exception to "at once": a column wider than half the screen is more often a
+  // toolbar band read as a column than a column (the first recording: 1497 px at the
+  // top of the screen, twice, and the glass leapt to 2252 px), so that waits too, and
+  // longer than the lock holds a lost column.
   let fitting = false;
-  let shrinkTimer: ReturnType<typeof setTimeout> | undefined;
-  let shrinkDue = false;
+  let waitTimer: ReturnType<typeof setTimeout> | undefined;
+  let waitDue = false;
   async function fitToPane() {
     if (fitting) return;
     if (!paneFit || !paneLock || mode !== "follow" || !paneWidth) {
@@ -148,20 +154,24 @@
       const size = await win.innerSize();
       const zoomChanged = Math.abs(z - zoom) > 0.001;
       const facts = `fit pane=${paneWidth} z=${z} want=${want} size=${size.width} max=${maxW}`;
-      if (want < size.width - FIT_SLACK && !shrinkDue) {
-        // Narrower: wait and see whether it holds.
-        mlog(`${facts} -> shrink-wait ${FIT_SHRINK_AFTER}ms`);
-        clearTimeout(shrinkTimer);
-        shrinkTimer = setTimeout(() => {
-          shrinkDue = true;
-          void fitToPane().finally(() => (shrinkDue = false));
-        }, FIT_SHRINK_AFTER);
+      const narrower = want < size.width - FIT_SLACK;
+      const wideColumn =
+        want > size.width + FIT_SLACK && paneWidth > Math.round(screen.availWidth * scale) * FIT_WIDE_COLUMN;
+      if ((narrower || wideColumn) && !waitDue) {
+        // Wait and see whether it holds.
+        const wait = narrower ? FIT_SHRINK_AFTER : FIT_WIDEN_WAIT;
+        mlog(`${facts} -> ${narrower ? "shrink-wait" : "widen-wait"} ${wait}ms`);
+        clearTimeout(waitTimer);
+        waitTimer = setTimeout(() => {
+          waitDue = true;
+          void fitToPane().finally(() => (waitDue = false));
+        }, wait);
         return;
       }
-      clearTimeout(shrinkTimer);
+      clearTimeout(waitTimer);
       zoom = z;
       mlog(
-        `${facts} -> ${Math.abs(want - size.width) > FIT_SLACK ? (want > size.width ? "widen" : "shrink") : "none"}${shrinkDue ? " after-wait" : ""}${zoomChanged ? " zoom-changed" : ""}`,
+        `${facts} -> ${Math.abs(want - size.width) > FIT_SLACK ? (want > size.width ? "widen" : "shrink") : "none"}${waitDue ? " after-wait" : ""}${zoomChanged ? " zoom-changed" : ""}`,
       );
       if (Math.abs(want - size.width) > FIT_SLACK) {
         // Keep the window on its monitor: a glass that grew past the right edge would

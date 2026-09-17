@@ -4,6 +4,54 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 3 (continued): the column holds — three tunings from the first recording — 17.9.2026 (0.1.0)
+
+The owner's call on the three proposals: all three as one change, verified against
+the recording before recording again.
+
+- **The right edge is the furthest line in memory** (`capture/track.rs`,
+  `ColumnTracker`, between the detector and the lock). Per column — the same left edge
+  within 8 px — the right edge the lock holds is the widest reading of the last ten
+  seconds, not the widest in the current 400 px band. The left edge stays as read; it
+  never moved in the recording.
+- **A lost column is held for two seconds.** A `none` with a column in hand keeps that
+  column; a found column replaces it at once, so a column switch goes column to column
+  with no cursor-centred picture in between; after two seconds of `none` the lock lets
+  go. The tracker resets whenever scanning stops (lock off, hover, a menu), so a column
+  is never remembered across a gap.
+- **A wide column waits.** In Fit, a widening to a column wider than half the screen
+  waits three seconds — longer than the lock's hold on a lost column, so a reading that
+  only persisted through a hold never widens the glass. Everything narrower widens at
+  once, as before. (Proposed as "a widening beyond +25 % waits"; against the recording
+  that would have delayed the owner's own switch from a code column to the chat column,
+  +68 %, by three seconds, while the case that hurt was the 1497 px reading at the top
+  of the screen. The screen share is the better test.) Where the 1497 px readings came
+  from: the cursor's trips to the dock and the tab strip, y below 110, where the band is
+  a quarter title bar and the sidebar's gutter is uniform in 75 % of the slices, under
+  the 80 % a plain gutter needs — so sidebar and chat merged into one "column".
+
+Verified against the recording, twice. A Rust test replays the 218 scans through the
+tracker (`replay_of_the_first_recording`) and pins the numbers; a Python replay of the
+same scans through the old and the new Fit rules counts the resizes.
+
+| | raw readings / old Fit | tracked / new Fit |
+|---|---|---|
+| changes told to the glass | 50 | 23 |
+| `none` reaching the lock | 12 | 0 |
+| right edges held in the column at 1463 | 1998, 2001, 2010, 2036 | 2010, 2036 |
+| window resizes in 84 s | 9 | 6 |
+| widths over 1500 px | 2 (2252, twice) | 0 |
+| width sequence | 825 → 866 → 826 → 609 → 1378 → 2252 → 828 → 2252 → 825 | 825 → 866 → 830 → 609 → 1378 → 828 |
+
+What remains in the new sequence is the owner's own movement: the 866 is the 2036 px
+line, held for ten seconds and then let go (830); the 609 and the 1378 are the left
+column and the chat column. The 23 changes are column switches and a right edge growing
+to a longer line. The scan line in the log now carries both readings, `pane=` from the
+band and `lock=` from the tracker, and the reader shows both side by side.
+
+Next: the owner records again with this build in the same situations, and the same
+reader says whether the picture is calm; then the recorder goes.
+
 ## Session 3 (continued): a measurement log for Follow — 17.9.2026 (0.1.0)
 
 Observation 1 — Follow still drifts and the text in the glass changes width — is to be
