@@ -83,6 +83,33 @@ if found:
     big = sorted(jumps, reverse=True)[:5]
     print("  largest edge jumps between consecutive scans (left px, right px, at t): " + ", ".join(f"({l},{r},{t:.1f})" for l, r, t in big))
 
+# --- per column: is it the left edge or the right edge that moves? (left edge exact)
+cols = collections.defaultdict(list)
+for t, a, b, w, ch in found:
+    cols[a].append(b)
+if cols:
+    print("  per column (grouped by the exact left edge), the right edge as read:")
+    for x0, rs in sorted(cols.items(), key=lambda kv: -len(kv[1]))[:8]:
+        med = statistics.median(rs)
+        off = sum(1 for r in rs if abs(r - med) > 8)
+        dist = ", ".join(f"{v}x{n}" for v, n in sorted(collections.Counter(rs).items()))
+        print(f"    x0={x0:5d}: {len(rs):3d} readings, right edge {min(rs)}..{max(rs)} (range {max(rs) - min(rs)} px), "
+              f"{off} more than 8 px off the median {med:.0f}; values {dist}")
+
+# --- 'none' inside a column: does the source rectangle jump sideways?
+srcs = [(t, int(f.split(" ")[0].split(",")[0])) for t, k, f in rows if k == "src"]
+nones = [(t, f) for t, f in scans if field(f, "pane") == "none"]
+if nones and srcs:
+    print(f"  on each of the {len(nones)} 'none' readings, the source x before it and within the next 1.5 s:")
+    for t, f in nones[:12]:
+        before = [x for tt, x in srcs if tt <= t]
+        after = [x for tt, x in srcs if t < tt <= t + 1.5]
+        if before and after:
+            b = before[-1]
+            print(f"    t={t:6.1f} cur={field(f, 'cur')}: x {b} -> {'/'.join(str(x) for x in after[:5])}  (max jump {max(abs(x - b) for x in after)} px)")
+    if len(nones) > 12:
+        print("    …")
+
 # --- what the glass was told
 events = [(t, field(f, "width")) for t, k, f in rows if k == "pane-event"]
 print(f"\nGlass told {len(events)} times" + (f" ({sum(1 for _, w in events if w == 'none')} of them 'none')" if events else ""))

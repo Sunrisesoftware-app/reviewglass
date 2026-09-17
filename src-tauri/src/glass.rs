@@ -56,9 +56,13 @@ pub struct GlassState {
     /// The global shortcut that switches the glass on and off, as configured — so the
     /// dock can say it. A shortcut nobody was told about is not a feature.
     pub hotkey_toggle: String,
-    /// The Follow measurement log (temporary tooling, session 3) and where it writes.
+    /// The Follow measurement recorder (temporary tooling, session 3): recording now,
+    /// the file being written or the last one, when it started (unix seconds) and
+    /// how many lines it has.
     pub follow_log: bool,
-    pub follow_log_path: String,
+    pub follow_log_path: Option<String>,
+    pub follow_log_since: Option<u64>,
+    pub follow_log_lines: u64,
     pub config: LoadOutcome,
 }
 
@@ -88,8 +92,10 @@ fn state_of(engine: &Engine, store: &Store) -> GlassState {
         pane_width: engine.pane().map(|p| p.width()),
         build: build_stamp(),
         hotkey_toggle: store.get().hotkeys.toggle_glass.clone(),
-        follow_log: g.follow_log,
-        follow_log_path: crate::measure::path().display().to_string(),
+        follow_log: crate::measure::is_on(),
+        follow_log_path: crate::measure::path().map(|p| p.display().to_string()),
+        follow_log_since: crate::measure::since(),
+        follow_log_lines: crate::measure::lines(),
         config: store.outcome(),
     }
 }
@@ -126,12 +132,6 @@ pub fn restore(app: &AppHandle) {
     let store = app.state::<Store>();
     let engine = app.state::<Engine>();
     let cfg = store.get().glass;
-    if cfg.follow_log {
-        // Left on at the last quit: a new file for this run.
-        if let Err(e) = crate::measure::set_on(true, &log_header(&cfg)) {
-            eprintln!("reviewglass: follow log: {e}");
-        }
-    }
     if let Some(w) = app.get_webview_window(GLASS_LABEL) {
         let _ = w.set_size(PhysicalSize::new(cfg.width, cfg.height));
         if let (Some(x), Some(y)) = (cfg.x, cfg.y) {
@@ -648,8 +648,8 @@ fn restore_own_width(app: &AppHandle, store: &Store) {
     }
 }
 
-/// Switch the Follow measurement log on or off (Settings tab). On starts the file
-/// over; the answer is the state, with the path the log is written to.
+/// Record or stop the Follow measurement log (Settings tab). Recording starts a new
+/// file named by the local time; the answer is the state, with the file's path.
 #[tauri::command]
 pub fn follow_log_set(
     app: AppHandle,
@@ -657,9 +657,12 @@ pub fn follow_log_set(
     store: State<Store>,
     on: bool,
 ) -> Result<GlassState, String> {
-    let cfg = store.get().glass;
-    crate::measure::set_on(on, &log_header(&cfg))?;
-    let _ = store.update(|c| c.glass.follow_log = on);
+    if on {
+        let cfg = store.get().glass;
+        crate::measure::start(&log_header(&cfg))?;
+    } else {
+        crate::measure::stop();
+    }
     broadcast_state(&app, &engine, &store);
     Ok(state_of(&engine, &store))
 }

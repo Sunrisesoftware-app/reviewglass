@@ -1,0 +1,710 @@
+# ReviewGlass follow log; started at unix 1789669527; build 0.1.0 f701514; zoom=1.5 pane_lock=1 pane_fit=1 glass=736x442 lens=736x442
+# <t seconds since start> <kind> <fields>: scan (every detector run), src (the source rectangle, at most 10/s), pane-event (what the glass was told), fit (Fit's decision, from the glass), view, resized, hover, hold, release, mode, lock
+0.002 view 730x388 zoom=1.5 derived=0
+10.391 mode follow
+10.393 src -145,-99,487,259 mode=follow hovered=0 held=0 pane=none
+10.484 resized 736x442
+10.507 scan cur=98,30 pane=0..380/380 changed=1
+10.514 src -53,-99,487,259 mode=follow hovered=0 held=0 pane=0..380
+10.514 pane-event width=380
+10.518 fit pane=380 z=1.5 want=576 size=736 max=2520 -> shrink-wait 2000ms
+10.832 scan cur=99,30 pane=0..380/380 changed=0
+10.859 src -53,-93,487,259 mode=follow hovered=0 held=0 pane=0..380
+10.998 src -53,237,487,259 mode=follow hovered=0 held=0 pane=0..380
+11.099 scan cur=736,445 pane=513..915/402 changed=1
+11.129 src 471,316,487,259 mode=follow hovered=0 held=0 pane=513..915
+11.129 pane-event width=402
+11.135 fit pane=402 z=1.5 want=609 size=736 max=2520 -> shrink-wait 2000ms
+11.273 src 471,309,487,259 mode=follow hovered=0 held=0 pane=513..915
+11.366 scan cur=1281,433 pane=916..1462/546 changed=1
+11.411 src 916,311,487,259 mode=follow hovered=0 held=0 pane=916..1462
+11.412 pane-event width=546
+11.416 fit pane=546 z=1.5 want=825 size=736 max=2520 -> widen
+11.425 view 819x407 zoom=1.5 derived=0
+11.427 resized 825x442
+11.529 src 916,297,546,271 mode=follow hovered=0 held=0 pane=916..1462
+11.633 scan cur=1567,395 pane=1463..2010/547 changed=1
+11.658 src 1463,251,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+11.658 pane-event width=547
+11.663 fit pane=547 z=1.5 want=827 size=825 max=2520 -> none
+11.782 src 1463,201,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+11.900 scan cur=1696,331 pane=1463..2010/547 changed=0
+11.952 src 1463,193,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+12.091 src 1463,180,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+12.166 scan cur=1685,312 pane=1463..2010/547 changed=0
+12.467 scan cur=1686,314 pane=1463..2010/547 changed=0
+12.496 src 1463,186,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+12.620 src 1463,234,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+12.734 scan cur=1686,390 pane=1463..2010/547 changed=0
+12.758 src 1463,261,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+12.898 src 1463,302,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+12.998 hover 1
+13.001 scan cur=1681,485 pane=1463..2010/547 changed=0
+13.566 hover 0
+13.569 src 1463,420,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+13.601 scan cur=1779,561 pane=1463..2010/547 changed=0
+13.698 src 1463,431,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+13.868 scan cur=1788,566 pane=1463..2010/547 changed=0
+13.884 src 1463,432,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+14.026 src 1463,462,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+14.135 scan cur=1793,602 pane=1463..2010/547 changed=0
+15.136 scan cur=1793,602 pane=1463..2010/547 changed=0
+15.285 src 1463,478,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+15.403 scan cur=1796,634 pane=1463..2010/547 changed=0
+15.415 src 1463,499,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+15.583 src 1463,504,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+15.669 scan cur=1798,642 pane=1463..2010/547 changed=0
+15.902 src 1463,509,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+15.936 scan cur=1798,647 pane=1463..2010/547 changed=0
+16.033 src 1463,523,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+16.164 src 1463,532,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+16.203 scan cur=1798,668 pane=1463..2010/547 changed=0
+16.470 scan cur=1798,671 pane=1463..2010/547 changed=0
+16.475 src 1463,537,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+16.662 src 1463,539,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+16.737 scan cur=1799,674 pane=1463..2010/547 changed=0
+16.849 src 1463,540,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+17.004 scan cur=1799,676 pane=1463..2010/547 changed=0
+17.297 src 1463,542,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+17.305 scan cur=1799,677 pane=1463..2010/547 changed=0
+17.571 scan cur=1799,678 pane=1463..2010/547 changed=0
+17.623 src 1463,544,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+17.802 src 1463,547,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+17.838 scan cur=1800,682 pane=1463..2010/547 changed=0
+17.933 src 1463,552,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+18.058 src 1463,558,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+18.089 scan cur=1800,695 pane=1463..2010/547 changed=0
+18.197 src 1463,567,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+18.321 src 1463,574,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+18.355 scan cur=1799,711 pane=1463..2010/547 changed=0
+18.502 src 1463,580,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+18.622 scan cur=1799,718 pane=1463..2010/547 changed=0
+18.679 src 1463,584,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+18.816 src 1463,592,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+18.889 scan cur=1797,732 pane=1463..2010/547 changed=0
+18.941 src 1463,600,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+19.080 src 1463,607,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+19.156 scan cur=1794,743 pane=1463..2010/547 changed=0
+19.205 src 1463,610,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+19.336 src 1463,620,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+19.424 scan cur=1791,764 pane=1463..2010/547 changed=0
+19.467 src 1463,638,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+19.603 src 1463,670,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+19.690 scan cur=1785,816 pane=1463..2010/547 changed=0
+19.747 src 1463,685,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+19.887 src 1463,698,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+19.957 scan cur=1780,844 pane=1463..2010/547 changed=0
+20.018 src 1463,720,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+20.148 src 1463,738,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+20.223 scan cur=1772,877 pane=1463..2010/547 changed=0
+20.274 src 1463,745,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+20.413 src 1463,752,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+20.491 scan cur=1770,893 pane=1463..2001/538 changed=1
+20.504 pane-event width=538
+20.509 fit pane=538 z=1.5 want=813 size=825 max=2520 -> none
+20.552 src 1459,761,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+20.691 src 1459,762,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+20.757 scan cur=1769,902 pane=1463..2001/538 changed=0
+20.821 src 1459,771,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+21.024 scan cur=1769,906 pane=1463..2001/538 changed=0
+21.139 src 1459,773,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+21.271 src 1459,787,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+21.292 scan cur=1767,923 pane=1463..2001/538 changed=0
+21.413 src 1459,796,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+21.558 scan cur=1767,937 pane=1463..2001/538 changed=0
+21.644 src 1459,803,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+21.784 src 1459,813,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+21.825 scan cur=1768,950 pane=1463..2001/538 changed=0
+21.922 src 1459,819,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+22.062 src 1459,831,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+22.075 scan cur=1769,967 pane=1463..2001/538 changed=0
+22.200 src 1459,838,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+22.324 src 1459,843,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+22.342 scan cur=1770,978 pane=1463..2001/538 changed=0
+22.557 src 1459,842,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+22.609 scan cur=1789,977 pane=1463..2001/538 changed=0
+22.790 src 1459,843,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+22.876 scan cur=1812,978 pane=1463..2001/538 changed=0
+23.024 src 1459,834,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+23.143 scan cur=1839,940 pane=1463..2001/538 changed=0
+23.156 src 1459,803,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+23.301 src 1459,779,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+23.410 scan cur=1845,897 pane=1463..2001/538 changed=0
+23.426 src 1459,761,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+23.557 src 1459,748,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+23.676 scan cur=1846,867 pane=1463..1998/535 changed=0
+23.688 src 1459,731,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+23.813 src 1459,725,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+23.927 scan cur=1841,849 pane=1463..2010/547 changed=1
+23.951 src 1463,710,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+23.951 pane-event width=547
+23.955 fit pane=547 z=1.5 want=827 size=825 max=2520 -> none
+24.091 src 1463,696,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+24.194 scan cur=1837,825 pane=1463..2010/547 changed=0
+24.229 src 1463,687,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+24.444 scan cur=1837,814 pane=1463..2010/547 changed=0
+24.676 src 1463,684,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+24.711 scan cur=1835,826 pane=1463..2010/547 changed=0
+24.806 src 1463,714,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+24.938 src 1463,729,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+24.978 scan cur=1833,869 pane=1463..1998/535 changed=1
+24.984 pane-event width=535
+24.989 fit pane=535 z=1.5 want=809 size=825 max=2520 -> none
+25.063 src 1458,745,546,271 mode=follow hovered=0 held=0 pane=1463..1998
+25.202 src 1458,759,546,271 mode=follow hovered=0 held=0 pane=1463..1998
+25.245 scan cur=1835,899 pane=1463..2001/538 changed=0
+25.327 src 1458,771,546,271 mode=follow hovered=0 held=0 pane=1463..1998
+25.466 src 1458,772,546,271 mode=follow hovered=0 held=0 pane=1463..1998
+25.511 scan cur=1835,908 pane=1463..2001/538 changed=0
+25.699 src 1458,778,546,271 mode=follow hovered=0 held=0 pane=1463..1998
+25.778 scan cur=1837,912 pane=1463..2001/538 changed=0
+26.045 scan cur=1837,911 pane=1463..2001/538 changed=0
+26.287 src 1458,771,546,271 mode=follow hovered=0 held=0 pane=1463..1998
+26.312 scan cur=1843,902 pane=1463..2001/538 changed=0
+26.427 src 1458,760,546,271 mode=follow hovered=0 held=0 pane=1463..1998
+26.559 src 1458,747,546,271 mode=follow hovered=0 held=0 pane=1463..1998
+26.579 scan cur=1849,881 pane=1463..2010/547 changed=1
+26.598 pane-event width=547
+26.603 fit pane=547 z=1.5 want=827 size=825 max=2520 -> none
+26.769 src 1463,740,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+26.846 scan cur=1852,864 pane=1463..1998/535 changed=1
+26.861 pane-event width=535
+26.866 fit pane=535 z=1.5 want=809 size=825 max=2520 -> none
+26.901 src 1458,718,546,271 mode=follow hovered=0 held=0 pane=1463..1998
+27.113 scan cur=1854,846 pane=1463..2010/547 changed=1
+27.137 src 1463,711,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+27.137 pane-event width=547
+27.139 fit pane=547 z=1.5 want=827 size=825 max=2520 -> none
+27.462 src 1463,710,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+27.479 scan cur=1854,843 pane=1463..2010/547 changed=0
+27.602 src 1463,684,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+27.728 src 1463,674,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+27.747 scan cur=1847,807 pane=1463..2010/547 changed=0
+27.860 src 1463,663,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+28.013 scan cur=1846,795 pane=1463..2010/547 changed=0
+28.178 src 1463,664,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+28.281 scan cur=1823,804 pane=1463..2010/547 changed=0
+28.547 scan cur=1812,804 pane=1463..2010/547 changed=0
+28.595 src 1463,670,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+28.728 src 1463,690,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+28.814 scan cur=1815,833 pane=1463..2010/547 changed=0
+28.860 src 1463,701,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+28.991 src 1463,708,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+29.081 scan cur=1810,849 pane=1463..2010/547 changed=0
+29.122 src 1463,717,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+29.245 src 1463,734,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+29.348 scan cur=1806,886 pane=1463..2010/547 changed=0
+29.378 src 1463,751,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+29.523 src 1463,761,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+29.615 scan cur=1812,921 pane=1463..2001/538 changed=1
+29.647 src 1459,798,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+29.647 pane-event width=538
+29.652 fit pane=538 z=1.5 want=813 size=825 max=2520 -> none
+29.785 src 1459,808,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+29.882 scan cur=1810,951 pane=1463..2001/538 changed=0
+29.924 src 1459,820,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+30.047 src 1459,829,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+30.149 scan cur=1810,969 pane=1463..2001/538 changed=0
+30.179 src 1459,836,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+30.401 src 1459,842,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+30.416 scan cur=1810,979 pane=1463..2001/538 changed=0
+30.541 src 1459,868,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+30.679 src 1459,890,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+30.683 scan cur=1813,1025 pane=1463..2001/538 changed=0
+30.819 src 1459,898,546,271 mode=follow hovered=0 held=0 pane=1463..2001
+30.950 scan cur=1814,1040 pane=1463..2010/547 changed=1
+30.957 src 1463,906,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+30.957 pane-event width=547
+30.961 fit pane=547 z=1.5 want=827 size=825 max=2520 -> none
+31.078 src 1463,924,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+31.204 src 1463,940,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+31.217 scan cur=1814,1076 pane=1463..2010/547 changed=0
+31.390 src 1463,948,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+31.483 scan cur=1814,1091 pane=1463..2010/547 changed=0
+31.530 src 1463,960,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+31.660 src 1463,970,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+31.750 scan cur=1814,1111 pane=1463..2010/547 changed=0
+31.791 src 1463,980,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+31.914 src 1463,993,546,271 mode=follow hovered=0 held=0 pane=1463..2010
+32.017 scan cur=1814,1133 pane=1463..2036/573 changed=1
+32.047 src 1463,998,546,271 mode=follow hovered=0 held=0 pane=1463..2036
+32.047 pane-event width=573
+32.054 fit pane=573 z=1.5 want=866 size=825 max=2520 -> widen
+32.059 view 860x407 zoom=1.5 derived=0
+32.062 resized 866x442
+32.667 scan cur=1815,1133 pane=1463..2036/573 changed=0
+33.001 scan cur=1817,1133 pane=1463..2036/573 changed=0
+33.015 src 1463,997,573,271 mode=follow hovered=0 held=0 pane=1463..2036
+33.148 src 1463,983,573,271 mode=follow hovered=0 held=0 pane=1463..2036
+33.268 scan cur=1822,1107 pane=1463..2010/547 changed=1
+33.294 src 1450,969,573,271 mode=follow hovered=0 held=0 pane=1463..2010
+33.294 pane-event width=547
+33.299 fit pane=547 z=1.5 want=827 size=866 max=2520 -> shrink-wait 2000ms
+33.420 src 1450,961,573,271 mode=follow hovered=0 held=0 pane=1463..2010
+33.519 scan cur=1821,1090 pane=1463..2010/547 changed=0
+33.558 src 1450,952,573,271 mode=follow hovered=0 held=0 pane=1463..2010
+33.801 scan cur=1821,1087 pane=1463..2010/547 changed=0
+33.929 src 1450,949,573,271 mode=follow hovered=0 held=0 pane=1463..2010
+34.069 scan cur=1823,1080 pane=1463..2010/547 changed=0
+34.336 scan cur=1815,1080 pane=1463..2010/547 changed=0
+34.395 src 1450,946,573,271 mode=follow hovered=0 held=0 pane=1463..2010
+34.534 src 1450,946,573,271 mode=follow hovered=0 held=0 pane=1463..2010
+34.603 scan cur=1669,1078 pane=1463..2010/547 changed=0
+34.800 src 1450,942,573,271 mode=follow hovered=0 held=0 pane=1463..2010
+34.870 scan cur=1586,1077 pane=1463..2010/547 changed=0
+35.032 src 1450,943,573,271 mode=follow hovered=0 held=0 pane=1463..2010
+35.137 scan cur=1804,1078 pane=1463..2010/547 changed=0
+35.221 src 1450,942,573,271 mode=follow hovered=0 held=0 pane=1463..2010
+35.302 fit pane=547 z=1.5 want=827 size=866 max=2520 -> shrink after-wait
+35.310 view 821x407 zoom=1.5 derived=0
+35.315 resized 827x442
+35.350 src 1463,949,547,271 mode=follow hovered=0 held=0 pane=1463..2010
+35.404 scan cur=2033,1085 pane=none changed=1
+35.439 pane-event width=none
+35.440 fit skip fit=1 lock=1 mode=follow pane=none zoomBack=0
+35.483 src 1806,943,547,271 mode=follow hovered=0 held=0 pane=none
+35.617 src 1871,943,547,271 mode=follow hovered=0 held=0 pane=none
+35.686 scan cur=2109,1075 pane=2011..2549/538 changed=1
+35.703 pane-event width=538
+35.707 fit pane=538 z=1.5 want=813 size=827 max=2520 -> none
+35.954 scan cur=2102,1068 pane=2011..2549/538 changed=0
+35.982 src 2007,873,547,271 mode=follow hovered=0 held=0 pane=2011..2549
+36.105 src 2007,854,547,271 mode=follow hovered=0 held=0 pane=2011..2549
+36.220 scan cur=2082,989 pane=2011..2560/549 changed=1
+36.244 src 2011,854,547,271 mode=follow hovered=0 held=0 pane=2011..2560
+36.245 pane-event width=549
+36.249 fit pane=549 z=1.5 want=830 size=827 max=2520 -> none
+37.021 scan cur=2083,988 pane=2011..2560/549 changed=0
+37.035 src 2011,851,547,271 mode=follow hovered=0 held=0 pane=2011..2560
+37.180 src 2011,834,547,271 mode=follow hovered=0 held=0 pane=2011..2560
+37.288 scan cur=2090,956 pane=2011..2560/549 changed=0
+37.304 src 2011,820,547,271 mode=follow hovered=0 held=0 pane=2011..2560
+37.434 src 2011,813,547,271 mode=follow hovered=0 held=0 pane=2011..2560
+37.554 src 2011,808,547,271 mode=follow hovered=0 held=0 pane=2011..2560
+37.555 scan cur=2091,943 pane=none changed=1
+37.596 pane-event width=none
+37.599 fit skip fit=1 lock=1 mode=follow pane=none zoomBack=0
+37.674 src 1820,802,547,271 mode=follow hovered=0 held=0 pane=none
+37.815 src 1821,795,547,271 mode=follow hovered=0 held=0 pane=none
+37.822 scan cur=2094,929 pane=2011..2547/536 changed=1
+37.861 pane-event width=536
+37.866 fit pane=536 z=1.5 want=810 size=827 max=2520 -> shrink-wait 2000ms
+37.940 src 2006,788,547,271 mode=follow hovered=0 held=0 pane=2011..2547
+38.080 src 2006,783,547,271 mode=follow hovered=0 held=0 pane=2011..2547
+38.089 scan cur=2097,917 pane=2011..2523/512 changed=1
+38.119 pane-event width=512
+38.124 fit pane=512 z=1.5 want=774 size=827 max=2520 -> shrink-wait 2000ms
+38.217 src 1994,770,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+38.356 src 1994,765,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+38.373 scan cur=2101,899 pane=2011..2523/512 changed=0
+38.496 src 1994,754,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+38.639 scan cur=2105,881 pane=2011..2523/512 changed=0
+38.666 src 1994,743,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+38.806 src 1994,730,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+38.906 scan cur=2108,858 pane=2011..2523/512 changed=0
+38.946 src 1994,723,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+39.164 src 1994,729,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+39.173 scan cur=2108,865 pane=2011..2523/512 changed=0
+39.301 src 1994,763,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+39.425 src 1994,801,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+39.441 scan cur=2112,941 pane=2011..2547/536 changed=1
+39.470 pane-event width=536
+39.475 fit pane=536 z=1.5 want=810 size=827 max=2520 -> shrink-wait 2000ms
+39.562 src 2006,847,547,271 mode=follow hovered=0 held=0 pane=2011..2547
+39.700 src 2006,864,547,271 mode=follow hovered=0 held=0 pane=2011..2547
+39.707 scan cur=2115,999 pane=2011..2560/549 changed=1
+39.746 pane-event width=549
+39.751 fit pane=549 z=1.5 want=830 size=827 max=2520 -> none
+39.974 scan cur=2115,1001 pane=2011..2560/549 changed=0
+40.237 src 2011,862,547,271 mode=follow hovered=0 held=0 pane=2011..2560
+40.241 scan cur=2115,997 pane=2011..2560/549 changed=0
+40.360 src 2011,845,547,271 mode=follow hovered=0 held=0 pane=2011..2560
+40.499 src 2011,833,547,271 mode=follow hovered=0 held=0 pane=2011..2560
+40.508 scan cur=2115,967 pane=none changed=1
+40.538 pane-event width=none
+40.539 fit skip fit=1 lock=1 mode=follow pane=none zoomBack=0
+40.635 src 1840,823,547,271 mode=follow hovered=0 held=0 pane=none
+40.774 src 1835,812,547,271 mode=follow hovered=0 held=0 pane=none
+40.775 scan cur=2108,947 pane=none changed=0
+40.989 src 1831,805,547,271 mode=follow hovered=0 held=0 pane=none
+41.043 scan cur=2103,934 pane=none changed=0
+41.122 src 1830,791,547,271 mode=follow hovered=0 held=0 pane=none
+41.253 src 1833,777,547,271 mode=follow hovered=0 held=0 pane=none
+41.309 scan cur=2108,907 pane=2011..2523/512 changed=1
+41.339 pane-event width=512
+41.344 fit pane=512 z=1.5 want=774 size=827 max=2520 -> shrink-wait 2000ms
+41.388 src 1994,766,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+41.575 scan cur=2119,900 pane=2011..2523/512 changed=0
+41.619 src 1994,764,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+41.758 src 1994,758,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+41.842 scan cur=2124,891 pane=2011..2523/512 changed=0
+41.889 src 1994,755,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+42.021 src 1994,745,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+42.126 scan cur=2125,864 pane=2011..2523/512 changed=0
+42.156 src 1994,725,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+42.300 src 1994,713,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+42.393 scan cur=2125,831 pane=2011..2523/512 changed=0
+42.440 src 1994,689,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+42.573 src 1994,676,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+42.660 scan cur=2128,806 pane=2011..2547/536 changed=1
+42.671 pane-event width=536
+42.676 fit pane=536 z=1.5 want=810 size=827 max=2520 -> shrink-wait 2000ms
+42.718 src 2006,668,547,271 mode=follow hovered=0 held=0 pane=2011..2547
+42.855 src 2006,649,547,271 mode=follow hovered=0 held=0 pane=2011..2547
+42.927 scan cur=2131,770 pane=2011..2557/546 changed=1
+42.948 pane-event width=546
+42.954 fit pane=546 z=1.5 want=825 size=827 max=2520 -> none
+42.990 src 2011,625,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+43.134 src 2011,602,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+43.210 scan cur=2131,722 pane=2011..2523/512 changed=1
+43.228 pane-event width=512
+43.232 fit pane=512 z=1.5 want=774 size=827 max=2520 -> shrink-wait 2000ms
+43.274 src 1994,578,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+43.412 src 1994,552,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+43.477 scan cur=2118,678 pane=2011..2523/512 changed=0
+43.550 src 1994,534,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+43.689 src 1994,518,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+43.744 scan cur=2114,643 pane=2011..2523/512 changed=0
+43.828 src 1994,492,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+43.957 src 1994,469,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+44.011 scan cur=2107,594 pane=2011..2523/512 changed=0
+44.091 src 1994,444,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+44.224 src 1994,419,547,271 mode=follow hovered=0 held=0 pane=2011..2523
+44.278 scan cur=2093,545 pane=2011..2557/546 changed=1
+44.322 pane-event width=546
+44.327 fit pane=546 z=1.5 want=825 size=827 max=2520 -> none
+44.369 src 2011,401,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+44.508 src 2011,389,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+44.544 scan cur=2089,517 pane=2011..2557/546 changed=0
+44.646 src 2011,370,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+44.783 src 2011,348,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+44.811 scan cur=2083,479 pane=2011..2557/546 changed=0
+44.906 src 2011,331,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+45.045 src 2011,313,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+45.079 scan cur=2074,444 pane=2011..2557/546 changed=0
+45.183 src 2011,288,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+45.305 src 2011,264,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+45.329 scan cur=2063,395 pane=2011..2557/546 changed=0
+45.430 src 2011,244,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+45.570 src 2011,223,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+45.596 scan cur=2061,356 pane=2011..2557/546 changed=0
+45.694 src 2011,211,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+45.825 src 2011,197,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+45.862 scan cur=2060,332 pane=2011..2557/546 changed=0
+45.958 src 2011,204,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+46.081 src 2011,264,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+46.130 scan cur=2082,421 pane=2011..2557/546 changed=0
+46.218 src 2011,314,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+46.343 src 2011,302,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+46.396 scan cur=2058,412 pane=2011..2557/546 changed=0
+46.484 src 2011,239,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+46.608 src 2011,215,547,271 mode=follow hovered=0 held=0 pane=2011..2557
+46.646 scan cur=1777,351 pane=1463..2010/547 changed=1
+46.653 pane-event width=547
+46.657 fit pane=547 z=1.5 want=827 size=827 max=2520 -> none
+46.777 src 1463,220,547,271 mode=follow hovered=0 held=0 pane=1463..2010
+46.910 src 1463,223,547,271 mode=follow hovered=0 held=0 pane=1463..2010
+46.913 scan cur=1514,358 pane=1463..2010/547 changed=0
+47.041 src 1463,225,547,271 mode=follow hovered=0 held=0 pane=1463..2010
+47.180 scan cur=1323,358 pane=916..1462/546 changed=1
+47.212 src 916,223,547,271 mode=follow hovered=0 held=0 pane=916..1462
+47.212 pane-event width=546
+47.216 fit pane=546 z=1.5 want=825 size=827 max=2520 -> none
+47.352 src 916,208,547,271 mode=follow hovered=0 held=0 pane=916..1462
+47.447 scan cur=1178,341 pane=916..1462/546 changed=0
+47.479 src 916,205,547,271 mode=follow hovered=0 held=0 pane=916..1462
+47.599 src 916,200,547,271 mode=follow hovered=0 held=0 pane=916..1462
+47.714 scan cur=1129,317 pane=916..1462/546 changed=0
+47.740 src 916,179,547,271 mode=follow hovered=0 held=0 pane=916..1462
+47.863 src 916,162,547,271 mode=follow hovered=0 held=0 pane=916..1462
+47.980 scan cur=1125,297 pane=916..1462/546 changed=0
+48.094 src 916,166,547,271 mode=follow hovered=0 held=0 pane=916..1462
+48.228 src 916,179,547,271 mode=follow hovered=0 held=0 pane=916..1462
+48.248 scan cur=1114,314 pane=916..1462/546 changed=0
+48.370 src 916,188,547,271 mode=follow hovered=0 held=0 pane=916..1462
+48.508 src 916,202,547,271 mode=follow hovered=0 held=0 pane=916..1462
+48.515 scan cur=1108,337 pane=916..1462/546 changed=0
+48.726 src 916,200,547,271 mode=follow hovered=0 held=0 pane=916..1462
+48.782 scan cur=1103,326 pane=916..1462/546 changed=0
+48.865 src 916,165,547,271 mode=follow hovered=0 held=0 pane=916..1462
+49.007 src 916,180,547,271 mode=follow hovered=0 held=0 pane=916..1462
+49.049 scan cur=831,317 pane=513..915/402 changed=1
+49.086 pane-event width=402
+49.091 fit pane=402 z=1.5 want=609 size=827 max=2520 -> shrink-wait 2000ms
+49.124 src 441,185,547,271 mode=follow hovered=0 held=0 pane=513..915
+49.258 src 441,195,547,271 mode=follow hovered=0 held=0 pane=513..915
+49.316 scan cur=744,334 pane=513..915/402 changed=0
+49.581 scan cur=738,335 pane=513..915/402 changed=0
+49.848 scan cur=737,338 pane=513..915/402 changed=0
+49.859 src 441,204,547,271 mode=follow hovered=0 held=0 pane=513..915
+50.088 src 441,209,547,271 mode=follow hovered=0 held=0 pane=513..915
+50.116 scan cur=732,344 pane=513..915/402 changed=0
+50.383 scan cur=671,345 pane=513..915/402 changed=0
+50.417 src 441,213,547,271 mode=follow hovered=0 held=0 pane=513..915
+50.556 src 441,228,547,271 mode=follow hovered=0 held=0 pane=513..915
+50.634 scan cur=664,369 pane=513..915/402 changed=0
+50.681 src 441,237,547,271 mode=follow hovered=0 held=0 pane=513..915
+50.900 scan cur=663,372 pane=513..915/402 changed=0
+50.959 src 441,232,547,271 mode=follow hovered=0 held=0 pane=513..915
+51.100 src 441,204,547,271 mode=follow hovered=0 held=0 pane=513..915
+51.104 fit pane=402 z=1.5 want=609 size=827 max=2520 -> shrink after-wait
+51.111 view 603x388 zoom=1.5 derived=0
+51.114 resized 609x442
+51.167 scan cur=653,334 pane=513..915/402 changed=0
+51.362 src 513,204,402,259 mode=follow hovered=0 held=0 pane=513..915
+51.434 scan cur=647,330 pane=513..915/402 changed=0
+51.501 src 513,173,402,259 mode=follow hovered=0 held=0 pane=513..915
+51.631 src 513,126,402,259 mode=follow hovered=0 held=0 pane=513..915
+51.701 scan cur=538,216 pane=0..915/915 changed=1
+51.717 pane-event width=915
+51.722 fit pane=915 z=1.5 want=1379 size=609 max=2520 -> widen
+51.729 view 1373x407 zoom=1.5 derived=0
+51.734 resized 1379x442
+51.756 src 0,34,915,271 mode=follow hovered=0 held=0 pane=0..915
+51.886 src 0,-8,915,271 mode=follow hovered=0 held=0 pane=0..915
+51.952 scan cur=482,109 pane=none changed=1
+51.978 pane-event width=none
+51.980 fit skip fit=1 lock=1 mode=follow pane=none zoomBack=0
+52.023 src 21,-41,915,271 mode=follow hovered=0 held=0 pane=none
+52.211 src 23,-61,915,271 mode=follow hovered=0 held=0 pane=none
+52.218 scan cur=481,74 pane=0..1497/1497 changed=1
+52.258 pane-event width=1497
+52.263 fit pane=1497 z=1.5 want=2252 size=1379 max=2520 -> widen
+52.271 view 2246x407 zoom=1.5 derived=0
+52.274 resized 2252x442
+52.348 src 0,-64,1497,271 mode=follow hovered=0 held=0 pane=0..1497
+52.468 scan cur=488,70 pane=0..1497/1497 changed=0
+53.102 scan cur=478,71 pane=0..1497/1497 changed=0
+53.141 src 0,-64,1497,271 mode=follow hovered=0 held=0 pane=0..1497
+53.279 src 0,-62,1497,271 mode=follow hovered=0 held=0 pane=0..1497
+53.369 scan cur=415,73 pane=0..1497/1497 changed=0
+53.653 scan cur=402,73 pane=0..1497/1497 changed=0
+53.716 src 0,-61,1497,271 mode=follow hovered=0 held=0 pane=0..1497
+53.851 src 0,-41,1497,271 mode=follow hovered=0 held=0 pane=0..1497
+53.936 scan cur=477,107 pane=none changed=1
+53.945 pane-event width=none
+53.946 fit skip fit=1 lock=1 mode=follow pane=none zoomBack=0
+53.988 src -225,2,1497,271 mode=follow hovered=0 held=0 pane=none
+54.128 src -119,154,1497,271 mode=follow hovered=0 held=0 pane=none
+54.186 scan cur=630,290 pane=367..915/548 changed=1
+54.220 pane-event width=548
+54.230 fit pane=548 z=1.5 want=828 size=2252 max=2520 -> shrink-wait 2000ms
+54.266 src -107,154,1497,271 mode=follow hovered=0 held=0 pane=367..915
+54.405 src -107,121,1497,271 mode=follow hovered=0 held=0 pane=367..915
+54.437 scan cur=601,254 pane=367..915/548 changed=0
+54.543 src -107,127,1497,271 mode=follow hovered=0 held=0 pane=367..915
+54.680 src -107,147,1497,271 mode=follow hovered=0 held=0 pane=367..915
+54.703 scan cur=591,288 pane=367..915/548 changed=0
+54.817 src -107,177,1497,271 mode=follow hovered=0 held=0 pane=367..915
+54.960 src -107,182,1497,271 mode=follow hovered=0 held=0 pane=367..915
+54.987 scan cur=603,317 pane=367..915/548 changed=0
+55.146 src -107,188,1497,271 mode=follow hovered=0 held=0 pane=367..915
+55.254 scan cur=616,332 pane=367..915/548 changed=0
+55.333 src -107,198,1497,271 mode=follow hovered=0 held=0 pane=367..915
+55.473 src -107,215,1497,271 mode=follow hovered=0 held=0 pane=367..915
+55.521 scan cur=661,351 pane=367..915/548 changed=0
+55.787 scan cur=662,351 pane=367..915/548 changed=0
+56.234 fit pane=548 z=1.5 want=828 size=2252 max=2520 -> shrink after-wait
+56.240 view 822x407 zoom=1.5 derived=0
+56.243 resized 828x442
+56.252 src 367,216,548,271 mode=follow hovered=0 held=0 pane=367..915
+56.788 scan cur=662,351 pane=367..915/548 changed=0
+57.020 src 367,217,548,271 mode=follow hovered=0 held=0 pane=367..915
+57.055 scan cur=660,357 pane=367..915/548 changed=0
+57.149 src 367,244,548,271 mode=follow hovered=0 held=0 pane=367..915
+57.284 src 367,282,548,271 mode=follow hovered=0 held=0 pane=367..915
+57.322 scan cur=651,425 pane=367..915/548 changed=0
+57.409 src 367,298,548,271 mode=follow hovered=0 held=0 pane=367..915
+57.588 scan cur=650,433 pane=367..915/548 changed=0
+57.732 src 367,297,548,271 mode=follow hovered=0 held=0 pane=367..915
+57.856 scan cur=660,358 pane=367..915/548 changed=0
+57.873 src 367,211,548,271 mode=follow hovered=0 held=0 pane=367..915
+58.003 src 367,185,548,271 mode=follow hovered=0 held=0 pane=367..915
+58.123 scan cur=741,318 pane=367..915/548 changed=0
+58.133 src 367,184,548,271 mode=follow hovered=0 held=0 pane=367..915
+58.270 src 367,194,548,271 mode=follow hovered=0 held=0 pane=367..915
+58.406 scan cur=1053,330 pane=916..1462/546 changed=1
+58.410 src 915,195,548,271 mode=follow hovered=0 held=0 pane=916..1462
+58.410 pane-event width=546
+58.412 fit pane=546 z=1.5 want=825 size=828 max=2520 -> none
+58.594 src 915,195,548,271 mode=follow hovered=0 held=0 pane=916..1462
+58.673 scan cur=1122,330 pane=916..1462/546 changed=0
+58.731 src 915,196,548,271 mode=follow hovered=0 held=0 pane=916..1462
+58.873 src 915,245,548,271 mode=follow hovered=0 held=0 pane=916..1462
+58.941 scan cur=1146,398 pane=916..1462/546 changed=0
+59.004 src 915,284,548,271 mode=follow hovered=0 held=0 pane=916..1462
+59.137 src 915,317,548,271 mode=follow hovered=0 held=0 pane=916..1462
+59.207 scan cur=1146,467 pane=916..1462/546 changed=0
+59.260 src 915,343,548,271 mode=follow hovered=0 held=0 pane=916..1462
+59.401 src 915,364,548,271 mode=follow hovered=0 held=0 pane=916..1462
+59.474 scan cur=1146,506 pane=916..1462/546 changed=0
+59.527 src 915,373,548,271 mode=follow hovered=0 held=0 pane=916..1462
+59.665 src 915,405,548,271 mode=follow hovered=0 held=0 pane=916..1462
+59.741 scan cur=1147,553 pane=916..1462/546 changed=0
+59.790 src 915,420,548,271 mode=follow hovered=0 held=0 pane=916..1462
+59.932 src 915,439,548,271 mode=follow hovered=0 held=0 pane=916..1462
+60.008 scan cur=1142,585 pane=916..1462/546 changed=0
+60.071 src 915,461,548,271 mode=follow hovered=0 held=0 pane=916..1462
+60.210 src 915,478,548,271 mode=follow hovered=0 held=0 pane=916..1462
+60.275 scan cur=1134,620 pane=916..1462/546 changed=0
+60.349 src 915,496,548,271 mode=follow hovered=0 held=0 pane=916..1462
+60.474 src 915,524,548,271 mode=follow hovered=0 held=0 pane=916..1462
+60.542 scan cur=1127,673 pane=916..1462/546 changed=0
+60.605 src 915,552,548,271 mode=follow hovered=0 held=0 pane=916..1462
+60.737 src 915,571,548,271 mode=follow hovered=0 held=0 pane=916..1462
+60.808 scan cur=1125,722 pane=916..1462/546 changed=0
+60.861 src 915,602,548,271 mode=follow hovered=0 held=0 pane=916..1462
+61.000 src 915,643,548,271 mode=follow hovered=0 held=0 pane=916..1462
+61.075 scan cur=1119,797 pane=916..1462/546 changed=0
+61.125 src 915,674,548,271 mode=follow hovered=0 held=0 pane=916..1462
+61.254 src 915,707,548,271 mode=follow hovered=0 held=0 pane=916..1462
+61.342 scan cur=1117,858 pane=916..1462/546 changed=0
+61.386 src 915,735,548,271 mode=follow hovered=0 held=0 pane=916..1462
+61.512 src 915,776,548,271 mode=follow hovered=0 held=0 pane=916..1462
+61.609 scan cur=1120,958 pane=916..1462/546 changed=0
+61.651 src 915,834,548,271 mode=follow hovered=0 held=0 pane=916..1462
+61.775 src 915,835,548,271 mode=follow hovered=0 held=0 pane=916..1462
+61.876 scan cur=1087,980 pane=916..1462/546 changed=0
+61.906 src 915,846,548,271 mode=follow hovered=0 held=0 pane=916..1462
+62.037 src 915,842,548,271 mode=follow hovered=0 held=0 pane=916..1462
+62.143 scan cur=808,974 pane=367..906/539 changed=1
+62.173 src 363,842,548,271 mode=follow hovered=0 held=0 pane=367..906
+62.173 pane-event width=539
+62.180 fit pane=539 z=1.5 want=815 size=828 max=2520 -> none
+62.317 src 363,855,548,271 mode=follow hovered=0 held=0 pane=367..906
+62.393 scan cur=681,996 pane=367..906/539 changed=0
+62.625 src 363,858,548,271 mode=follow hovered=0 held=0 pane=367..906
+62.643 scan cur=682,989 pane=367..906/539 changed=0
+62.757 src 363,824,548,271 mode=follow hovered=0 held=0 pane=367..906
+62.881 src 363,781,548,271 mode=follow hovered=0 held=0 pane=367..906
+62.891 hover 1
+62.910 scan cur=682,905 pane=367..906/539 changed=0
+64.595 hold
+65.952 release
+65.952 mode still
+67.494 hover 0
+68.287 hover 1
+72.387 hold
+73.629 release
+73.629 mode follow
+74.209 hover 0
+74.229 src 363,350,548,271 mode=follow hovered=0 held=0 pane=367..906
+74.237 scan cur=607,491 pane=367..915/548 changed=1
+74.267 pane-event width=548
+74.274 fit pane=548 z=1.5 want=828 size=828 max=2520 -> none
+74.362 src 367,510,548,271 mode=follow hovered=0 held=0 pane=367..915
+74.478 src 367,557,548,271 mode=follow hovered=0 held=0 pane=367..915
+74.504 scan cur=535,693 pane=367..906/539 changed=1
+74.517 pane-event width=539
+74.522 fit pane=539 z=1.5 want=815 size=828 max=2520 -> none
+74.611 src 363,598,548,271 mode=follow hovered=0 held=0 pane=367..906
+74.749 src 363,731,548,271 mode=follow hovered=0 held=0 pane=367..906
+74.771 scan cur=510,875 pane=367..906/539 changed=0
+74.873 src 363,779,548,271 mode=follow hovered=0 held=0 pane=367..906
+75.013 src 363,846,548,271 mode=follow hovered=0 held=0 pane=367..906
+75.038 scan cur=524,982 pane=367..906/539 changed=0
+75.136 src 363,844,548,271 mode=follow hovered=0 held=0 pane=367..906
+75.268 src 363,840,548,271 mode=follow hovered=0 held=0 pane=367..906
+75.304 scan cur=517,973 pane=367..906/539 changed=0
+75.368 src 363,820,548,271 mode=follow hovered=0 held=0 pane=367..906
+75.507 src 363,783,548,271 mode=follow hovered=0 held=0 pane=367..906
+75.571 scan cur=526,899 pane=367..906/539 changed=0
+75.646 src 363,734,548,271 mode=follow hovered=0 held=0 pane=367..906
+75.772 src 363,713,548,271 mode=follow hovered=0 held=0 pane=367..906
+75.838 scan cur=528,831 pane=367..906/539 changed=0
+75.912 src 363,673,548,271 mode=follow hovered=0 held=0 pane=367..906
+76.036 src 363,646,548,271 mode=follow hovered=0 held=0 pane=367..906
+76.105 scan cur=534,763 pane=367..906/539 changed=0
+76.169 src 363,603,548,271 mode=follow hovered=0 held=0 pane=367..906
+76.303 src 363,568,548,271 mode=follow hovered=0 held=0 pane=367..906
+76.372 scan cur=548,691 pane=367..906/539 changed=0
+76.435 src 363,540,548,271 mode=follow hovered=0 held=0 pane=367..906
+76.536 src 363,506,548,271 mode=follow hovered=0 held=0 pane=367..906
+76.639 scan cur=555,618 pane=367..915/548 changed=1
+76.675 src 367,477,548,271 mode=follow hovered=0 held=0 pane=367..915
+76.675 pane-event width=548
+76.680 fit pane=548 z=1.5 want=828 size=828 max=2520 -> none
+76.799 src 367,448,548,271 mode=follow hovered=0 held=0 pane=367..915
+76.906 scan cur=558,567 pane=367..915/548 changed=0
+76.940 src 367,427,548,271 mode=follow hovered=0 held=0 pane=367..915
+77.079 src 367,394,548,271 mode=follow hovered=0 held=0 pane=367..915
+77.172 scan cur=567,501 pane=367..915/548 changed=0
+77.219 src 367,358,548,271 mode=follow hovered=0 held=0 pane=367..915
+77.358 src 367,305,548,271 mode=follow hovered=0 held=0 pane=367..915
+77.439 scan cur=581,408 pane=367..915/548 changed=0
+77.499 src 367,260,548,271 mode=follow hovered=0 held=0 pane=367..915
+77.706 scan cur=584,382 pane=367..915/548 changed=0
+77.730 src 367,220,548,271 mode=follow hovered=0 held=0 pane=367..915
+77.871 src 367,63,548,271 mode=follow hovered=0 held=0 pane=367..915
+77.973 scan cur=506,171 pane=367..915/548 changed=0
+78.003 src 367,23,548,271 mode=follow hovered=0 held=0 pane=367..915
+78.149 src 367,-49,548,271 mode=follow hovered=0 held=0 pane=367..915
+78.240 scan cur=458,65 pane=0..1497/1497 changed=1
+78.272 src 0,-73,548,271 mode=follow hovered=0 held=0 pane=0..1497
+78.272 pane-event width=1497
+78.277 fit pane=1497 z=1.5 want=2252 size=828 max=2520 -> widen
+78.287 view 2246x407 zoom=1.5 derived=0
+78.291 resized 2252x442
+78.397 src 0,-86,1497,271 mode=follow hovered=0 held=0 pane=0..1497
+78.507 scan cur=528,38 pane=379..912/533 changed=1
+78.536 src -103,-97,1497,271 mode=follow hovered=0 held=0 pane=379..912
+78.536 pane-event width=533
+78.544 fit pane=533 z=1.5 want=806 size=2252 max=2520 -> shrink-wait 2000ms
+78.675 src -103,-76,1497,271 mode=follow hovered=0 held=0 pane=379..912
+78.758 scan cur=826,58 pane=0..1497/1497 changed=1
+78.769 pane-event width=1497
+78.777 fit pane=1497 z=1.5 want=2252 size=2252 max=2520 -> none
+78.815 src 0,-80,1497,271 mode=follow hovered=0 held=0 pane=0..1497
+78.999 src 0,-84,1497,271 mode=follow hovered=0 held=0 pane=0..1497
+79.024 scan cur=260,51 pane=0..1497/1497 changed=0
+79.231 src 0,-79,1497,271 mode=follow hovered=0 held=0 pane=0..1497
+79.291 scan cur=87,52 pane=0..1497/1497 changed=0
+79.369 src 0,-94,1497,271 mode=follow hovered=0 held=0 pane=0..1497
+79.555 src 0,-105,1497,271 mode=follow hovered=0 held=0 pane=0..1497
+79.558 scan cur=95,30 pane=0..380/380 changed=1
+79.602 pane-event width=380
+79.610 fit pane=380 z=1.5 want=576 size=2252 max=2520 -> shrink-wait 2000ms
+79.841 scan cur=484,42 pane=379..912/533 changed=1
+79.880 src -103,-93,1497,271 mode=follow hovered=0 held=0 pane=379..912
+79.880 pane-event width=533
+79.882 fit pane=533 z=1.5 want=806 size=2252 max=2520 -> shrink-wait 2000ms
+80.019 src -103,-97,1497,271 mode=follow hovered=0 held=0 pane=379..912
+80.125 scan cur=464,32 pane=379..912/533 changed=0
+80.155 src -103,-103,1497,271 mode=follow hovered=0 held=0 pane=379..912
+80.393 scan cur=459,29 pane=379..912/533 changed=0
+80.606 src -103,-101,1497,271 mode=follow hovered=0 held=0 pane=379..912
+80.661 scan cur=445,62 pane=0..1497/1497 changed=1
+80.686 pane-event width=1497
+80.694 fit pane=1497 z=1.5 want=2252 size=2252 max=2520 -> none
+80.732 src 0,-52,1497,271 mode=follow hovered=0 held=0 pane=0..1497
+80.870 src 0,-51,1497,271 mode=follow hovered=0 held=0 pane=0..1497
+80.926 scan cur=461,86 pane=none changed=1
+80.962 pane-event width=none
+80.963 fit skip fit=1 lock=1 mode=follow pane=none zoomBack=0
+81.006 src -269,-51,1497,271 mode=follow hovered=0 held=0 pane=none
+81.149 src -262,-54,1497,271 mode=follow hovered=0 held=0 pane=none
+81.192 scan cur=487,80 pane=none changed=0
+81.289 src -261,-56,1497,271 mode=follow hovered=0 held=0 pane=none
+81.459 scan cur=488,78 pane=none changed=0
+81.714 src -260,-58,1497,271 mode=follow hovered=0 held=0 pane=none
+81.725 scan cur=488,77 pane=none changed=0
+81.987 src -260,-57,1497,271 mode=follow hovered=0 held=0 pane=none
+81.994 scan cur=488,78 pane=none changed=0
+82.091 hover 1
+82.791 hover 0
+82.791 src 820,24,1497,271 mode=follow hovered=0 held=0 pane=none
+82.811 scan cur=1719,157 pane=1463..2010/547 changed=1
+82.824 hover 1
+82.826 pane-event width=547
+82.838 fit pane=547 z=1.5 want=827 size=2252 max=2520 -> shrink-wait 2000ms
+83.088 hover 0
+83.109 src 988,24,1497,271 mode=follow hovered=0 held=0 pane=1463..2010
+83.144 scan cur=2411,159 pane=2011..2557/546 changed=1
+83.148 pane-event width=546
+83.161 fit pane=546 z=1.5 want=825 size=2252 max=2520 -> shrink-wait 2000ms
+83.191 hover 1
+83.371 hover 0
+83.392 src 1536,45,1497,271 mode=follow hovered=0 held=0 pane=2011..2557
+83.411 scan cur=2536,180 pane=2011..2560/549 changed=0
+83.568 src 1536,44,1497,271 mode=follow hovered=0 held=0 pane=2011..2557
+83.641 hover 1
