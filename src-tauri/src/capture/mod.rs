@@ -11,6 +11,7 @@
 //! (tao declares PerMonitorV2 awareness).
 
 pub mod pane;
+pub mod track;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -143,6 +144,9 @@ struct Handler {
     band: Vec<u8>,
     last_pane_scan: Instant,
     last_pane_cursor: (i32, i32),
+    /// What the band cannot see: the furthest line over time and a lost column held
+    /// (see `track`).
+    tracker: track::ColumnTracker,
 }
 
 impl Handler {
@@ -151,6 +155,9 @@ impl Handler {
     /// classified and dropped.
     fn scan_pane(&mut self, frame: &mut Frame, mon: MonitorGeom) {
         if !self.shared.want_pane.load(Ordering::Relaxed) {
+            // The lock is off, or the glass is hovered or held: the next scan starts
+            // from a fresh reading, not from a column remembered across the gap.
+            self.tracker.reset();
             return;
         }
         let (cx, cy) = cursor_pos();
@@ -193,8 +200,11 @@ impl Handler {
                 x0: p.x0 + mon.left,
                 x1: p.x1 + mon.left,
             });
+        // The band's reading, then what the lock holds: the furthest line in memory
+        // for the right edge, and a lost column held for a moment.
+        let held = self.tracker.observe(found, Instant::now());
         let mut current = self.shared.pane.lock();
-        let changed = match (*current, found) {
+        let changed = match (*current, held) {
             (Some(a), Some(b)) => {
                 (a.x0 - b.x0).abs() > PANE_JITTER || (a.x1 - b.x1).abs() > PANE_JITTER
             }
@@ -202,14 +212,19 @@ impl Handler {
             _ => true,
         };
         crate::measure::log(|| {
-            let pane = match found {
+            let fmt = |p: Option<Pane>| match p {
                 Some(p) => format!("{}..{}/{}", p.x0, p.x1, p.width()),
                 None => "none".into(),
             };
-            format!("scan cur={cx},{cy} pane={pane} changed={}", changed as u8)
+            format!(
+                "scan cur={cx},{cy} pane={} lock={} changed={}",
+                fmt(found),
+                fmt(held),
+                changed as u8
+            )
         });
         if changed {
-            *current = found;
+            *current = held;
             self.shared.pane_seq.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -226,6 +241,7 @@ impl GraphicsCaptureApiHandler for Handler {
             band: Vec::new(),
             last_pane_scan: Instant::now() - PANE_SCAN_RESTING,
             last_pane_cursor: (i32::MIN, i32::MIN),
+            tracker: track::ColumnTracker::new(),
         })
     }
 

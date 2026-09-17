@@ -5,6 +5,28 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## A held value is not a confirmation: the wait must outlast the hold (2026-09-17)
+
+The lock now holds a lost column for two seconds, and Fit waits before widening the
+glass to a suspect column. Drafted with both at two seconds, the replay of the first
+recording showed the 1497 px top-strip reading widening the glass anyway: the reading
+had been lost, the lock was holding it, and the wait expired while the hold was still
+supplying it. Lesson: when one mechanism holds a value and another waits for that
+value to persist, the wait must be longer than the hold, or the hold confirms itself.
+Fit's widen-wait is three seconds against a two-second hold.
+
+## Ask the recording where a reading came from before tuning the reader (2026-09-17)
+
+The glass leapt to 2252 px twice in the recording, on a 1497 px "column". It was easy
+to read as the detector's 70 % rule being too loose (1497 is 58 % of the screen). The
+cursor positions in the same lines said the readings came at y below 110 — the
+owner's trips to the dock and the tab strip — where the band is a quarter title bar and
+the sidebar's gutter is uniform in only 75 % of its slices, under the 80 % a plain
+gutter needs, so sidebar and chat merged. Lesson: a log that carries the input's
+context (here the cursor) turns a threshold question into a mechanism, and the fix
+lands in the right place — the wait on a wide column, not a looser or a tighter rule
+that would have moved the problem.
+
 ## A symptom can be the visible half of a bug you have not seen (2026-09-17)
 
 "The still keeps the menu in the picture" read as a capture problem: freeze the frame
