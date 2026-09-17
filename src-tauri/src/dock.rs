@@ -227,8 +227,9 @@ pub fn dock_menu(app: AppHandle, store: State<Store>) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
     if let Some(w) = app.get_webview_window(DOCK_LABEL) {
-        use tauri::menu::ContextMenu;
-        menu.popup(w.as_ref().window()).map_err(|e| e.to_string())?;
+        // The dock's menu holds the glass like the glass's own: a lens riding at the
+        // cursor would otherwise ride over the menu.
+        glass::popup_held(&app.state::<Engine>(), &menu, &w).map_err(|e| e.to_string())?;
     }
     Ok(())
 }

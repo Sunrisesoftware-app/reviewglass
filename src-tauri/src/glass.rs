@@ -343,7 +343,11 @@ pub fn spawn_lens_rider(app: AppHandle) {
                     }
                 }
 
-                if let Some(label) = riding {
+                // A menu open over the glass holds the rider too: the menu pops at the
+                // cursor and a lens that kept riding would carry the picture out from
+                // under it while the user reaches for an item.
+                let paused = riding == Some(GLASS_LABEL) && engine.is_held();
+                if let Some(label) = riding.filter(|_| !paused) {
                     if let Some(w) = app.get_webview_window(label) {
                         let (cx, cy) = cursor_pos();
                         if let Ok(size) = w.outer_size() {
@@ -356,6 +360,9 @@ pub fn spawn_lens_rider(app: AppHandle) {
                             }
                         }
                     }
+                    thread::sleep(Duration::from_millis(8));
+                } else if paused {
+                    // Riding again the moment the menu closes.
                     thread::sleep(Duration::from_millis(8));
                 } else if finder_wanted {
                     // The source rectangle changes at the frame poll's rate at most.
@@ -393,10 +400,27 @@ pub const M_QUIT: &str = "glass-quit";
 /// Bar-size menu items carry their scale after this prefix ("glass-ui-1.25").
 const M_UI_PREFIX: &str = "glass-ui-";
 
+/// Pop a menu over the glass and hold the engine while it is open: the picture and
+/// the source rectangle stay as they were at the right-click, the lens does not ride
+/// (see `Engine::hold`). `popup` blocks until the menu closes on Windows — a pick or a
+/// dismissal alike — and a pick is delivered to `on_menu` through the event loop
+/// afterwards, inside the grace the release grants.
+pub fn popup_held(
+    engine: &Engine,
+    menu: &Menu<tauri::Wry>,
+    window: &WebviewWindow,
+) -> tauri::Result<()> {
+    engine.hold();
+    let shown = menu.popup(window.as_ref().window());
+    engine.release();
+    shown
+}
+
 /// Build and pop the glass's right-click menu at the cursor. Every entry mirrors a
 /// control on the bar or a hotkey; the menu exists so the same actions are one click
 /// away when the bar is dim, the lens is riding, or the user simply reaches for the
-/// right button first.
+/// right button first. While it is open the picture holds, so "Freeze this picture"
+/// keeps the picture that was right-clicked on — never the menu itself.
 pub fn popup_menu(app: &AppHandle, engine: &Engine) -> tauri::Result<()> {
     let mode = engine.mode();
     let freeze_label = if mode == Mode::Frozen {
@@ -437,7 +461,7 @@ pub fn popup_menu(app: &AppHandle, engine: &Engine) -> tauri::Result<()> {
         ],
     )?;
     if let Some(w) = app.get_webview_window(GLASS_LABEL) {
-        menu.popup(w.as_ref().window())?;
+        popup_held(engine, &menu, &w)?;
     }
     Ok(())
 }
@@ -462,7 +486,7 @@ pub fn popup_ui_scale_menu(app: &AppHandle) -> tauri::Result<()> {
         items.iter().map(|i| i as _).collect();
     let menu = Menu::with_items(app, &refs)?;
     if let Some(w) = app.get_webview_window(GLASS_LABEL) {
-        menu.popup(w.as_ref().window())?;
+        popup_held(&app.state::<Engine>(), &menu, &w)?;
     }
     Ok(())
 }

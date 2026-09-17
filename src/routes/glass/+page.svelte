@@ -212,8 +212,14 @@
   async function reportView() {
     const w = Math.max(2, Math.round(canvas.clientWidth * dpr()));
     const h = Math.max(2, Math.round(canvas.clientHeight * dpr()));
-    canvas.width = w;
-    canvas.height = h;
+    if (canvas.width !== w || canvas.height !== h) {
+      // Assigning a size wipes the canvas, and a still gets no frame to refill it:
+      // size it only when the picture area really changed, and put the last picture
+      // back at the new size.
+      canvas.width = w;
+      canvas.height = h;
+      repaint();
+    }
     zoom = await invoke<number>("glass_set_view", {
       widthPx: w,
       heightPx: h,
@@ -222,17 +228,24 @@
     });
   }
 
+  /** The last frame, scaled onto the canvas. A still is redrawn from here whenever the
+   *  canvas is resized, since no new frame will arrive to do it. */
+  function repaint() {
+    if (!offscreen) return;
+    const ctx = canvas.getContext("2d")!;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
+  }
+
   function draw(w: number, h: number, rgba: Uint8ClampedArray<ArrayBuffer>) {
     if (!offscreen || offscreen.width !== w || offscreen.height !== h) {
       offscreen = new OffscreenCanvas(w, h);
     }
     const octx = offscreen.getContext("2d")!;
     octx.putImageData(new ImageData(rgba, w, h), 0, 0);
-    const ctx = canvas.getContext("2d")!;
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
+    repaint();
     haveFrame = true;
   }
 
