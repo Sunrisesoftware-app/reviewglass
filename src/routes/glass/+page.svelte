@@ -38,6 +38,9 @@
     pane_width: number | null;
     build: string;
     follow_log: boolean;
+    follow_log_path: string | null;
+    follow_log_since: number | null;
+    follow_log_lines: number;
     config: "loaded" | "fresh" | "reset-corrupt";
   };
 

@@ -39,8 +39,36 @@ settled.
   nothing to hold, so the source rectangle fell back to the cursor's x — a sideways
   jump that Fit never sees (it keeps the width on `none`).
 
-Next: the owner reads a Code-tab column with the log on for a few minutes, in the
-situations that felt restless, and the conversation happens over the analysis.
+- **Record and Stop, the same evening.** The owner's first recording came in through a
+  checkbox and a quit; a recorder that looks like one is easier: a red **Record**
+  button that turns into **Stop**, the elapsed time and the line count ticking beside
+  it, and every recording its own file named by its local start time
+  (`reviewglass-follow-YYYYMMDD-HHMMSS.log`), so a new one never overwrites the last
+  and a restart never truncates it (the first version did both, being a persisted
+  setting that started the file over). A recording ends with Stop or with the app.
+- **The first recording** (84 s, 218 scans, 50 pane events, 9 resizes; kept as
+  `docs/measurements/follow-2026-09-17-owner-1.log`) says three things, each a
+  separate cause of restlessness:
+  1. *The right edge flickers, the left edge never does.* In the column at x 1463 the
+     right edge read 2010 (58 times), 2001 (22), 1998 (3) and 2036 (3): a 38 px range;
+     in the column at 2011, 2523 to 2560, 37 px; the left edges were exact every time.
+     Each flicker crosses the 8 px jitter, reaches Fit, and Fit's 16 px slack on the
+     window is 11 px of column: sixteen shrink-waits were scheduled and cancelled, and
+     one outlier reading (2036) widened the glass at once from 825 to 866 px and let it
+     narrow back two seconds later. The "level of the line that reaches furthest" is
+     read per band, so it changes with every scroll.
+  2. *A `none` inside a column throws the picture sideways.* 12 of 218 scans read
+     `none` with the cursor inside a column it had just read; Fit keeps the width on
+     `none` as designed, but the lock has nothing to hold and the source rectangle
+     falls back to the cursor's x — 548 px at t 35.4, 180–190 px and back at 37.6 and
+     40.5–41.0. That is the drift.
+  3. *The top strip reads as a 1497 px column* (0..1497 at y below 110, 58 % of the
+     screen, under the 70 % rule) and the glass widened at once to 2252 px, twice.
+  Proposals, to talk through: a per-column memory of the widest right edge over the
+  last ten seconds (the furthest line over time, not per band); the lock holds its
+  column on `none` while the cursor stays inside it and lets go when the cursor leaves
+  or after two seconds; and a widening beyond a quarter of the current width waits
+  like a narrowing does.
 
 ## Session 3: a still that holds, a menu that stays put — 17.9.2026 (0.1.0)
 

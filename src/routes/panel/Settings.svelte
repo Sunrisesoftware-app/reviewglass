@@ -14,33 +14,53 @@
   let saving = $state(false);
   let testResult = $state<"idle" | "sent" | "failed">("idle");
   let testError = $state<string | null>(null);
-  let followLog = $state(false);
-  let followLogPath = $state("");
-  let followLogError = $state<string | null>(null);
+  // The Follow measurement recorder (temporary tooling for tuning the column detector
+  // and Fit together): Record starts a new file, Stop ends it, like any recorder.
+  type LogState = {
+    follow_log: boolean;
+    follow_log_path: string | null;
+    follow_log_since: number | null;
+    follow_log_lines: number;
+  };
+  let rec = $state<LogState>({ follow_log: false, follow_log_path: null, follow_log_since: null, follow_log_lines: 0 });
+  let recError = $state<string | null>(null);
+  let now = $state(Math.floor(Date.now() / 1000));
+  const elapsed = $derived(rec.follow_log && rec.follow_log_since ? Math.max(0, now - rec.follow_log_since) : 0);
 
-  type LogState = { follow_log: boolean; follow_log_path: string };
+  function mmss(s: number) {
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
 
   async function load() {
     cfg = await invoke<AlertConfig>("alerts_get");
     const s = await invoke<{ hotkey_toggle: string } & LogState>("glass_state");
     hotkey = s.hotkey_toggle;
     hotkeyDraft = hotkey;
-    followLog = s.follow_log;
-    followLogPath = s.follow_log_path;
+    rec = s;
   }
 
-  // The Follow measurement log (temporary tooling for tuning the column detector and
-  // Fit together). Switching it on starts the file over.
-  async function setFollowLog(on: boolean) {
-    followLogError = null;
+  async function setRecording(on: boolean) {
+    recError = null;
     try {
-      const s = await invoke<LogState>("follow_log_set", { on });
-      followLog = s.follow_log;
-      followLogPath = s.follow_log_path;
+      rec = await invoke<LogState>("follow_log_set", { on });
     } catch (e) {
-      followLogError = e instanceof Error ? e.message : String(e);
+      recError = e instanceof Error ? e.message : String(e);
     }
   }
+
+  // While recording, the elapsed time and the line count tick once a second.
+  $effect(() => {
+    if (!rec.follow_log) return;
+    const t = setInterval(async () => {
+      now = Math.floor(Date.now() / 1000);
+      try {
+        rec = await invoke<LogState>("glass_state");
+      } catch {
+        /* the next tick asks again */
+      }
+    }, 1000);
+    return () => clearInterval(t);
+  });
 
   // The glass on/off shortcut. Applied on purpose, not on every keystroke: a half-typed
   // combination must not be registered.
@@ -196,18 +216,33 @@
   <section>
     <h2>Measurements</h2>
     <p class="help">
-      A log of what the column detector reads and what Fit does with it, for tuning the
-      two together: the cursor, the column's edges, the source rectangle, the glass's size
-      and zoom, and Fit's decisions. Structure only — never pixels, never text. Switching
-      it on starts the file over; it stops itself after 200 000 lines.
+      A recording of what the column detector reads and what Fit does with it, for tuning
+      the two together: the cursor, the column's edges, the source rectangle, the glass's
+      size and zoom, and Fit's decisions. Structure only — never pixels, never text. Each
+      recording is its own file under <code>%TEMP%</code>, named by its start time; a
+      recording ends with Stop or with the app, and stops itself after 200 000 lines.
     </p>
-    <label class="row">
-      <input type="checkbox" checked={followLog} onchange={(e) => setFollowLog(e.currentTarget.checked)} />
-      <span>Record Follow measurements</span>
-    </label>
-    <p class="help">Written to <code>{followLogPath}</code>.</p>
-    {#if followLogError}
-      <p class="bad">{followLogError}</p>
+    <div class="record">
+      {#if rec.follow_log}
+        <button class="stop" onclick={() => setRecording(false)} aria-label="Stop recording">
+          <span class="square" aria-hidden="true"></span> Stop
+        </button>
+        <span class="live"><span class="dot" aria-hidden="true"></span> Recording {mmss(elapsed)} · {rec.follow_log_lines} lines</span>
+      {:else}
+        <button class="rec" onclick={() => setRecording(true)} aria-label="Start recording">
+          <span class="dot" aria-hidden="true"></span> Record
+        </button>
+      {/if}
+    </div>
+    <p class="help">
+      {#if rec.follow_log_path}
+        {rec.follow_log ? "Writing to" : "Last recording:"} <code>{rec.follow_log_path}</code>
+      {:else}
+        No recording yet.
+      {/if}
+    </p>
+    {#if recError}
+      <p class="bad">{recError}</p>
     {/if}
   </section>
 {/if}
@@ -327,5 +362,47 @@
   }
   .bad {
     color: var(--bad);
+  }
+  .record {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .record button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--raised);
+    color: var(--fg);
+    font: inherit;
+    cursor: pointer;
+  }
+  .record button:hover {
+    border-color: var(--accent);
+  }
+  .dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #d23b3b;
+  }
+  .square {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background: var(--fg);
+  }
+  .live {
+    color: #d23b3b;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-variant-numeric: tabular-nums;
   }
 </style>

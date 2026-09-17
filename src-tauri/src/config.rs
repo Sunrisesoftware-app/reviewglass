@@ -47,9 +47,6 @@ pub struct GlassConfig {
     /// Fit: the glass's width follows the pane at the current zoom. The width the fit
     /// chooses is never stored in `width`, which stays the user's own.
     pub pane_fit: bool,
-    /// The Follow measurement log (temporary tooling, session 3): structure only,
-    /// written under %TEMP%, switched from the Settings tab.
-    pub follow_log: bool,
 }
 
 impl Default for GlassConfig {
@@ -71,7 +68,6 @@ impl Default for GlassConfig {
             ui_scale: 1.0,
             pane_lock: true,
             pane_fit: true,
-            follow_log: false,
         }
     }
 }
