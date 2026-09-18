@@ -7,7 +7,7 @@ license = "Apache-2.0"
 repository = "https://github.com/Sunrisesoftware-app/reviewglass"
 edition = "2021"
 rust-version = "1.85"
-# Two binaries now ship: the app and the statusLine collector. Tauri bundles the one
+# Three binaries ship: the app, the statusLine collector and the hook collector. Tauri bundles the one
 # named here; the collector is installed beside it.
 default-run = "reviewglass"
 
@@ -23,6 +23,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [[bin]]
 name = "reviewglass-statusline"
 path = "src/bin/statusline.rs"
+
+# The PostToolUse hook Claude Code runs after an edit: writes one event file into the
+# spool (rg.hook-collector, P4). A binary for the same reason as the collector above.
+[[bin]]
+name = "reviewglass-hook"
+path = "src/bin/hook.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

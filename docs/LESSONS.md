@@ -5,6 +5,20 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## A neighbouring channel inherits a measurement it never had (2026-09-18)
+
+The P0 spike measured that `statusLine` does not run in the Desktop Code tab, and the
+topology diagram drew the PostToolUse hook in the same "CLI sessions only" bracket —
+two collectors, side by side, one measured and one assumed. The assumption lived
+through four sessions and would have sent P4 looking for a second trigger on the
+primary surface (the transcript's tool records, against the rule that only session
+state is read from a transcript). One `Write` with the hook configured settled it in a
+minute: the hook fires in the Desktop Code tab. Lesson: when a diagram groups two
+things, ask which of them the measurement was actually about; a result about one
+channel says nothing about the channel drawn next to it. And the P0 rule "a session
+runs the status line that existed when it started" did not carry over either — the
+hook fired in a session that was already running when it was configured.
+
 ## A verification that takes the mouse is an interruption (2026-09-17)
 
 The release-build checks drive the app from outside: they launch it, move the cursor
