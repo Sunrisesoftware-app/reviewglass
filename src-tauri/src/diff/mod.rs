@@ -369,10 +369,12 @@ fn glob_match(pattern: &str, name: &str) -> bool {
     go(pattern.as_bytes(), name.as_bytes())
 }
 
-/// `path` relative to `root`, comparing case-insensitively as Windows does.
+/// `path` relative to `root`, comparing case-insensitively as Windows does. Both are
+/// canonicalised first where they exist: a path can arrive in 8.3 short form
+/// (`RUNNER~1`) while git answers in the long form, and the two must still meet.
 fn relative(root: &Path, path: &Path) -> Option<String> {
-    let r = root.to_string_lossy().replace('/', "\\");
-    let p = path.to_string_lossy().replace('/', "\\");
+    let r = canonical(root);
+    let p = canonical(path);
     if p.len() > r.len() + 1
         && p[..r.len()].eq_ignore_ascii_case(&r)
         && p.as_bytes()[r.len()] == b'\\'
@@ -381,6 +383,15 @@ fn relative(root: &Path, path: &Path) -> Option<String> {
     } else {
         None
     }
+}
+
+/// The canonical form of a path when it exists (long names, no `\?\` prefix,
+/// backslashes), or the path as given, normalised the same way, when it does not.
+fn canonical(path: &Path) -> String {
+    let s = std::fs::canonicalize(path)
+        .map(|c| c.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| path.to_string_lossy().into_owned());
+    s.trim_start_matches("\\?\\").replace('/', "\\")
 }
 
 /// Run git in `dir` without a console window: this is a GUI process, and a bare
