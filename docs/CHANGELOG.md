@@ -42,10 +42,17 @@ observed, as P2's was.
   asked), binary and outside-a-repository each give their status. 94 tests in all;
   the frontend bundle builds with the renderer.
 
-To observe, when the machine is free: rebuild the shortcut's exe from main, launch,
-open the panel's Diff tab, make one edit from a Claude Code session (either surface)
-and watch it appear; note the delay and whether the rendered hunk reads well at the
-panel's size.
+- **Observed on the release build** (`0.1.0 31dc6d0`, the shortcut's exe), once, with
+  the owner away from the mouse: the panel opened on the Diff tab shows the named
+  empty state; a one-line edit to a committed file in a throwaway repository, with the
+  collector run on the PostToolUse payload an agent's edit produces, appeared in the
+  panel **0.23 s** after the hook ran — `probe.txt`, `changed`, `+1 −1` (the file's
+  only line had no trailing newline, so the append changed it rather than adding to
+  it), the unified text carrying the line, diff2html rendering it as one deleted and
+  one inserted line; a `.env` written next to it was listed as `denied` with no text.
+  The exit criterion (an agent edit in the panel within ~1 s) is met on the
+  synthesised path; the owner's own edit from a live session is the same path with
+  the hook fired by Claude Code, which the spike already measured.
 
 ## Session 4: the hook spike — PostToolUse fires on both surfaces — 18.9.2026 (0.1.0)
 
