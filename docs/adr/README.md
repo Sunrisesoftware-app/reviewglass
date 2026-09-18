@@ -29,3 +29,4 @@ here. A hand edit here is lost on the next run.
 - [ADR-0016](0016-the-usage-loop-runs-on-its-own-thread-not-on-the.md) — The usage loop runs on its own thread, not on the panel's poll *(accepted)*
 - [ADR-0017](0017-the-glass-reads-the-pane-column-boundaries-from-.md) — The glass reads the pane: column boundaries from pixels, structure never content *(accepted)*
 - [ADR-0018](0018-the-dock-is-the-control-panel-and-the-fixed-poin.md) — The dock is the control panel and the fixed point: the glass hangs from it *(accepted)*
+- [ADR-0019](0019-the-spool-lives-under-the-profile-root-not-appda.md) — The spool lives under the profile root, not AppData: the desktop app is packaged and virtualises AppData for its children *(accepted)*
