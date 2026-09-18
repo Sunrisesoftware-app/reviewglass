@@ -4,6 +4,7 @@
 
 mod capture;
 mod config;
+mod diff;
 mod dock;
 mod glass;
 mod measure;
@@ -34,6 +35,7 @@ pub fn run() {
             app.manage(config::Store::open(&config_dir));
             app.manage(capture::Engine::new());
             app.manage(panel::PanelState::new());
+            app.manage(diff::DiffState::new());
 
             if let Some(w) = app.get_webview_window(glass::GLASS_LABEL) {
                 if let Err(e) = glass::exclude_from_capture(&w) {
@@ -61,6 +63,7 @@ pub fn run() {
             }
             panel::spawn_usage_loop(app.handle().clone());
             glass::spawn_lens_rider(app.handle().clone());
+            diff::spawn_diff_loop(app.handle().clone());
             Ok(())
         })
         .on_menu_event(|app, event| glass::on_menu(app, event.id().as_ref()))
@@ -93,6 +96,7 @@ pub fn run() {
             panel::alerts_get,
             panel::alerts_set,
             panel::alerts_test,
+            diff::panel_diffs,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ReviewGlass")

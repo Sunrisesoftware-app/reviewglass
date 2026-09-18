@@ -46,6 +46,41 @@ export type SessionAttribution = {
   observed_at_ms: number;
 };
 
+// The shapes `panel_diffs` returns. Mirrors src-tauri/src/diff/mod.rs.
+
+export type DiffStatus =
+  | "changed"
+  | "unchanged"
+  | "untracked"
+  | "not-in-repo"
+  | "denied"
+  | "missing"
+  | "too-large"
+  | "binary"
+  | "git-failed";
+
+export type DiffView = {
+  path: string;
+  display_path: string;
+  repo_root: string | null;
+  status: DiffStatus;
+  /** The unified diff as git printed it; null when the status says why. */
+  unified: string | null;
+  added: number | null;
+  removed: number | null;
+  at_ms: number;
+  session_id: string | null;
+  tool: string | null;
+  reason: string | null;
+};
+
+export type DiffTab = {
+  views: DiffView[];
+  /** False is a different empty list: the hook collector has never run. */
+  hook_installed: boolean;
+  unreadable: number;
+};
+
 export type UsageView = {
   quota: AccountQuota;
   sessions: SessionAttribution[];
