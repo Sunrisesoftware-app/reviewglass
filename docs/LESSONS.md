@@ -5,6 +5,24 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## A packaged app's children write to an AppData nobody else can see (2026-09-18)
+
+The Diff tab worked in every check the build agent ran and showed nothing for the
+owner. The hook had fired, the event file was there — from the agent's shell — and the
+owner's app, launched from its shortcut, read an empty directory at the same path. The
+Claude desktop app is a packaged (MSIX) application, and Windows virtualises AppData
+for a packaged process and every child it starts: the Desktop Code tab's sessions, the
+hooks and collectors they run, and the build agent's own shell all wrote
+`%APPDATA%\ReviewGlass` into `%LOCALAPPDATA%\Packages\Claude_…\LocalCache\Roaming`,
+while an app started from Explorer read the real `Roaming`, where the directory did
+not exist. The app's own config directory escaped only because the real app had
+created it first: virtualisation merges what exists and redirects what is new. Lesson:
+anything the desktop app's sessions must share with a process outside the package
+lives under the profile root (`~/.reviewglass`, `~/.claude`), never under AppData —
+and a check that passes only from the agent's own shell has proved the mechanism, not
+the delivery. The spool moved to `~/.reviewglass/spool`; the one new thing the check
+must do from now on is launch the app the way the owner does.
+
 ## A neighbouring channel inherits a measurement it never had (2026-09-18)
 
 The P0 spike measured that `statusLine` does not run in the Desktop Code tab, and the

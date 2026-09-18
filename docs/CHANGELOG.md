@@ -4,6 +4,44 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 4 (continued): the spool moves to the profile root — the owner saw nothing, and why — 18.9.2026 (0.1.0)
+
+The owner opened the Diff tab and asked for an edit; nothing appeared. The hook had
+fired — the event file was there, from the build agent's shell — and the app read an
+empty directory at the same path.
+
+- **The cause** (adr.rg.019). The Claude desktop app is a packaged (MSIX) application,
+  `Claude_pzs8sxrjxfjjc`, and Windows virtualises AppData for a packaged process and
+  every child it starts. The Desktop Code tab's sessions, the hooks and collectors they
+  run, and the build agent's own shell all wrote `%APPDATA%\ReviewGlass` into
+  `%LOCALAPPDATA%\Packages\Claude_…\LocalCache\Roaming`, visible only with the package
+  identity; the app started from its shortcut read the real `Roaming`, where the
+  directory did not exist — `hook_installed: false`, `collector_installed: false`, and
+  every event unconsumed. The app's own config directory escaped because the real app
+  had created it first: virtualisation merges what exists and redirects what is new.
+  The profile root is not virtualised (`~/.claude` is real for everyone), so the spool
+  moved to **`~/.reviewglass/spool`**, beside the collectors' binaries, in the one
+  function the app and both collectors share (`spool.rs`). Spec 6.1's "plain files
+  under the user profile" is now literally true.
+- **Measured across the boundary**, the way the owner launches the app (a plain
+  PowerShell `Start-Process` of the release exe, remote debugging on): `hook_installed`
+  true; one `Edit` from the build agent's Desktop session — the real path, the hook run
+  by Claude Code — appeared in the Diff tab within the first poll (0.06 s after the
+  edit's tool call returned): `gauge.rs`, `changed`, `+10 −3`, session id the agent's
+  own, the hunk rendered; the event consumed. Before the move, the same launch showed
+  nothing for four events in a row. `collector_installed` is now false until a CLI
+  session runs the reinstalled statusLine collector, which is the honest state: the
+  P0 spike's session record had lived in the package cache all along, visible to the
+  agent and never to a plain process, unnoticed because no CLI session had been run
+  outside the desktop app since.
+- **A rule for every check from here on:** the app under test is launched the way the
+  owner launches it (Explorer or a plain PowerShell), never from the agent's shell,
+  which is itself a child of the packaged app. A check that has passed only from the
+  agent's shell has proved the mechanism, not the delivery.
+- Both collectors rebuilt and reinstalled under `~/.reviewglass/bin`; the spool data
+  in the package cache is abandoned. The installer (P7) inherits the rule: nothing
+  shared lives under AppData.
+
 ## Session 4 (continued): P4 built — the events reader, the diff service, the Diff tab — 18.9.2026 (0.1.0)
 
 Built in the background while the owner had the machine, so nothing here has been seen
