@@ -4,6 +4,49 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 4 (continued): P4 built — the events reader, the diff service, the Diff tab — 18.9.2026 (0.1.0)
+
+Built in the background while the owner had the machine, so nothing here has been seen
+on screen yet; the exit criterion (an agent edit in the panel within ~1 s) is to be
+observed, as P2's was.
+
+- **The events reader** (`src-tauri/src/diff/events.rs`, the events half of
+  `rg.spool-watcher`): consumes `spool/events/*.json` oldest first into `ChangeEvent`s,
+  field by field (adr.rg.011; only `ts` is required), retries a file that will not
+  parse once and then leaves it to the collector's prune, deletes what it has read, and
+  consumes events from before the app started without reporting them — the live diff
+  is live; what happened before it watched is git's to tell.
+- **The diff service** (`src-tauri/src/diff/mod.rs`, `rg.diff-service`): the denylist
+  first (`.env*`, `*.pem`, `*.key`, `id_*`, `*.tfvars` by default, in the config as
+  `diff.denylist`, matched against the file name, case-insensitively) — a denied path
+  is listed as touched but never handed to git; then `git rev-parse --show-toplevel`
+  for the repository, `ls-files --error-unmatch` for tracked-or-not, `diff HEAD` scoped
+  to the path for the unified text and `--numstat` for the counts. A new file is shown
+  as the addition it is, synthesised in unified form (size-capped at 512 KB, binary
+  detected); a path outside any repository, a deleted file, a binary, a file identical
+  to HEAD and a git error each get their own status and a reason in the user's terms.
+  Git runs without a console window (`CREATE_NO_WINDOW`; this is a GUI process). The
+  loop runs on its own thread every 300 ms; every event for one path within a tick
+  becomes a single diff, which is the debounce; the views (30 at most, one per path,
+  newest first) go to the panel with a `diff:update` event.
+- **The Diff tab** (`src/routes/panel/Diff.svelte`): the files touched since start,
+  newest first, each with `+N −M` or its status word, the tool and how long ago; the
+  selected file's diff rendered by **diff2html** (MIT; its dependencies `diff`,
+  BSD-3, and `@profoundlogic/hogan`, Apache-2.0), not hand-rolled (spec 6.2). Three
+  empty states, each with its reason: the hook collector has never run (its events
+  directory does not exist), no edit since ReviewGlass started, or a file git cannot
+  show (the reason from the service).
+- Eleven new tests, four of them against a throwaway git repository: a tracked edit
+  gives `changed` with +2 −1 and the hunk text; a new file gives `untracked` with the
+  synthesised addition; unchanged, missing, denied (the file exists and git is never
+  asked), binary and outside-a-repository each give their status. 94 tests in all;
+  the frontend bundle builds with the renderer.
+
+To observe, when the machine is free: rebuild the shortcut's exe from main, launch,
+open the panel's Diff tab, make one edit from a Claude Code session (either surface)
+and watch it appear; note the delay and whether the rendered hunk reads well at the
+panel's size.
+
 ## Session 4: the hook spike — PostToolUse fires on both surfaces — 18.9.2026 (0.1.0)
 
 P4 (live diff) opens with the measurement the topology had assumed and P0 had never

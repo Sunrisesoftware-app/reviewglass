@@ -13,6 +13,26 @@ use serde::{Deserialize, Serialize};
 pub use crate::dock::DockConfig;
 pub use crate::notifier::AlertConfig;
 
+/// The live diff's settings (rg.diff-service).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DiffConfig {
+    /// File-name patterns whose contents are never read or shown; `*` matches any run
+    /// of characters. Spec 6.3's list by default.
+    pub denylist: Vec<String>,
+}
+
+impl Default for DiffConfig {
+    fn default() -> Self {
+        Self {
+            denylist: crate::diff::DEFAULT_DENYLIST
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GlassConfig {
@@ -97,6 +117,7 @@ pub struct Config {
     pub dock: DockConfig,
     pub hotkeys: Hotkeys,
     pub alerts: AlertConfig,
+    pub diff: DiffConfig,
 }
 
 /// What happened when the file was loaded, for the panel to show once.

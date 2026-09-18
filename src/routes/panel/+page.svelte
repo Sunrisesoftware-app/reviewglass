@@ -11,12 +11,12 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Sessions from "./Sessions.svelte";
   import Settings from "./Settings.svelte";
+  import Diff from "./Diff.svelte";
   import type { UsageView } from "./types";
 
   const tabs = ["Sessions", "Diff", "Cache", "PR", "Settings"] as const;
   type Tab = (typeof tabs)[number];
   const PHASE: Partial<Record<Tab, string>> = {
-    Diff: "Live diff arrives in phase 4.",
     Cache: "Cache health arrives in phase 5.",
     PR: "Pull-request state arrives in phase 5.",
   };
@@ -72,6 +72,8 @@
   <section>
     {#if active === "Sessions"}
       <Sessions {usage} {failure} />
+    {:else if active === "Diff"}
+      <Diff />
     {:else if active === "Settings"}
       <Settings />
     {:else}
