@@ -4,6 +4,49 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 4: the hook spike — PostToolUse fires on both surfaces — 18.9.2026 (0.1.0)
+
+P4 (live diff) opens with the measurement the topology had assumed and P0 had never
+made: section 6.1 put the PostToolUse hook under "CLI sessions only", next to the
+statusLine, but 4.1 measured only the statusLine and the native diff panel. The primary
+surface is the Desktop Code tab (adr.rg.003), so the answer decides P4's shape.
+
+- **`hook-collector` built** (`src-tauri/src/bin/hook.rs`, `reviewglass-hook.exe`,
+  installed beside the statusLine collector under `~/.reviewglass/bin`). A native binary
+  (adr.rg.010): reads the PostToolUse JSON from stdin field by field (adr.rg.011), writes
+  `spool/events/<ts>-<tool_use_id>.json` with the session id, the transcript path, the
+  cwd, the tool and the file path — **never the edit's content** (`old_string`,
+  `new_string`, a Write's `content` stay in the payload and go nowhere) — exits 0 and
+  prints nothing. An unparseable payload still leaves an event with the byte count and
+  the reason, so "ran and failed" is never mistaken for "never ran". It prunes events
+  older than an hour on every run, so a spool nobody reads stays a handful of files.
+  Configured in `~/.claude/settings.json` (backup `settings.json.bak-reviewglass-p4`)
+  with the matcher `Edit|Write|MultiEdit|NotebookEdit` and a five-second timeout.
+- **Measured, the same way 4.1 records its rows:**
+
+| Question | Surface | Result | Date |
+|---|---|---|---|
+| Does `PostToolUse` fire? | Desktop Code tab | **Yes.** Claude Code 2.1.274, session `entrypoint: claude-desktop`. One `Write` from the build agent's own session produced `spool/events/1789740911042-toolu_01HQ….json` with the session id, the transcript path, the cwd, `tool: Write` and the file path, 1 501 bytes read from stdin. The session had been running when the hook was configured; it fired without a restart. | 2026-09-18 |
+| Does `PostToolUse` fire? | Terminal CLI (print mode, `claude -p`) | **Yes.** Claude Code 2.1.268, `entrypoint: sdk-cli`. One `Write` produced its event the same way. The statusLine did not run in that session, as 4.1 already said of print mode. | 2026-09-18 |
+
+- **Consequences.** The hook is the live diff's primary trigger on *both* surfaces;
+  the "CLI sessions only" bracket in 6.1 was a diagram's assumption, not a
+  measurement, and moves to "both surfaces" in spec v3. The transcript's tool records
+  are not needed as a trigger, so the rule that only session state is ever read from a
+  transcript stands untouched. The filesystem watcher (5.4) stays what it was: the
+  agent-agnostic fallback for v2. A third `entrypoint` value exists, `sdk-cli`, which
+  the transcript reader maps to `Unknown` by design (a new surface is exactly what a
+  guess would get wrong); how the panel treats such sessions is a P4 question.
+- **Planned extension, from the owner:** after the hunk view, a read-only view of the
+  whole file around the change — the diff tab shows the hunks with context (the spec's
+  `DiffView`), and a "whole file" toggle opens the file at the hunk. A read surface
+  still; nothing is written. Recorded in the roadmap for spec v3 as P4b.
+
+Next in P4: `spool-watcher` grows an events reader (`ChangeEvent`), `diff-service`
+runs `git diff` scoped to the path with the debounce, the untracked case and the
+secret-file denylist, and the Diff tab renders `DiffView` with an existing diff
+renderer. Exit criterion unchanged: an agent edit appears in the panel within ~1 s.
+
 ## Session 3 (continued): the second recording, and the dock holds the glass — 17.9.2026 (0.1.0)
 
 The owner recorded again with build `2ed3568`: 50 s in Follow
