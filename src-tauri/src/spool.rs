@@ -12,9 +12,20 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// `%APPDATA%/ReviewGlass/spool`, or the platform equivalent.
+/// `~/.reviewglass/spool`: under the profile root, beside the collectors' binaries,
+/// and deliberately **not** under AppData.
+///
+/// The Claude desktop app is a packaged (MSIX) application, and Windows virtualises
+/// AppData for a packaged process and every child it starts: a directory such a
+/// process creates under `%APPDATA%` lands in
+/// `%LOCALAPPDATA%\Packages\Claude_…\LocalCache\Roaming` instead, visible only to
+/// processes with the same package identity. The Desktop Code tab's sessions, and the
+/// collectors they run, are such children; the app launched from its shortcut is not.
+/// With the spool under AppData the two never met (measured 18.9.2026: a Desktop
+/// session's hook events sat in the package cache while the app read an empty real
+/// `Roaming`). The profile root is not virtualised — `~/.claude` proves it daily.
 pub fn dir() -> Option<PathBuf> {
-    dirs::config_dir().map(|d| d.join("ReviewGlass").join("spool"))
+    dirs::home_dir().map(|h| h.join(".reviewglass").join("spool"))
 }
 
 pub fn sessions_dir() -> Option<PathBuf> {

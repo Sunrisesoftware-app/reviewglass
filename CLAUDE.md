@@ -29,6 +29,12 @@ modules, connections and decisions; the spec is its prose.
   `src-tauri/src/explain/backend` is a boundary violation.
 - **Collectors always exit 0 and always print a line.** They are native binaries
   (adr.rg.010), never shell scripts. Configured Windows paths use forward slashes.
+- **Nothing shared lives under AppData.** The Claude desktop app is packaged, and
+  Windows virtualises AppData for every child it runs — including the Desktop Code
+  tab's sessions, their hooks and the build agent's shell. The spool is
+  `~/.reviewglass/spool` (adr.rg.019). A check of the app is run with the app launched
+  the way the owner launches it (Explorer or a plain PowerShell), never from the
+  agent's shell.
 - **Ship the affordance with the mechanism.** A visible control for every action, a
   discoverable first-run state, a named empty state. A feature reachable only by a
   keystroke nobody was told about is not finished.
@@ -96,7 +102,9 @@ collector replaced it in `settings.json` on 11.9.2026.
 | `src-tauri/src/notifier.rs` | `rg.notifier`: threshold logic (delivery is in `panel.rs`) |
 | `src-tauri/src/panel.rs` | usage loop thread, panel commands, alert settings |
 | `src-tauri/src/config.rs` | `rg.config-store`: atomic JSON, corrupt-file recovery |
-| `src-tauri/src/spool.rs` | `rg.spool`: paths, atomic write, safe file names |
+| `src-tauri/src/spool.rs` | `rg.spool`: paths (`~/.reviewglass/spool`), atomic write, safe file names |
+| `src-tauri/src/bin/hook.rs` | `rg.hook-collector` (PostToolUse → `spool/events`) |
+| `src-tauri/src/diff/` | `rg.diff-service` and the events reader: git diff per changed path, the Diff tab's data |
 | `src-tauri/src/bin/statusline.rs` | `rg.statusline-collector` |
 | `src/routes/glass`, `halo`, `panel` | the three windows |
 | `scripts/adr-from-model.mjs` | renders `docs/adr/` from the Atlas model |
@@ -117,3 +125,5 @@ Full stories in `docs/LESSONS.md`. The short forms:
   once before the tray existed.
 - **A session runs the status line that existed when it started** (11.9.2026). The
   installer must say so.
+- **A packaged app's children write to an AppData nobody else can see** (18.9.2026).
+  The first live diff passed every agent-side check and showed the owner nothing.
