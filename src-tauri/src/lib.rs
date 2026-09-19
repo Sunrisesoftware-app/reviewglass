@@ -1,5 +1,6 @@
-//! ReviewGlass core. Two windows (glass, panel) are declared in tauri.conf.json;
-//! the Rust side owns capture, configuration, and later the spool watcher and git.
+//! ReviewGlass core. The windows (glass, dock with its drawer, halo, finder) are
+//! declared in tauri.conf.json; the Rust side owns capture, configuration, the spool
+//! and git.
 //! See docs/REVIEWGLASS-SPEC.md section 6 for the module contracts.
 
 mod capture;
@@ -36,23 +37,12 @@ pub fn run() {
             app.manage(capture::Engine::new());
             app.manage(panel::PanelState::new());
             app.manage(diff::DiffState::new());
+            app.manage(dock::DockState::new());
 
             if let Some(w) = app.get_webview_window(glass::GLASS_LABEL) {
                 if let Err(e) = glass::exclude_from_capture(&w) {
                     eprintln!("reviewglass: {e}");
                 }
-            }
-            // Closing the panel hides it instead of destroying it: it is a companion
-            // window, and a user who closes it to get it out of the way should be able
-            // to bring it back from the glass rather than restarting the app.
-            if let Some(w) = app.get_webview_window(panel::PANEL_LABEL) {
-                let handle = w.clone();
-                w.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = handle.hide();
-                    }
-                });
             }
             tray::install(app.handle())?;
             glass::prepare_overlays(app.handle());
@@ -87,7 +77,9 @@ pub fn run() {
             dock::dock_snap,
             dock::dock_activate,
             dock::dock_menu,
-            dock::panel_save_size,
+            dock::dock_state,
+            dock::dock_drawer,
+            dock::dock_set_tab,
             glass::hotkey_set_toggle,
             glass::follow_log_set,
             glass::glass_log,

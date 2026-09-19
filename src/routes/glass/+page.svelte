@@ -628,8 +628,8 @@
       <span class="spacer"></span>
 
       <button
-        title="Open the sessions panel"
-        aria-label="Open the sessions panel"
+        title="Open the dock's drawer: sessions, diff and settings"
+        aria-label="Open the dock's drawer"
         onpointerdown={(e) => control(e, () => invoke("panel_show"))}>▤</button
       >
       <button

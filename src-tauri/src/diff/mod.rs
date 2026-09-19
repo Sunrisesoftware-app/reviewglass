@@ -35,7 +35,7 @@ use events::ChangeEvent;
 const TICK: Duration = Duration::from_millis(300);
 /// Views kept for the panel, newest first, one per path.
 const KEEP: usize = 30;
-/// Event sent to the panel when the list changed.
+/// Event sent to the dock (the drawer's host) when the list changed.
 pub const UPDATE_EVENT: &str = "diff:update";
 /// A new file larger than this is not shown line by line.
 const MAX_UNTRACKED_BYTES: u64 = 512 * 1024;
@@ -160,7 +160,7 @@ pub fn spawn_diff_loop(app: AppHandle) {
         .spawn(move || loop {
             let denylist = app.state::<crate::config::Store>().get().diff.denylist;
             if app.state::<DiffState>().tick(&denylist) {
-                let _ = app.emit_to(crate::panel::PANEL_LABEL, UPDATE_EVENT, ());
+                let _ = app.emit_to(crate::dock::DOCK_LABEL, UPDATE_EVENT, ());
             }
             thread::sleep(TICK);
         })

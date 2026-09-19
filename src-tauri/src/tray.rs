@@ -1,9 +1,9 @@
 //! System tray icon: the one place the app is always visible from.
 //!
-//! Both windows can be hidden — the panel hides on close, the glass hides on Esc or the
-//! hotkey — and without a tray that leaves a process running with no trace of itself,
+//! The glass hides on Esc or the hotkey and the dock's drawer closes into the strip,
+//! and without a tray a hidden app leaves a process running with no trace of itself,
 //! which is how a user ends up "closing" the app and starting a second copy. The tray
-//! is the fixed point: show either window, or quit for real.
+//! is the fixed point: the glass, the drawer, or quit for real.
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -12,7 +12,6 @@ use tauri::{AppHandle, Manager};
 use crate::capture::Engine;
 use crate::config::Store;
 use crate::glass::GLASS_LABEL;
-use crate::panel::PANEL_LABEL;
 
 const ID_GLASS: &str = "show-glass";
 const ID_PANEL: &str = "show-panel";
@@ -22,7 +21,13 @@ const ID_QUIT: &str = "quit";
 pub fn install(app: &AppHandle) -> tauri::Result<()> {
     let show_glass =
         MenuItem::with_id(app, ID_GLASS, "Show glass\tCtrl+Alt+G", true, None::<&str>)?;
-    let show_panel = MenuItem::with_id(app, ID_PANEL, "Show sessions panel", true, None::<&str>)?;
+    let show_panel = MenuItem::with_id(
+        app,
+        ID_PANEL,
+        "Sessions, diff and settings",
+        true,
+        None::<&str>,
+    )?;
     let lens = MenuItem::with_id(
         app,
         ID_LENS,
@@ -49,7 +54,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             ID_GLASS => show_glass_window(app),
-            ID_PANEL => show_panel_window(app),
+            ID_PANEL => crate::dock::open_drawer(app),
             ID_LENS => {
                 let engine = app.state::<Engine>();
                 let on = engine.mode() != crate::capture::Mode::Lens;
@@ -59,7 +64,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             ID_QUIT => quit_app(app),
             _ => {}
         })
-        // A left click brings the panel up: it is the window with something to read.
+        // A left click opens the drawer: it is the part with something to read.
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
@@ -67,7 +72,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                 ..
             } = event
             {
-                show_panel_window(tray.app_handle());
+                crate::dock::open_drawer(tray.app_handle());
             }
         })
         .build(app)?;
@@ -83,17 +88,6 @@ pub fn show_glass_window(app: &AppHandle) {
     let store = app.state::<Store>();
     let _ = store.update(|c| c.glass.visible = true);
     crate::glass::broadcast_state(app, &engine, &store);
-}
-
-pub fn show_panel_window(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window(PANEL_LABEL) {
-        // Beside the dock, every time: a hidden panel forgets nothing, but the dock
-        // may have moved to another corner meanwhile.
-        crate::dock::place_panel(app);
-        let _ = w.show();
-        let _ = w.unminimize();
-        let _ = w.set_focus();
-    }
 }
 
 /// A second launch, or the shortcut clicked while the app runs: bring the dock

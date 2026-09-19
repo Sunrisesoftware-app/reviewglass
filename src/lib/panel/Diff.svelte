@@ -150,10 +150,13 @@
   .bad {
     color: var(--bad);
   }
+  /* Sized for the drawer's 640 px (adr.rg.020): the file list and the hunk side by
+     side, each scrolling on its own inside the drawer's height. */
   .diff {
     display: grid;
-    grid-template-columns: minmax(180px, 32%) 1fr;
+    grid-template-columns: minmax(170px, 30%) minmax(0, 1fr);
     gap: 12px;
+    height: 100%;
     min-height: 0;
   }
   .files {
@@ -162,7 +165,7 @@
     padding: 0;
     border-right: 1px solid var(--line);
     overflow: auto;
-    max-height: 70vh;
+    min-height: 0;
   }
   .files button {
     display: flex;
@@ -206,7 +209,7 @@
   .view {
     min-width: 0;
     overflow: auto;
-    max-height: 70vh;
+    min-height: 0;
   }
   .view header {
     display: flex;
