@@ -4,6 +4,19 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 4, closing: a visible way out — 19.9.2026 (0.1.0)
+
+The owner's last observation of the session: the dock has no quit button, and the
+drawer's ✕ closes only the drawer. Quitting lived in the dock's right-click menu and in
+the tray — a mechanism without its affordance, against this repo's own rule. The strip
+now ends in a ✕ that quits ReviewGlass for real (the glass, the drawer, the process),
+red on hover so it is not mistaken for the drawer's toggle beside it. The menus and the
+tray keep their quit items.
+
+Session 4 closes here: the hook spike, P4 built and observed, the spool moved
+(adr.rg.019), P2's exit criterion met, the drawer (adr.rg.020). Next session starts
+from the owner's look at the dock with its drawer, then P4b and spec v3.
+
 ## Session 4 (continued): the panel is the dock's drawer, in the dock's own window — 19.9.2026 (0.1.0)
 
 The owner's verdict on the Diff tab was about the box it came in: the panel was a loose

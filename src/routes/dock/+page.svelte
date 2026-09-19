@@ -288,6 +288,15 @@
       aria-label={open ? "Close the drawer" : "Open the drawer"}
       onpointerdown={(e) => control(e, () => toggleDrawer())}>{open ? (bottom ? "▾" : "▴") : "▤"}</button
     >
+    <!-- The way out, in sight (CLAUDE.md: ship the affordance with the mechanism). The
+         menus and the tray still quit too; this is the one a user finds without being
+         told. It quits for real: the glass, the drawer and the process. -->
+    <button
+      class="quit"
+      title="Quit ReviewGlass"
+      aria-label="Quit ReviewGlass"
+      onpointerdown={(e) => control(e, () => invoke("app_quit"))}>✕</button
+    >
   </div>
 
   {#if open}
@@ -470,6 +479,15 @@
   }
   .drawer-toggle.on {
     background: rgba(255, 255, 255, 0.2);
+  }
+  .quit {
+    margin-left: 0.15em;
+    opacity: 0.6;
+  }
+  .quit:hover {
+    opacity: 1;
+    background: #b32020 !important;
+    color: #fff;
   }
 
   /* The drawer: the panel, in the panel's own colours, under (or over) the strip. */
