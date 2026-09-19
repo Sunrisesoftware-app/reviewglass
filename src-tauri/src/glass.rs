@@ -501,7 +501,13 @@ pub fn popup_menu(app: &AppHandle, engine: &Engine) -> tauri::Result<()> {
                 None::<&str>,
             )?,
             &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, M_PANEL, "Show sessions panel", true, None::<&str>)?,
+            &MenuItem::with_id(
+                app,
+                M_PANEL,
+                "Sessions, diff and settings",
+                true,
+                None::<&str>,
+            )?,
             &MenuItem::with_id(app, M_HIDE, "Hide glass\tEsc", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, M_QUIT, "Quit ReviewGlass", true, None::<&str>)?,
@@ -565,7 +571,7 @@ pub fn on_menu(app: &AppHandle, id: &str) {
             let _ = app.emit_to(GLASS_LABEL, ZOOM_EVENT, step);
         }
         M_HIDE => glass_hide(app.clone()),
-        M_PANEL => crate::tray::show_panel_window(app),
+        M_PANEL => crate::dock::open_drawer(app),
         M_QUIT => crate::tray::quit_app(app),
         _ => {}
     }

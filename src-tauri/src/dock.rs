@@ -2,10 +2,17 @@
 //! strip snapped to a screen corner, present at every start while the glass starts
 //! hidden, from which the glass is switched on in a mode and off again. The Rust side
 //! owns the corner, the snapping and the activation; the strip itself is the page.
+//!
+//! The panel is the dock's drawer, in this same window (adr.rg.020): closed, the
+//! window is the strip; open, it grows to `DRAWER_WIDTH` by the drawer's height,
+//! below the strip in a top corner and above it in a bottom one, snapped to the same
+//! corner. One window that grows, so nothing has to follow anything.
+
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::{AppHandle, Manager, PhysicalPosition, State};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State};
 
 use crate::capture::{Engine, Mode};
 use crate::config::Store;
@@ -16,6 +23,13 @@ pub const DOCK_LABEL: &str = "dock";
 pub const M_TOGGLE: &str = "dock-toggle";
 /// Gap between the dock and the screen's edges, physical pixels.
 const DOCK_MARGIN: i32 = 8;
+/// The strip: the dock closed.
+pub const STRIP_WIDTH: u32 = 470;
+pub const STRIP_HEIGHT: u32 = 44;
+/// The dock open: wide enough for a diff's file list and hunk side by side.
+pub const DRAWER_WIDTH: u32 = 640;
+/// Event to the dock page when the drawer's state changed from outside it.
+pub const STATE_EVENT: &str = "dock:state";
 
 /// The screen corner the dock sits in. Dragging it anywhere snaps it to the nearest
 /// corner, so a corner is the only position it can have.
@@ -33,61 +47,112 @@ pub enum Corner {
 #[serde(default)]
 pub struct DockConfig {
     pub corner: Corner,
-    /// The panel's size when it opens under the dock. Stored when the user resizes
-    /// it; the position is always the dock's, never stored.
-    pub panel_width: u32,
-    pub panel_height: u32,
+    /// The drawer's height below (or above) the strip, physical pixels. A setting,
+    /// not a drag: the drawer cannot be sized by hand (adr.rg.020).
+    pub drawer_height: u32,
+    /// The tab the drawer opens on: the last one used.
+    pub drawer_tab: String,
 }
 
 impl Default for DockConfig {
     fn default() -> Self {
         Self {
             corner: Corner::TopLeft,
-            panel_width: 500,
-            panel_height: 620,
+            drawer_height: 620,
+            drawer_tab: "sessions".into(),
         }
     }
 }
 
-/// Gap between the dock and the panel that opens beside it, physical pixels.
-const PANEL_GAP: i32 = 6;
+/// The drawer's open state. Not a setting: every start begins with the strip alone.
+#[derive(Default)]
+pub struct DockState {
+    open: AtomicBool,
+}
 
-/// Put the panel next to the dock, on the side away from the screen's edge — under a
-/// dock at the top, above one at the bottom — flush with the dock's outer edge and at
-/// its remembered size. The panel is a drawer of the dock, not a window that lands
-/// wherever Windows puts it.
-pub fn place_panel(app: &AppHandle) {
-    let (Some(dock), Some(panel)) = (
-        app.get_webview_window(DOCK_LABEL),
-        app.get_webview_window(crate::panel::PANEL_LABEL),
-    ) else {
+impl DockState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.open.load(Ordering::Relaxed)
+    }
+}
+
+/// What the dock page renders: the drawer's state and the corner it hangs from,
+/// which decides whether the strip is the drawer's top row or its bottom one.
+#[derive(Clone, Debug, Serialize)]
+pub struct DockView {
+    pub open: bool,
+    pub corner: Corner,
+    pub drawer_height: u32,
+    pub drawer_tab: String,
+}
+
+fn view_of(app: &AppHandle) -> DockView {
+    let cfg = app.state::<Store>().get().dock;
+    DockView {
+        open: app.state::<DockState>().is_open(),
+        corner: cfg.corner,
+        drawer_height: cfg.drawer_height,
+        drawer_tab: cfg.drawer_tab,
+    }
+}
+
+/// The window's outer size for a drawer state.
+fn size_for(open: bool, drawer_height: u32) -> PhysicalSize<u32> {
+    if open {
+        PhysicalSize::new(DRAWER_WIDTH, STRIP_HEIGHT + drawer_height)
+    } else {
+        PhysicalSize::new(STRIP_WIDTH, STRIP_HEIGHT)
+    }
+}
+
+/// Open or close the drawer: resize the one window and put it back in its corner, so
+/// the strip stays where it was and the drawer unfolds away from the screen's edge.
+/// Reached from the strip's button, the tray, the glass's menu and its bar.
+pub fn set_drawer(app: &AppHandle, open: bool) {
+    let Some(w) = app.get_webview_window(DOCK_LABEL) else {
         return;
     };
     let cfg = app.state::<Store>().get().dock;
-    let _ = panel.set_size(tauri::PhysicalSize::new(cfg.panel_width, cfg.panel_height));
-    let (Ok(dpos), Ok(dsize), Ok(psize)) =
-        (dock.outer_position(), dock.outer_size(), panel.outer_size())
-    else {
-        return;
-    };
-    let x = match cfg.corner {
-        Corner::TopLeft | Corner::BottomLeft => dpos.x,
-        Corner::TopRight | Corner::BottomRight => dpos.x + dsize.width as i32 - psize.width as i32,
-    };
-    let y = match cfg.corner {
-        Corner::TopLeft | Corner::TopRight => dpos.y + dsize.height as i32 + PANEL_GAP,
-        Corner::BottomLeft | Corner::BottomRight => dpos.y - PANEL_GAP - psize.height as i32,
-    };
-    let _ = panel.set_position(PhysicalPosition::new(x, y));
+    app.state::<DockState>().open.store(open, Ordering::Relaxed);
+    let size = size_for(open, cfg.drawer_height);
+    // Position first, from the size the window is about to have, so a bottom-corner
+    // drawer never spends a frame hanging below the screen; then again after the
+    // resize, for the corner the window is actually on.
+    place_with(app, cfg.corner, size);
+    let _ = w.set_size(size);
+    place_with(app, cfg.corner, size);
+    let _ = w.show();
+    if open {
+        let _ = w.set_focus();
+    }
+    let _ = app.emit_to(DOCK_LABEL, STATE_EVENT, view_of(app));
 }
 
-/// The panel's outer size, reported by the panel when the user resizes it.
+/// Bring the dock forward with its drawer open. The one entry for every "show the
+/// panel" control outside the dock.
+pub fn open_drawer(app: &AppHandle) {
+    set_drawer(app, true);
+}
+
 #[tauri::command]
-pub fn panel_save_size(store: State<Store>, width: u32, height: u32) {
-    let _ = store.update(|c| {
-        c.dock.panel_width = width;
-        c.dock.panel_height = height;
-    });
+pub fn dock_state(app: AppHandle) -> DockView {
+    view_of(&app)
+}
+
+#[tauri::command]
+pub fn dock_drawer(app: AppHandle, open: bool) -> DockView {
+    set_drawer(&app, open);
+    view_of(&app)
+}
+
+/// Remember the tab the drawer is on, so it opens there next time.
+#[tauri::command]
+pub fn dock_set_tab(store: State<Store>, tab: String) {
+    let _ = store.update(|c| c.dock.drawer_tab = tab);
 }
 
 /// Exclude the dock from capture and put it in its corner. The glass never shows the
@@ -100,11 +165,26 @@ pub fn prepare(app: &AppHandle) {
         eprintln!("reviewglass: dock {e}");
     }
     let corner = app.state::<Store>().get().dock.corner;
+    // Every start begins with the strip alone, whatever size the window was declared
+    // with.
+    let _ = w.set_size(size_for(false, 0));
     place(app, corner);
 }
 
-/// Move the dock to `corner` of the monitor it is on (the primary one if none).
+/// Move the dock to `corner` of the monitor it is on (the primary one if none), at
+/// the size it has now.
 fn place(app: &AppHandle, corner: Corner) {
+    let Some(w) = app.get_webview_window(DOCK_LABEL) else {
+        return;
+    };
+    if let Ok(size) = w.outer_size() {
+        place_with(app, corner, size);
+    }
+}
+
+/// Move the dock to `corner` as if it were `size`: the drawer's unfold computes the
+/// position from the size it is about to have.
+fn place_with(app: &AppHandle, corner: Corner, size: PhysicalSize<u32>) {
     let Some(w) = app.get_webview_window(DOCK_LABEL) else {
         return;
     };
@@ -113,7 +193,7 @@ fn place(app: &AppHandle, corner: Corner) {
         .ok()
         .flatten()
         .or_else(|| w.primary_monitor().ok().flatten());
-    let (Some(m), Ok(size)) = (monitor, w.outer_size()) else {
+    let Some(m) = monitor else {
         return;
     };
     let area = m.work_area();
@@ -155,6 +235,8 @@ pub fn dock_snap(app: AppHandle, store: State<Store>) -> Corner {
         .unwrap_or(store.get().dock.corner);
     let _ = store.update(|c| c.dock.corner = corner);
     place(&app, corner);
+    // The corner decides which way the drawer unfolds: the page re-lays itself out.
+    let _ = app.emit_to(DOCK_LABEL, STATE_EVENT, view_of(&app));
     corner
 }
 
@@ -215,7 +297,7 @@ pub fn dock_menu(app: AppHandle, store: State<Store>) -> Result<(), String> {
             &MenuItem::with_id(
                 &app,
                 glass::M_PANEL,
-                "Show sessions panel",
+                "Sessions, diff and settings",
                 true,
                 None::<&str>,
             )

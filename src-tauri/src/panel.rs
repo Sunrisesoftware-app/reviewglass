@@ -1,4 +1,6 @@
-//! Panel window (rg.panel-window), Rust side, and the usage loop behind it.
+//! The panel (rg.panel-window), Rust side, and the usage loop behind it. Since
+//! adr.rg.020 the panel is the dock's drawer, hosted in the dock window; this module
+//! keeps the usage loop and the commands the drawer's tabs call.
 //!
 //! The usage model runs on its own thread rather than on the panel's poll. Two reasons:
 //! the burn-rate history must accumulate whether or not anyone is looking, and the
@@ -17,8 +19,6 @@ use crate::config::{AlertConfig, Store};
 use crate::notifier::{Alert, Notifier, WindowKind};
 use crate::session;
 use crate::usage::{UsageModel, UsageView};
-
-pub const PANEL_LABEL: &str = "panel";
 
 /// How often both channels are read. Session data changes at the pace of assistant
 /// messages, so two seconds is invisible latency and negligible cost.
@@ -86,11 +86,11 @@ fn toast(app: &AppHandle, title: &str, body: &str) {
 
 // ---- commands -------------------------------------------------------------
 
-/// Bring the panel up. Closing it hides it rather than destroying it (see lib.rs), so
-/// this is always able to bring the same window back.
+/// Open the dock's drawer (the panel). Kept under its old name: the glass's bar and
+/// menu call it.
 #[tauri::command]
 pub fn panel_show(app: AppHandle) {
-    crate::tray::show_panel_window(&app);
+    crate::dock::open_drawer(&app);
 }
 
 /// The latest view the loop produced. `None` only in the first two seconds after start.

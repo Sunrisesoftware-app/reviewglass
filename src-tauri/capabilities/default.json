@@ -1,8 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Both windows: core window control only. No shell, no fs, no http from the webview.",
-  "windows": ["panel", "glass", "halo", "finder", "dock"],
+  "description": "Every window: core window control only. No shell, no fs, no http from the webview.",
+  "windows": [
+    "glass",
+    "halo",
+    "finder",
+    "dock"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",

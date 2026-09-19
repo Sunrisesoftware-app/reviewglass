@@ -4,6 +4,47 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 4 (continued): the panel is the dock's drawer, in the dock's own window — 19.9.2026 (0.1.0)
+
+The owner's verdict on the Diff tab was about the box it came in: the panel was a loose
+conventional window, opened beside the dock but not of it, and no real UX design had
+been done for it. The panel — Sessions, Diff, Settings — should be attached to the
+dock, open from it, move with it, never be two separate windows that can be apart.
+Decided (adr.rg.020, Atlas #317): one window that grows, 640 px wide open, the tabs in
+the drawer.
+
+- **The dock window is the panel's window.** Closed, the 470×44 strip as before. Open,
+  the same window is 640 × (44 + 620): the drawer unfolds below the strip in a top
+  corner and above it in a bottom one (the page lays itself out `column-reverse`
+  there, so the strip is always the row nearest the screen's edge), snapped to the
+  same corner. The Rust side positions the window from the size it is about to have
+  before resizing, so a bottom-corner drawer never spends a frame below the screen. A
+  drag with the drawer open moves the whole thing, and a snap re-lays it out.
+- **The strip's ▤ button opens and closes the drawer** (it reads ▴ or ▾ while open,
+  pointing the way it closes); the tray's item and left click, the glass's bar button
+  and its menu all open the same drawer — there is no other window. The tabs sit in
+  the drawer's first row; the last tab is remembered (`dock.drawer_tab`), the drawer
+  starts closed at every start. Its height is a setting (`dock.drawer_height`, 620),
+  not a drag.
+- **Four windows, not five.** The panel window, its close-to-hide handling, its
+  size-on-resize command and `place_panel` are gone; the panel's components moved to
+  `src/lib/panel/` and mount inside the dock route; the diff loop's update event goes
+  to the dock. The Diff tab's list and hunk are sized for 640 px and scroll inside the
+  drawer's height. The usage poll runs every 2 s while the drawer is open and every
+  5 s while it is a strip.
+- The drawer is excluded from capture with the dock, so it can never appear inside
+  the glass.
+
+Verified on the release build, launched from a plain PowerShell (adr.rg.019's rule)
+and driven over CDP without touching the cursor: no panel window exists; the strip is
+470×44 at (8,8) with no drawer in the page; opening gives 640×664 at (8,8) with the
+tabs Sessions · Diff · Settings and the strip as the top row; the Diff tab remembered;
+a hook event appears in the drawer's Diff tab with the hunk rendered; moved to
+(1500,900) and snapped, the open window sits bottom-right with its bottom on the work
+area's edge and the strip as the bottom row; closed, the strip is 470×44 in that
+corner; `panel_show` (the glass's and the tray's route) opens the drawer on the
+remembered tab.
+
 ## Session 4 (continued): P2's exit criterion met — five concurrent CLI sessions — 19.9.2026 (0.1.0)
 
 Open since 11.9.: "five concurrent sessions in the panel with correct shared-vs-attributed

@@ -12,16 +12,6 @@
   "app": {
     "windows": [
       {
-        "label": "panel",
-        "title": "ReviewGlass",
-        "url": "/panel",
-        "width": 500,
-        "height": 620,
-        "minWidth": 420,
-        "minHeight": 320,
-        "visible": false
-      },
-      {
         "label": "glass",
         "title": "ReviewGlass Glass",
         "url": "/glass",

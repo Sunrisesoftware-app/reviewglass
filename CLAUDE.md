@@ -100,13 +100,14 @@ collector replaced it in `settings.json` on 11.9.2026.
 | `src-tauri/src/session/` | `rg.session-source`: payload types, spool reader, transcript reader, merge |
 | `src-tauri/src/usage.rs` | `rg.usage-model`: one gauge, N shares, burn rate |
 | `src-tauri/src/notifier.rs` | `rg.notifier`: threshold logic (delivery is in `panel.rs`) |
-| `src-tauri/src/panel.rs` | usage loop thread, panel commands, alert settings |
+| `src-tauri/src/dock.rs` | `rg.dock-window`: the strip, its corner, and the drawer that is the panel (adr.rg.020) |
+| `src-tauri/src/panel.rs` | usage loop thread, the drawer's tab commands, alert settings |
 | `src-tauri/src/config.rs` | `rg.config-store`: atomic JSON, corrupt-file recovery |
 | `src-tauri/src/spool.rs` | `rg.spool`: paths (`~/.reviewglass/spool`), atomic write, safe file names |
 | `src-tauri/src/bin/hook.rs` | `rg.hook-collector` (PostToolUse → `spool/events`) |
 | `src-tauri/src/diff/` | `rg.diff-service` and the events reader: git diff per changed path, the Diff tab's data |
 | `src-tauri/src/bin/statusline.rs` | `rg.statusline-collector` |
-| `src/routes/glass`, `halo`, `panel` | the three windows |
+| `src/routes/glass`, `dock`, `halo`, `finder` | the four windows; `src/lib/panel/` holds the drawer's tabs (Sessions, Diff, Settings) |
 | `scripts/adr-from-model.mjs` | renders `docs/adr/` from the Atlas model |
 
 ## Lessons that became rules
