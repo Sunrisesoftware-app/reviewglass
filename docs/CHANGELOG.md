@@ -4,6 +4,38 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 4 (continued): P2's exit criterion met — five concurrent CLI sessions — 19.9.2026 (0.1.0)
+
+Open since 11.9.: "five concurrent sessions in the panel with correct shared-vs-attributed
+semantics". The owner asked whether the build agent could run the CLI sessions itself.
+It can: a Claude Code CLI started under a pseudo-terminal (Windows ConPTY, `pywinpty`)
+believes it is interactive, renders its status line and runs the collector — print mode
+never does (4.1). No window, no focus taken; the owner's screen and mouse untouched.
+
+- **Method** (`scratchpad/cli_sessions.py`, kept out of the repo): five `claude --model
+  haiku` sessions in five throwaway directories, each driven through its ConPTY — the
+  trust dialog answered (its default is "No, exit"; the marker is moved to "Yes" and
+  checked before Enter, since a redraw can put it back), one prompt ("reply with one
+  word") sent once the input box is idle, the reply awaited by the collector's own
+  rendered line (`ctx 23% · 5h 9%`) appearing on the session's screen. About 0.02 $ of
+  Haiku per session.
+- **Measured, 19.9.2026:** five records in `~/.reviewglass/spool/sessions`, one per
+  session, each carrying `rate_limits` with the same figures — 5-hour 9 %, 7-day 55 %,
+  the same `resets_at` — and its own cost (0.016–0.026 $) and context (23 %). The
+  app's own reader (`session::read_all`, the code the panel renders, run through the
+  diagnostic test `live_reading` while the sessions were alive) listed all five as
+  `Cli / Both` with cost and context per session and the quota flag set, beside the
+  agent's own Desktop session and the owner's second one through the transcript
+  channel, and the previous runs' sessions still inside the 10-minute TTL as
+  transcript-only. Shared gauge, per-session attribution, never blended.
+- The first three attempts failed for reasons worth a line each: the prompt sent
+  before the input box existed (no reply, a first-call record with no `rate_limits`);
+  a `\r` typed into a heredoc arriving as a real carriage return; one session's trust
+  dialog answered while it was redrawing.
+
+The dock's gauge shows the 5-hour figure again; the panel's Sessions tab lists the
+sessions while their records are younger than ten minutes.
+
 ## Session 4 (continued): the spool moves to the profile root — the owner saw nothing, and why — 18.9.2026 (0.1.0)
 
 The owner opened the Diff tab and asked for an edit; nothing appeared. The hook had

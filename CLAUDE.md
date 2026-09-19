@@ -84,10 +84,10 @@ collector replaced it in `settings.json` on 11.9.2026.
 ## Roadmap gates
 
 - **P0** done: statusLine fires in the CLI, not in the Desktop Code tab.
-- **P1** done. **P2** built; its exit criterion (five concurrent sessions) is still to
-  be observed. **P3** built; the toast is measured working.
-- **P4** (live diff) is next: `hook-collector` as a native binary, `diff-service`, the
-  Diff tab. Nothing gates it.
+- **P1** done. **P2** done (five concurrent sessions observed 19.9.2026). **P3** built;
+  the toast is measured working.
+- **P4** (live diff) built and observed 18.9.2026: `hook-collector`, `diff-service`, the
+  Diff tab. P4b (a read-only whole-file view around a hunk) is planned.
 - **P8** (public release) waits on name clearance (adr.rg.008).
 
 ## Layout
