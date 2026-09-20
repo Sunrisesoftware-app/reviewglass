@@ -31,3 +31,4 @@ here. A hand edit here is lost on the next run.
 - [ADR-0018](0018-the-dock-is-the-control-panel-and-the-fixed-poin.md) — The dock is the control panel and the fixed point: the glass hangs from it *(accepted)*
 - [ADR-0019](0019-the-spool-lives-under-the-profile-root-not-appda.md) — The spool lives under the profile root, not AppData: the desktop app is packaged and virtualises AppData for its children *(accepted)*
 - [ADR-0020](0020-the-panel-is-the-dock-s-drawer-in-the-dock-s-own.md) — The panel is the dock's drawer, in the dock's own window: one window that grows, not two that can drift apart *(accepted)*
+- [ADR-0021](0021-the-drawer-is-sized-by-hand-from-its-free-corner.md) — The drawer is sized by hand from its free corner, and the size is remembered *(accepted)*
