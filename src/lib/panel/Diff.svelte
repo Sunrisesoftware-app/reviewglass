@@ -3,17 +3,30 @@
   // edit. A list of the files touched since ReviewGlass started, newest first, and the
   // selected file's diff rendered by diff2html (an existing renderer, spec 6.2). Every
   // empty state names its reason: no hook, no edit yet, a file git cannot show.
-  import { onMount } from "svelte";
+  //
+  // P4b: the whole file, read-only, around a change. Opened from the header's toggle
+  // or from a hunk's header, it shows the working copy with the last diff's added
+  // lines tinted and a cut mark where lines were removed; ‹ › walk the changes. The
+  // hunk view stays the default: picking another file returns to it.
+  import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { html as diffHtml } from "diff2html";
   import "diff2html/bundles/css/diff2html.min.css";
-  import type { DiffTab, DiffView } from "./types";
+  import type { DiffTab, DiffView, FileView } from "./types";
 
   let tab = $state<DiffTab | null>(null);
   let selected = $state<string | null>(null);
   let failure = $state<string | null>(null);
   let now = $state(Date.now());
+
+  /** "hunks" (the default) or "file" (P4b). */
+  let mode = $state<"hunks" | "file">("hunks");
+  let file = $state<FileView | null>(null);
+  let fileFailure = $state<string | null>(null);
+  /** Which of the file's changes the view last went to (0-based), for ‹ ›. */
+  let at = $state(0);
+  let viewEl = $state<HTMLElement | null>(null);
 
   const current = $derived<DiffView | null>(
     tab ? (tab.views.find((v) => v.path === selected) ?? tab.views[0] ?? null) : null,
@@ -28,6 +41,16 @@
       : "",
   );
 
+  /** The file's lines; a trailing newline is not an extra empty line. */
+  const lines = $derived.by(() => {
+    if (!file?.text) return [] as string[];
+    const ls = file.text.split("\n");
+    if (ls.length > 0 && ls[ls.length - 1] === "") ls.pop();
+    return ls;
+  });
+  const added = $derived(new Set(file?.added ?? []));
+  const cuts = $derived(new Set(file?.removed_before ?? []));
+
   async function refresh() {
     try {
       tab = await invoke<DiffTab>("panel_diffs");
@@ -36,6 +59,96 @@
       failure = e instanceof Error ? e.message : String(e);
     }
   }
+
+  /** Another file from the list: its hunks, the default view. */
+  function pick(path: string) {
+    selected = path;
+    mode = "hunks";
+    file = null;
+  }
+
+  /** Read the working copy of the selected file. Nothing is written. */
+  async function loadFile(): Promise<FileView | null> {
+    if (!current) return null;
+    try {
+      const f = await invoke<FileView>("panel_file_view", { path: current.path });
+      fileFailure = null;
+      file = f;
+      return f;
+    } catch (e) {
+      fileFailure = e instanceof Error ? e.message : String(e);
+      return null;
+    }
+  }
+
+  async function goTo(line: number) {
+    await tick();
+    viewEl?.querySelector(`[data-line="${line}"]`)?.scrollIntoView({ block: "center" });
+  }
+
+  /** Open the whole file at `line`, or at its first change. */
+  async function openFile(line?: number) {
+    const f = await loadFile();
+    mode = "file";
+    if (!f) return;
+    let idx = 0;
+    if (line != null) {
+      f.hunks.forEach((h, k) => {
+        if (h.start <= line) idx = k;
+      });
+    }
+    at = idx;
+    await goTo(line ?? f.hunks[0]?.start ?? 1);
+  }
+
+  function step(d: number) {
+    if (!file || file.hunks.length === 0) return;
+    at = (at + d + file.hunks.length) % file.hunks.length;
+    void goTo(file.hunks[at].start);
+  }
+
+  /** The list changed: re-read an open file, or fall back to the hunks if it is gone. */
+  async function onUpdate() {
+    await refresh();
+    if (mode !== "file") return;
+    if (current && file && current.path === file.path) await loadFile();
+    else {
+      mode = "hunks";
+      file = null;
+    }
+  }
+
+  $effect(() => {
+    // Each hunk header in diff2html's rendering opens the whole file at that hunk:
+    // by click, or by Enter/Space once tabbed to. The rows are diff2html's, so they
+    // are wired here, after the render, and unwired before the next one. `mode` is
+    // read so the wiring repeats when the hunks come back after the file view.
+    if (mode !== "hunks" || !rendered || !viewEl) return;
+    const undo: (() => void)[] = [];
+    viewEl.querySelectorAll("div.d2h-info").forEach((info) => {
+      const row = (info.closest("tr") ?? info) as HTMLElement;
+      const m = /\+(\d+)/.exec(info.textContent ?? "");
+      if (!m) return;
+      const line = Number(m[1]);
+      const open = () => void openFile(line);
+      const key = (e: KeyboardEvent) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          open();
+        }
+      };
+      row.title = "Open the whole file here";
+      row.setAttribute("role", "button");
+      row.tabIndex = 0;
+      row.addEventListener("click", open);
+      row.addEventListener("keydown", key);
+      undo.push(() => {
+        row.removeEventListener("click", open);
+        row.removeEventListener("keydown", key);
+      });
+    });
+    return () => undo.forEach((u) => u());
+  });
 
   function ago(ms: number) {
     const s = Math.max(0, Math.round((now - ms) / 1000));
@@ -74,7 +187,7 @@
     void refresh();
     const tick = setInterval(() => (now = Date.now()), 5000);
     let unlisten: (() => void) | undefined;
-    void listen("diff:update", () => void refresh()).then((u) => (unlisten = u));
+    void listen("diff:update", () => void onUpdate()).then((u) => (unlisten = u));
     return () => {
       clearInterval(tick);
       unlisten?.();
@@ -104,7 +217,7 @@
         <li>
           <button
             class:active={current?.path === v.path}
-            onclick={() => (selected = v.path)}
+            onclick={() => pick(v.path)}
             title={v.path}
           >
             <span class="path">{v.display_path}</span>
@@ -116,15 +229,65 @@
         </li>
       {/each}
     </ul>
-    <section class="view">
+    <section class="view" bind:this={viewEl}>
       {#if current}
         <header>
           <span class="path" title={current.path}>{current.display_path}</span>
-          {#if current.repo_root}
+          {#if mode === "file"}
+            <span class="root">working copy · read-only</span>
+          {:else if current.repo_root}
             <span class="root" title={current.repo_root}>{current.repo_root}</span>
           {/if}
+          <span class="controls">
+            {#if mode === "file" && file && file.hunks.length > 0}
+              <span class="nav">
+                <button onclick={() => step(-1)} title="Previous change" aria-label="Previous change">‹</button>
+                <span class="count">{at + 1}/{file.hunks.length}</span>
+                <button onclick={() => step(1)} title="Next change" aria-label="Next change">›</button>
+              </span>
+            {/if}
+            <span class="toggle" role="group" aria-label="Hunks or the whole file">
+              <button class:active={mode === "hunks"} aria-pressed={mode === "hunks"} onclick={() => (mode = "hunks")}>
+                Hunks
+              </button>
+              <button
+                class:active={mode === "file"}
+                aria-pressed={mode === "file"}
+                onclick={() => void openFile()}
+                title="The whole file, read-only, at its first change"
+              >
+                File
+              </button>
+            </span>
+          </span>
         </header>
-        {#if current.unified}
+        {#if mode === "file"}
+          {#if fileFailure}
+            <p class="state bad">The core is not answering: {fileFailure}</p>
+          {:else if !file}
+            <p class="state">Reading…</p>
+          {:else if file.status !== "shown" || file.text === null}
+            <p class="state">{file.reason ?? "Nothing to show."}</p>
+          {:else}
+            <div class="file" role="document" aria-label="The whole file, read-only">
+              {#each lines as text, i (i)}
+                <div
+                  class="ln"
+                  class:added={added.has(i + 1)}
+                  class:cut={cuts.has(i + 1)}
+                  class:target={file.hunks[at]?.start === i + 1}
+                  data-line={i + 1}
+                  title={cuts.has(i + 1) ? "Lines removed above this one" : undefined}
+                >
+                  <span class="n">{i + 1}</span><span class="t">{text}</span>
+                </div>
+              {/each}
+              {#if cuts.has(lines.length + 1)}
+                <div class="ln cut end" data-line={lines.length + 1} title="Lines removed at the end"></div>
+              {/if}
+            </div>
+          {/if}
+        {:else if current.unified}
           <div class="rendered">{@html rendered}</div>
         {:else}
           <p class="state">{current.reason ?? "Nothing to show."}</p>
@@ -214,20 +377,120 @@
   .view header {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
-    align-items: baseline;
+    gap: 6px 10px;
+    align-items: center;
     margin-bottom: 8px;
     font-family: ui-monospace, Consolas, monospace;
     font-size: 12px;
+    position: sticky;
+    left: 0;
+  }
+  .view header .path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
   }
   .view .root {
     color: var(--muted);
     font-size: 11px;
+  }
+  .controls {
+    margin-left: auto;
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    font-family: system-ui, sans-serif;
+  }
+  .toggle {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .toggle button,
+  .nav button {
+    border: 0;
+    background: transparent;
+    color: var(--fg);
+    font: inherit;
+    font-size: 11px;
+    padding: 2px 8px;
+    cursor: pointer;
+  }
+  .toggle button:hover,
+  .nav button:hover {
+    background: var(--raised);
+  }
+  .toggle button.active {
+    background: var(--accent);
+    color: #fff;
+  }
+  .nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .nav button {
+    font-size: 14px;
+    line-height: 1;
+    padding: 1px 6px;
   }
   .rendered :global(.d2h-file-header) {
     display: none;
   }
   .rendered :global(.d2h-wrapper) {
     font-size: 12px;
+  }
+  .rendered :global(.d2h-info) {
+    cursor: pointer;
+  }
+  .rendered :global(tr[role="button"]:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  /* The whole file: the working copy, one row per line, wide as its longest line so
+     a tint spans the row when the view scrolls sideways. */
+  .file {
+    --added-bg: #e6ffec;
+    --cut: #cf222e;
+    width: max-content;
+    min-width: 100%;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  @media (prefers-color-scheme: dark) {
+    .file {
+      --added-bg: #1f3a28;
+      --cut: #ff8080;
+    }
+  }
+  .ln {
+    display: flex;
+    white-space: pre;
+  }
+  .ln .n {
+    flex: 0 0 3.5em;
+    text-align: right;
+    padding-right: 1em;
+    color: var(--muted);
+    user-select: none;
+  }
+  .ln.added {
+    background: var(--added-bg);
+  }
+  .ln.cut {
+    border-top: 2px solid var(--cut);
+  }
+  .ln.end {
+    height: 0;
+  }
+  .ln.target .n {
+    color: var(--accent);
+    font-weight: 600;
   }
 </style>

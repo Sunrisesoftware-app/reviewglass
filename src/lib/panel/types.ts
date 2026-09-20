@@ -90,3 +90,30 @@ export type UsageView = {
   /** Shares come from more than one basis, so only within-basis ranking is meaningful. */
   mixed_basis: boolean;
 };
+
+// The shapes `panel_file_view` returns (P4b). Mirrors src-tauri/src/diff/file.rs.
+
+export type FileStatus = "shown" | "not-offered" | "denied" | "missing" | "too-large" | "binary";
+
+/** One hunk of the last diff by its new-side lines: where the file view scrolls to. */
+export type Hunk = {
+  /** The first line to look at, 1-based. */
+  start: number;
+  /** New-side lines in the hunk; 0 when it only removed. */
+  lines: number;
+};
+
+export type FileView = {
+  path: string;
+  display_path: string;
+  repo_root: string | null;
+  status: FileStatus;
+  /** The working copy as text; null when the status says why. */
+  text: string | null;
+  /** Lines the last diff added, 1-based, ascending. */
+  added: number[];
+  /** Line numbers before which the last diff removed lines; one past the last line for a removal at the end. */
+  removed_before: number[];
+  hunks: Hunk[];
+  reason: string | null;
+};

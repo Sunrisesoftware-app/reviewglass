@@ -16,6 +16,7 @@
 //! whether or not the panel is open, and the Diff tab shows what accumulated.
 
 pub mod events;
+pub mod file;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -37,8 +38,9 @@ const TICK: Duration = Duration::from_millis(300);
 const KEEP: usize = 30;
 /// Event sent to the dock (the drawer's host) when the list changed.
 pub const UPDATE_EVENT: &str = "diff:update";
-/// A new file larger than this is not shown line by line.
-const MAX_UNTRACKED_BYTES: u64 = 512 * 1024;
+/// A file larger than this is not shown line by line: neither as a new file's diff
+/// nor in the whole-file view (P4b).
+pub(crate) const MAX_SHOWN_BYTES: u64 = 512 * 1024;
 
 /// File-name patterns never handed to git (spec 6.3): the edit still shows in the
 /// list, as denied, so the user knows the agent touched it — without its contents.
@@ -294,7 +296,7 @@ fn untracked(mut view: DiffView, path: &Path) -> DiffView {
         view.reason = Some("the file no longer exists".into());
         return view;
     };
-    if meta.len() > MAX_UNTRACKED_BYTES {
+    if meta.len() > MAX_SHOWN_BYTES {
         view.status = DiffStatus::TooLarge;
         view.reason = Some(format!(
             "a new file of {} KB; too large to show line by line",
@@ -431,14 +433,60 @@ pub fn panel_diffs(state: State<DiffState>) -> DiffTab {
     }
 }
 
+/// Test helpers shared by this module's and `file`'s tests.
 #[cfg(test)]
-mod tests {
+pub(crate) mod testutil {
     use super::*;
     use std::fs;
 
-    fn strings(v: &[&str]) -> Vec<String> {
+    pub(crate) fn strings(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()
     }
+
+    /// A throwaway repository with one committed file. Skips (returns None) where git
+    /// is not on the PATH, so the suite still runs on a machine without it.
+    pub(crate) fn repo(tag: &str) -> Option<PathBuf> {
+        let d = std::env::temp_dir().join(format!("reviewglass-diff-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).ok()?;
+        if !git(&d, &["init", "-q", "."]).ok()?.status.success() {
+            return None;
+        }
+        fs::write(d.join("a.txt"), "one\ntwo\nthree\n").ok()?;
+        git(&d, &["add", "a.txt"]).ok()?;
+        let c = git(
+            &d,
+            &[
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-q",
+                "-m",
+                "init",
+            ],
+        )
+        .ok()?;
+        c.status.success().then_some(d)
+    }
+
+    pub(crate) fn event(path: &Path) -> ChangeEvent {
+        ChangeEvent {
+            ts: 5,
+            session_id: Some("s".into()),
+            tool: Some("Edit".into()),
+            file_path: Some(path.display().to_string()),
+            ..ChangeEvent::default()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::testutil::{event, repo, strings};
+    use super::*;
+    use std::fs;
 
     #[test]
     fn the_denylist_matches_names_not_paths() {
@@ -489,44 +537,6 @@ mod tests {
         );
         assert_eq!(relative(root, Path::new("E:\\Other\\a.rs")), None);
         assert_eq!(relative(root, Path::new("E:\\Proj\\Repo")), None);
-    }
-
-    /// A throwaway repository with one committed file. Skips (returns None) where git
-    /// is not on the PATH, so the suite still runs on a machine without it.
-    fn repo(tag: &str) -> Option<PathBuf> {
-        let d = std::env::temp_dir().join(format!("reviewglass-diff-{tag}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).ok()?;
-        if !git(&d, &["init", "-q", "."]).ok()?.status.success() {
-            return None;
-        }
-        fs::write(d.join("a.txt"), "one\ntwo\nthree\n").ok()?;
-        git(&d, &["add", "a.txt"]).ok()?;
-        let c = git(
-            &d,
-            &[
-                "-c",
-                "user.name=t",
-                "-c",
-                "user.email=t@t",
-                "commit",
-                "-q",
-                "-m",
-                "init",
-            ],
-        )
-        .ok()?;
-        c.status.success().then_some(d)
-    }
-
-    fn event(path: &Path) -> ChangeEvent {
-        ChangeEvent {
-            ts: 5,
-            session_id: Some("s".into()),
-            tool: Some("Edit".into()),
-            file_path: Some(path.display().to_string()),
-            ..ChangeEvent::default()
-        }
     }
 
     #[test]

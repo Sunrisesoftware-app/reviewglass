@@ -89,6 +89,7 @@ pub fn run() {
             panel::alerts_set,
             panel::alerts_test,
             diff::panel_diffs,
+            diff::file::panel_file_view,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ReviewGlass")
