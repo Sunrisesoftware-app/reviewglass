@@ -2,7 +2,8 @@
 
 A Windows 11 desktop companion for Claude Code sessions: a magnifier glass, a session
 and quota panel, threshold alerts, and later a live diff. Tauri v2, Rust core,
-SvelteKit. Apache-2.0. Built first for the author's own use; private until P8.
+SvelteKit. Apache-2.0. Built first for the author's own use; the repository has been
+public since 17.9.2026, and the public release (P8) waits on the name (adr.rg.008).
 
 Read `docs/REVIEWGLASS-SPEC.md` before changing architecture. Section 6.3 is the module
 contract list. The Atlas model (system `reviewglass`) is the source of truth for
@@ -49,7 +50,7 @@ modules, connections and decisions; the spec is its prose.
   `src-tauri/target/release/reviewglass.exe` (the Desktop and Start Menu shortcuts point
   there). Stop the running instance first — it holds the config file. Measure on the
   release build, never the dev build.
-- Commit straight to `main` while the repo is private and single-author; keep CI
+- Commit straight to `main` while the repo is single-author; keep CI
   green. Commit subject: what changed and why, in English; the body records what was
   measured.
 - **A decision enters the Atlas model first.** New ADR → `decisions[]` in

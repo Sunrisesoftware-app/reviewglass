@@ -13,7 +13,7 @@
     "installers": "NSIS and MSI both build; not yet used — P7",
     "atlas": "system reviewglass; status via atlas_put_status; MCP worker redeployed manually after each model merge (CI only dry-runs)"
   },
-  "workflow": "Code and docs in English, conversation in Finnish. cargo fmt + clippy -D warnings + cargo test + pnpm check before every commit; CI on windows-latest runs the same. Commit straight to main while the repo is private and single-author; the Atlas model changes go through a PR on the Atlas repo, then wrangler deploy of the MCP worker. A new decision enters the Atlas model first and is rendered into docs/adr/ by node scripts/adr-from-model.mjs. End a session by updating docs/CHANGELOG.md, docs/BUILD_INFO.json and, if a lesson was learned, docs/LESSONS.md; put the status to Atlas.",
+  "workflow": "Code and docs in English, conversation in Finnish. cargo fmt + clippy -D warnings + cargo test + pnpm check before every commit; CI on windows-latest runs the same. Commit straight to main while the repo is single-author (public since 17.9.2026); the Atlas model changes go through a PR on the Atlas repo, then wrangler deploy of the MCP worker. A new decision enters the Atlas model first and is rendered into docs/adr/ by node scripts/adr-from-model.mjs. End a session by updating docs/CHANGELOG.md, docs/BUILD_INFO.json and, if a lesson was learned, docs/LESSONS.md; put the status to Atlas.",
   "next": [
     "The owner's look at the dock with its drawer (shortcut exe rebuilt from main): open/close from the strip, drag with the drawer open, a corner change, the Diff tab at 640 px with a real session edit; polish from what is seen",
     "Memory: four WebView2 windows now (the panel window is gone); measure and record in spec 8.4",
@@ -25,7 +25,7 @@
     "The glass's bar: thinner now that activation is the dock's; decide what stays (adr.rg.013 keeps a way off from the glass itself)",
     "Foreground-window app profiles and session state in the dock ('needs you'); UI Automation stays an experiment to be measured",
     "Toast identity: the unpackaged exe is attributed to Windows PowerShell; the installer (P7) gives the app its own, and installs both collectors",
-    "adr.rg.008: clear the name before P8"
+    "adr.rg.008: the repository has been public since 17.9.2026 by the owner's decision (probes that day: web search, GitHub and npm empty; crates.io refused the probe); the ADR's decision text still says 'private repository' and is to be revised in the Atlas model; the name check itself stays open and gates P8 (installer, bundle identifier)"
   ],
   "nextUpdated": "2026-09-18"
 }
