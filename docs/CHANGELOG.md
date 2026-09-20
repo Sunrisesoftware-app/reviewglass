@@ -48,8 +48,36 @@ Measured: cargo clippy clean, 101 tests (7 new: marks by new-side line, removals
 and the synthesised addition, the working copy with its marks, refusals reading
 nothing, the previous-edit baseline outside a repository, an untracked file's second
 edit measured from its first, the state remembering between edits); svelte-check 0
-errors, 0 warnings; the release build compiles in the worktree. Not yet seen on
-screen: the live check follows the merge and the rebuild of the shortcut's exe.
+errors, 0 warnings.
+
+Observed on the release build (main `a42aefa`; the shortcut's exe rebuilt 20.9.2026
+20:24, launched from a plain PowerShell, driven over CDP with the owner's leave while
+they were away from the machine): a script written under the profile root, outside
+any repository, seven times.
+
+- The first write listed the file 0.11 s after the hook's clock, as `outside git,
+  +21`, the header saying "the whole file, new", 21 added lines rendered.
+- The second write showed 0.24 s after the hook as `+13 −3`, "since the previous
+  edit", two hunks rendered with 13 added, 3 removed and 15 context lines; the same
+  figures from the core (`panel_file_view`: 13 added lines, cuts before lines 8 and
+  25, hunks at 2 and 13). A path never edited is refused: `not-offered`, "not a file
+  the agent has edited since ReviewGlass started".
+- The File toggle opened the working copy at its first change: 31 lines, the 13
+  added lines tinted, the two cut marks in red, "1/2"; › went to line 13 and ‹ back
+  to 2.
+- With the File view open, the fourth and fifth writes re-read it in place (33 → 34 →
+  37 lines, the marks following, the list's counts too), the drawer's DOM not
+  re-mounted. After the third write the view had fallen back to the hunks once; that
+  did not reproduce in two further tries and stays an open observation.
+- The hunk headers were not wired: diff2html marks the header's two cells `d2h-info`
+  and the inner div only `d2h-code-line`, so the effect matched nothing. Fixed
+  (`a42aefa`), rebuilt, seen: two header rows with the title, a tab stop and the
+  pointer; a click on the second opened the file at line 25 ("2/2", scrolled 163 px);
+  back on Hunks the rows were wired again; Enter on the first row opened the file at
+  line 5 ("1/2").
+
+A synthetic DOM click does not open the drawer, because the strip's button acts on
+pointer-down; a real press does, and the core's `dock_drawer` command served from CDP.
 
 ## Session 4, closing: a visible way out — 19.9.2026 (0.1.0)
 
