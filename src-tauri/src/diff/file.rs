@@ -309,6 +309,7 @@ mod tests {
             display_path: ".env".into(),
             repo_root: None,
             status: DiffStatus::NotInRepo,
+            baseline: None,
             unified: None,
             added: None,
             removed: None,
