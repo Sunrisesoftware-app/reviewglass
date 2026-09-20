@@ -4,6 +4,53 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 5: the repository was already public; P4b, the whole file around a hunk; the previous edit as the baseline where git has none — 20.9.2026 (0.1.0)
+
+The session opened from the cold-start list and found one thing nobody had picked up:
+the Atlas project thread's line of 17.9. that the repository is public by the owner's
+decision (name probes that day: web search, GitHub and npm empty; crates.io refused
+the probe), while README, CLAUDE.md, BUILD_INFO and adr.rg.008 still said "private
+until P8". Fixed first (PR #21, docs only): the name check still gates P8 — the
+installer and the bundle identifier — not the source. adr.rg.008 revised in the model
+(Atlas #318, worker deployed), rendered to `docs/adr/`; the thread line marked
+handled. The rebase merge rewrote the commit ids, so the ADR's consequences cite a
+commit that landed as `9b3df50`; to be corrected with the next model change.
+
+The owner's look at the dock with its drawer, session 4's closing item: everything
+works. The one observation was the Diff tab's empty area for a file outside any
+repository, and the wish to watch such a file — a script being written — come into
+being, its code live.
+
+- **P4b: the whole file around a hunk, read-only.** `panel_file_view(path)`
+  (`src-tauri/src/diff/file.rs`) reads the working copy once and hands it over with
+  the last diff's marks: the lines it added, the positions it removed lines before,
+  the hunks by their new-side start. Only a path the diff loop has listed since start
+  can be opened, so the panel's IPC cannot be turned into a file reader; the
+  secret-file denylist, the 512 KB cap and the binary check apply as to a new file's
+  diff. The Diff tab's header gains a Hunks | File toggle; File opens at the first
+  change, a hunk header in the rendered diff opens the file at that hunk (click, or
+  Enter once tabbed to), ‹ › walk the changes with a count, added lines tinted, a red
+  cut mark where lines were removed, the current change's line number in the accent.
+  Picking another file returns to its hunks. A `diff:update` re-reads an open file,
+  so a file being written updates in place.
+- **The previous edit is the baseline where git has none.** A file outside any
+  repository, or not yet tracked, used to show "not inside a git repository" with
+  nothing, or the whole file as new on every edit. The diff loop now remembers the
+  working copy of such a file at its previous edit (in memory, text within the cap,
+  one per listed path, dropped with the view) and shows what the latest edit brought
+  against it, as a unified diff in git's form (the `similar` crate, Apache-2.0); the
+  first sighting shows the whole file as new. `DiffView.baseline` says which — `head`,
+  `last-edit`, `whole-file` — and the view's header says it in words; a write of the
+  same content says "no change since the previous edit". Nothing is written for this
+  either.
+
+Measured: cargo clippy clean, 101 tests (7 new: marks by new-side line, removals-only
+and the synthesised addition, the working copy with its marks, refusals reading
+nothing, the previous-edit baseline outside a repository, an untracked file's second
+edit measured from its first, the state remembering between edits); svelte-check 0
+errors, 0 warnings; the release build compiles in the worktree. Not yet seen on
+screen: the live check follows the merge and the rebuild of the shortcut's exe.
+
 ## Session 4, closing: a visible way out — 19.9.2026 (0.1.0)
 
 The owner's last observation of the session: the dock has no quit button, and the
