@@ -59,11 +59,16 @@ export type DiffStatus =
   | "binary"
   | "git-failed";
 
+/** What a diff is against: git HEAD, the previous edit ReviewGlass saw, or nothing yet. */
+export type Baseline = "head" | "last-edit" | "whole-file";
+
 export type DiffView = {
   path: string;
   display_path: string;
   repo_root: string | null;
   status: DiffStatus;
+  /** Null when there is no diff to show. */
+  baseline: Baseline | null;
   /** The unified diff as git printed it; null when the status says why. */
   unified: string | null;
   added: number | null;

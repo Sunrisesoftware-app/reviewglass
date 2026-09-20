@@ -12,6 +12,12 @@
 //!   - a file outside a git repository is reported as such, never as a failure;
 //!   - a path matching the secret-file denylist is never handed to git at all.
 //!
+//! Where git has no baseline — a file outside any repository, or one not yet tracked —
+//! the baseline is the file as it was at the previous edit ReviewGlass saw, kept in
+//! memory for the files in the list, so a file being written from nothing shows what
+//! each edit brought (the owner's wish, 20.9.2026: to watch a script come into being).
+//! The first sighting shows the whole file as new. Nothing is written for this either.
+//!
 //! The loop runs on its own thread (as the usage loop does, adr.rg.016): edits happen
 //! whether or not the panel is open, and the Diff tab shows what accumulated.
 
@@ -26,6 +32,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use parking_lot::Mutex;
 use serde::Serialize;
+use similar::{ChangeTag, TextDiff};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::spool;
@@ -70,6 +77,19 @@ pub enum DiffStatus {
     GitFailed,
 }
 
+/// What a diff is measured against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Baseline {
+    /// git HEAD: everything changed since the last commit.
+    Head,
+    /// The file as it was at the previous edit ReviewGlass saw: what the latest edit
+    /// did, where git has no baseline.
+    LastEdit,
+    /// Nothing to compare with yet: the whole file, shown as new.
+    WholeFile,
+}
+
 /// What the panel renders for one path. Optional fields are absent when the status
 /// says why: a denied or missing file has no text and no counts.
 #[derive(Debug, Clone, Serialize)]
@@ -80,6 +100,8 @@ pub struct DiffView {
     pub display_path: String,
     pub repo_root: Option<String>,
     pub status: DiffStatus,
+    /// What the diff is against; absent when there is no diff.
+    pub baseline: Option<Baseline>,
     /// The unified diff as git printed it (or as synthesised for a new file).
     pub unified: Option<String>,
     pub added: Option<u64>,
@@ -95,6 +117,9 @@ pub struct DiffView {
 /// The diff loop's state: the latest views, newest first.
 pub struct DiffState {
     views: Mutex<Vec<DiffView>>,
+    /// The working copy at the previous edit, for the listed files git has no
+    /// baseline for: text within the cap only, dropped with the view.
+    snapshots: Mutex<HashMap<String, String>>,
     /// Events from before this are stale (the app's start).
     since_ms: u64,
     unreadable: Mutex<usize>,
@@ -110,6 +135,7 @@ impl DiffState {
     pub fn new() -> Self {
         Self {
             views: Mutex::new(Vec::new()),
+            snapshots: Mutex::new(HashMap::new()),
             since_ms: now_ms(),
             unreadable: Mutex::new(0),
         }
@@ -126,11 +152,17 @@ impl DiffState {
         if batch.events.is_empty() {
             return false;
         }
-        // The last event per path wins: it carries the latest tool and time, and one
-        // diff answers for the whole burst.
+        self.absorb(batch.events, denylist);
+        true
+    }
+
+    /// One batch of events into the list: the last event per path wins (it carries the
+    /// latest tool and time, and one diff answers for the whole burst), and a file git
+    /// has no baseline for is remembered for the next edit.
+    pub fn absorb(&self, events: Vec<ChangeEvent>, denylist: &[String]) {
         let mut latest: HashMap<String, ChangeEvent> = HashMap::new();
         let mut order: Vec<String> = Vec::new();
-        for ev in batch.events {
+        for ev in events {
             let Some(p) = ev.file_path.clone() else {
                 continue;
             };
@@ -140,14 +172,24 @@ impl DiffState {
             latest.insert(p, ev);
         }
         let mut views = self.views.lock();
+        let mut snapshots = self.snapshots.lock();
         for p in order {
             let ev = latest.remove(&p).expect("just inserted");
-            let view = diff_for(&ev, denylist);
+            let previous = snapshots.get(&p).map(String::as_str);
+            let (view, text) = diff_for_with(&ev, denylist, previous);
+            match text {
+                Some(t) => {
+                    snapshots.insert(p, t);
+                }
+                None => {
+                    snapshots.remove(&p);
+                }
+            }
             views.retain(|v| v.path != view.path);
             views.insert(0, view);
         }
         views.truncate(KEEP);
-        true
+        snapshots.retain(|p, _| views.iter().any(|v| &v.path == p));
     }
 
     pub fn views(&self) -> Vec<DiffView> {
@@ -176,8 +218,21 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// The view for one event: the denylist first, then git.
+/// The view for one event with nothing remembered: the denylist first, then git. The
+/// loop goes through `diff_for_with`; this is the tests' shorthand.
+#[cfg(test)]
 pub fn diff_for(ev: &ChangeEvent, denylist: &[String]) -> DiffView {
+    diff_for_with(ev, denylist, None).0
+}
+
+/// The view for one event, with `previous` the working copy at the previous edit when
+/// git has no baseline and one is remembered. The second value is the working copy
+/// now, for the caller to remember, when it was read for want of a git baseline.
+pub fn diff_for_with(
+    ev: &ChangeEvent,
+    denylist: &[String],
+    previous: Option<&str>,
+) -> (DiffView, Option<String>) {
     let path_s = ev.file_path.clone().unwrap_or_default();
     let path = Path::new(&path_s);
     let file_name = path
@@ -189,6 +244,7 @@ pub fn diff_for(ev: &ChangeEvent, denylist: &[String]) -> DiffView {
         display_path: file_name.clone(),
         repo_root: None,
         status: DiffStatus::GitFailed,
+        baseline: None,
         unified: None,
         added: None,
         removed: None,
@@ -200,12 +256,12 @@ pub fn diff_for(ev: &ChangeEvent, denylist: &[String]) -> DiffView {
     if denied_by(&file_name, denylist) {
         view.status = DiffStatus::Denied;
         view.reason = Some("matches the secret-file denylist; its contents are never read".into());
-        return view;
+        return (view, None);
     }
     let Some(parent) = path.parent().filter(|p| p.is_dir()) else {
         view.status = DiffStatus::Missing;
         view.reason = Some("the file's directory does not exist".into());
-        return view;
+        return (view, None);
     };
     let root = match git(parent, &["rev-parse", "--show-toplevel"]) {
         Ok(out) if out.status.success() => PathBuf::from(
@@ -215,13 +271,12 @@ pub fn diff_for(ev: &ChangeEvent, denylist: &[String]) -> DiffView {
         ),
         Ok(_) => {
             view.status = DiffStatus::NotInRepo;
-            view.reason = Some("not inside a git repository".into());
-            return view;
+            return no_baseline(view, path, previous);
         }
         Err(e) => {
             view.status = DiffStatus::GitFailed;
             view.reason = Some(format!("git could not be run: {e}"));
-            return view;
+            return (view, None);
         }
     };
     view.repo_root = Some(root.display().to_string());
@@ -237,12 +292,13 @@ pub fn diff_for(ev: &ChangeEvent, denylist: &[String]) -> DiffView {
         .unwrap_or(false);
 
     if !tracked || !has_head {
-        return untracked(view, path);
+        view.status = DiffStatus::Untracked;
+        return no_baseline(view, path, previous);
     }
     if !path.exists() {
         view.status = DiffStatus::Missing;
         view.reason = Some("the file no longer exists".into());
-        return view;
+        return (view, None);
     }
     let numstat = git(&root, &["diff", "HEAD", "--numstat", "--", &rel_git]);
     let unified = git(
@@ -266,12 +322,14 @@ pub fn diff_for(ev: &ChangeEvent, denylist: &[String]) -> DiffView {
                 }
                 Some(NumStat::Lines(a, r)) => {
                     view.status = DiffStatus::Changed;
+                    view.baseline = Some(Baseline::Head);
                     view.added = Some(a);
                     view.removed = Some(r);
                     view.unified = Some(text);
                 }
                 None => {
                     view.status = DiffStatus::Unchanged;
+                    view.baseline = Some(Baseline::Head);
                     view.reason = Some("identical to the last commit".into());
                 }
             }
@@ -285,52 +343,96 @@ pub fn diff_for(ev: &ChangeEvent, denylist: &[String]) -> DiffView {
             view.reason = Some(format!("git could not be run: {e}"));
         }
     }
-    view
+    (view, None)
 }
 
-/// A new file: shown as the addition it is, synthesised in unified form so the
-/// renderer needs no second path. Size and binary content are checked first.
-fn untracked(mut view: DiffView, path: &Path) -> DiffView {
+/// A file git has no baseline for (outside a repository, or not yet tracked; the
+/// status is already set). The working copy is read — within the cap, text only — and
+/// shown against the previous edit's copy when one is remembered, else as the addition
+/// it is, synthesised in unified form so the renderer needs no second path. Returns
+/// the text read, for the caller to remember.
+fn no_baseline(
+    mut view: DiffView,
+    path: &Path,
+    previous: Option<&str>,
+) -> (DiffView, Option<String>) {
     let Ok(meta) = std::fs::metadata(path) else {
         view.status = DiffStatus::Missing;
         view.reason = Some("the file no longer exists".into());
-        return view;
+        return (view, None);
     };
     if meta.len() > MAX_SHOWN_BYTES {
         view.status = DiffStatus::TooLarge;
         view.reason = Some(format!(
-            "a new file of {} KB; too large to show line by line",
+            "a file of {} KB; too large to show line by line",
             meta.len() / 1024
         ));
-        return view;
+        return (view, None);
     }
     let Ok(bytes) = std::fs::read(path) else {
         view.status = DiffStatus::Missing;
         view.reason = Some("the file could not be read".into());
-        return view;
+        return (view, None);
     };
     if bytes.iter().take(8192).any(|b| *b == 0) {
         view.status = DiffStatus::Binary;
-        view.reason = Some("a new binary file".into());
-        return view;
+        view.reason = Some("binary content".into());
+        return (view, None);
     }
-    let text = String::from_utf8_lossy(&bytes);
-    let lines: Vec<&str> = text.lines().collect();
+    let text = String::from_utf8_lossy(&bytes).into_owned();
     let rel = view.display_path.replace('\\', "/");
-    let mut unified = format!(
-        "--- /dev/null\n+++ b/{rel}\n@@ -0,0 +1,{} @@\n",
-        lines.len()
-    );
-    for l in &lines {
-        unified.push('+');
-        unified.push_str(l);
-        unified.push('\n');
+    match previous {
+        Some(prev) if prev == text => {
+            view.baseline = Some(Baseline::LastEdit);
+            view.reason = Some("no change since the previous edit".into());
+        }
+        Some(prev) => {
+            let (unified, a, r) = delta(prev, &text, &rel);
+            view.baseline = Some(Baseline::LastEdit);
+            view.added = Some(a);
+            view.removed = Some(r);
+            view.unified = Some(unified);
+        }
+        None => {
+            let lines: Vec<&str> = text.lines().collect();
+            let mut unified = format!(
+                "--- /dev/null\n+++ b/{rel}\n@@ -0,0 +1,{} @@\n",
+                lines.len()
+            );
+            for l in &lines {
+                unified.push('+');
+                unified.push_str(l);
+                unified.push('\n');
+            }
+            view.baseline = Some(Baseline::WholeFile);
+            view.added = Some(lines.len() as u64);
+            view.removed = Some(0);
+            view.unified = Some(unified);
+        }
     }
-    view.status = DiffStatus::Untracked;
-    view.added = Some(lines.len() as u64);
-    view.removed = Some(0);
-    view.unified = Some(unified);
-    view
+    (view, Some(text))
+}
+
+/// The unified diff between two texts, in git's form (three lines of context), and
+/// the counts. Line endings are normalised so a CRLF file diffs by content.
+fn delta(old: &str, new: &str, rel: &str) -> (String, u64, u64) {
+    let old = old.replace("\r\n", "\n");
+    let new = new.replace("\r\n", "\n");
+    let diff = TextDiff::from_lines(old.as_str(), new.as_str());
+    let (mut added, mut removed) = (0u64, 0u64);
+    for c in diff.iter_all_changes() {
+        match c.tag() {
+            ChangeTag::Insert => added += 1,
+            ChangeTag::Delete => removed += 1,
+            ChangeTag::Equal => {}
+        }
+    }
+    let unified = diff
+        .unified_diff()
+        .context_radius(3)
+        .header(&format!("a/{rel}"), &format!("b/{rel}"))
+        .to_string();
+    (unified, added, removed)
 }
 
 enum NumStat {
@@ -616,6 +718,104 @@ mod tests {
     }
 
     #[test]
+    fn outside_a_repository_the_previous_edit_is_the_baseline() {
+        let deny = strings(DEFAULT_DENYLIST);
+        let out = std::env::temp_dir().join(format!("reviewglass-baseline-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&out);
+        fs::create_dir_all(&out).unwrap();
+        let f = out.join("phase1.py");
+        // First sighting: the whole file, new to us.
+        fs::write(&f, "import os\nprint(1)\n").unwrap();
+        let (v, text) = diff_for_with(&event(&f), &deny, None);
+        assert_eq!(v.status, DiffStatus::NotInRepo, "{:?}", v.reason);
+        assert_eq!(v.baseline, Some(Baseline::WholeFile));
+        assert_eq!((v.added, v.removed), (Some(2), Some(0)));
+        assert!(v.unified.as_deref().unwrap().starts_with(
+            "--- /dev/null\n+++ b/phase1.py\n@@ -0,0 +1,2 @@\n+import os\n+print(1)\n"
+        ));
+        assert_eq!(text.as_deref(), Some("import os\nprint(1)\n"));
+        // The next edit: what it brought, against the remembered copy.
+        fs::write(&f, "import os\nimport sys\nprint(2)\n").unwrap();
+        let (v, text) = diff_for_with(&event(&f), &deny, Some("import os\nprint(1)\n"));
+        assert_eq!(v.status, DiffStatus::NotInRepo);
+        assert_eq!(v.baseline, Some(Baseline::LastEdit));
+        assert_eq!((v.added, v.removed), (Some(2), Some(1)));
+        let u = v.unified.unwrap();
+        assert!(
+            u.starts_with("--- a/phase1.py\n+++ b/phase1.py\n@@ "),
+            "{u}"
+        );
+        assert!(
+            u.contains("+import sys\n") && u.contains("-print(1)\n") && u.contains("+print(2)\n"),
+            "{u}"
+        );
+        assert_eq!(text.as_deref(), Some("import os\nimport sys\nprint(2)\n"));
+        // Written back identical: nothing to show, and the reason says so.
+        let (v, _) = diff_for_with(&event(&f), &deny, Some("import os\nimport sys\nprint(2)\n"));
+        assert_eq!(v.baseline, Some(Baseline::LastEdit));
+        assert!(v.unified.is_none() && v.added.is_none());
+        assert_eq!(
+            v.reason.as_deref(),
+            Some("no change since the previous edit")
+        );
+        let _ = fs::remove_dir_all(&out);
+    }
+
+    #[test]
+    fn an_untracked_files_second_edit_is_measured_from_its_first() {
+        let Some(d) = repo("untracked-twice") else {
+            return;
+        };
+        let f = d.join("new.rs");
+        fs::write(&f, "fn a() {}\n").unwrap();
+        let (v, text) = diff_for_with(&event(&f), &[], None);
+        assert_eq!(
+            (v.status, v.baseline),
+            (DiffStatus::Untracked, Some(Baseline::WholeFile))
+        );
+        fs::write(&f, "fn a() {}\nfn b() {}\n").unwrap();
+        let (v, _) = diff_for_with(&event(&f), &[], text.as_deref());
+        assert_eq!(
+            (v.status, v.baseline),
+            (DiffStatus::Untracked, Some(Baseline::LastEdit))
+        );
+        assert_eq!((v.added, v.removed), (Some(1), Some(0)));
+        assert!(v.unified.unwrap().contains("+fn b() {}\n"));
+        // A tracked file is measured from HEAD and remembers nothing.
+        let (v, text) = diff_for_with(&event(&d.join("a.txt")), &[], None);
+        assert_eq!(v.baseline, Some(Baseline::Head));
+        assert!(text.is_none());
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_state_remembers_a_file_git_cannot_diff_between_edits() {
+        let out = std::env::temp_dir().join(format!("reviewglass-absorb-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&out);
+        fs::create_dir_all(&out).unwrap();
+        let f = out.join("loose.txt");
+        fs::write(&f, "one\n").unwrap();
+        let s = DiffState::new();
+        s.absorb(vec![event(&f)], &[]);
+        assert_eq!(s.views()[0].baseline, Some(Baseline::WholeFile));
+        assert_eq!(
+            s.snapshots
+                .lock()
+                .get(&f.display().to_string())
+                .map(String::as_str),
+            Some("one\n")
+        );
+        fs::write(&f, "one\ntwo\n").unwrap();
+        // A burst: two events for the path, the last wins, one diff.
+        s.absorb(vec![event(&f), event(&f)], &[]);
+        let views = s.views();
+        assert_eq!(views.len(), 1);
+        assert_eq!(views[0].baseline, Some(Baseline::LastEdit));
+        assert_eq!((views[0].added, views[0].removed), (Some(1), Some(0)));
+        let _ = fs::remove_dir_all(&out);
+    }
+
+    #[test]
     fn the_state_coalesces_a_burst_into_one_view_per_path() {
         let s = DiffState::new();
         assert!(s.views().is_empty());
@@ -630,6 +830,7 @@ mod tests {
                     display_path: format!("p{i}"),
                     repo_root: None,
                     status: DiffStatus::NotInRepo,
+                    baseline: None,
                     unified: None,
                     added: None,
                     removed: None,

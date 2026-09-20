@@ -13,7 +13,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { html as diffHtml } from "diff2html";
   import "diff2html/bundles/css/diff2html.min.css";
-  import type { DiffTab, DiffView, FileView } from "./types";
+  import type { Baseline, DiffTab, DiffView, FileView } from "./types";
 
   let tab = $state<DiffTab | null>(null);
   let selected = $state<string | null>(null);
@@ -44,7 +44,7 @@
   /** The file's lines; a trailing newline is not an extra empty line. */
   const lines = $derived.by(() => {
     if (!file?.text) return [] as string[];
-    const ls = file.text.split("\n");
+    const ls = file.text.split(/\r?\n/);
     if (ls.length > 0 && ls[ls.length - 1] === "") ls.pop();
     return ls;
   });
@@ -161,15 +161,18 @@
 
   /** The one-word status for the list, and the reason for the detail. */
   function label(v: DiffView) {
+    const counts = `+${v.added ?? 0} −${v.removed ?? 0}`;
     switch (v.status) {
       case "changed":
-        return `+${v.added ?? 0} −${v.removed ?? 0}`;
+        return counts;
       case "untracked":
+        if (v.baseline === "last-edit") return v.unified ? counts : "unchanged";
         return `new, +${v.added ?? 0}`;
       case "unchanged":
         return "unchanged";
       case "not-in-repo":
-        return "not in a repository";
+        if (v.baseline === "last-edit") return v.unified ? counts : "unchanged";
+        return v.unified ? `outside git, +${v.added ?? 0}` : "not in a repository";
       case "denied":
         return "not shown";
       case "missing":
@@ -180,6 +183,18 @@
         return "binary";
       case "git-failed":
         return "git failed";
+    }
+  }
+
+  /** What the marks are measured against, for the header. */
+  function since(b: Baseline) {
+    switch (b) {
+      case "head":
+        return "since the last commit";
+      case "last-edit":
+        return "since the previous edit";
+      case "whole-file":
+        return "the whole file, new";
     }
   }
 
@@ -222,7 +237,7 @@
           >
             <span class="path">{v.display_path}</span>
             <span class="meta">
-              <span class="stat" class:muted={v.status !== "changed" && v.status !== "untracked"}>{label(v)}</span>
+              <span class="stat" class:muted={!v.unified}>{label(v)}</span>
               <span class="when">{v.tool ?? "edit"} · {ago(v.at_ms)}</span>
             </span>
           </button>
@@ -237,6 +252,9 @@
             <span class="root">working copy · read-only</span>
           {:else if current.repo_root}
             <span class="root" title={current.repo_root}>{current.repo_root}</span>
+          {/if}
+          {#if current.baseline && (mode === "file" ? file?.hunks.length : current.unified)}
+            <span class="root">{since(current.baseline)}</span>
           {/if}
           <span class="controls">
             {#if mode === "file" && file && file.hunks.length > 0}
