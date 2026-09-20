@@ -8,9 +8,11 @@
   // Dragged anywhere, the dock snaps to the nearest corner.
   //
   // The panel is the dock's drawer, in this same window (adr.rg.020): the ▤ button
-  // unfolds it under the strip (over it, in a bottom corner) at 640 px, with the tabs
-  // — Sessions, Diff, Settings — in the drawer's first row. The Rust side sizes the
-  // window; this page lays out whichever way the corner says.
+  // unfolds it under the strip (over it, in a bottom corner) at its remembered size,
+  // with the tabs — Sessions, Diff, Settings — in the drawer's first row. The Rust
+  // side sizes the window; this page lays out whichever way the corner says. The
+  // drawer's free corner is a handle: dragging it resizes the window with the
+  // snapped corner fixed, and the size is remembered (adr.rg.021).
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -31,6 +33,7 @@
   type DockView = {
     open: boolean;
     corner: Corner;
+    drawer_width: number;
     drawer_height: number;
     drawer_tab: string;
   };
@@ -61,6 +64,24 @@
   const lit = $derived<ModeName | null>(visible ? mode : null);
   const five = $derived(usage?.quota.five_hour ?? null);
   const bottom = $derived(corner === "bottom-left" || corner === "bottom-right");
+  const right = $derived(corner === "top-right" || corner === "bottom-right");
+  /** The handle's glyph points into the free corner it sits in. */
+  const grip = $derived(bottom ? (right ? "◤" : "◥") : right ? "◣" : "◢");
+
+  /** The drawer's free corner: the OS resizes from there, the snapped corner stays. */
+  function startResize(e: PointerEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const direction = bottom
+      ? right
+        ? "NorthWest"
+        : "NorthEast"
+      : right
+        ? "SouthWest"
+        : "SouthEast";
+    void win.startResizeDragging(direction);
+  }
 
   // The glass hangs from these three buttons: the lit one is the glass's mode, and a
   // click on it is the way off.
@@ -138,6 +159,7 @@
   onMount(() => {
     const unlisten: (() => void)[] = [];
     let snapTimer: ReturnType<typeof setTimeout> | undefined;
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined;
     let usageTimer: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
 
@@ -195,6 +217,16 @@
           snapTimer = setTimeout(() => void invoke("dock_snap"), 350);
         }),
       );
+      // Resized by hand (adr.rg.021): once the drag has settled, the core remembers
+      // the size and keeps the corner. The core ignores this while the drawer is
+      // closed, so the strip's own resize on close is harmless.
+      unlisten.push(
+        await win.onResized(() => {
+          if (!open) return;
+          clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(() => void invoke("dock_drawer_resized"), 300);
+        }),
+      );
       await refreshUsage();
       schedule();
     })();
@@ -203,6 +235,7 @@
     return () => {
       stopped = true;
       clearTimeout(usageTimer);
+      clearTimeout(resizeTimer);
       clearInterval(clock);
       unlisten.forEach((u) => u());
     };
@@ -319,6 +352,14 @@
         {/if}
       </section>
     </div>
+    <button
+      class="resize"
+      class:right
+      class:bottom
+      title="Drag to resize the drawer"
+      aria-label="Resize the drawer"
+      onpointerdown={startResize}>{grip}</button
+    >
   {/if}
 </div>
 
@@ -343,6 +384,7 @@
     --warn: #b06000;
     --bad: #b32020;
     box-sizing: border-box;
+    position: relative;
     display: flex;
     flex-direction: column;
     width: 100vw;
@@ -547,5 +589,41 @@
     min-height: 0;
     overflow: auto;
     padding: 12px 14px;
+  }
+  /* The resize handle in the drawer's free corner (adr.rg.021): the corner away from
+     the one the dock is snapped to. */
+  .resize {
+    position: absolute;
+    right: 1px;
+    bottom: 1px;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 18px;
+    text-align: center;
+    opacity: 0.55;
+    cursor: nwse-resize;
+    z-index: 2;
+  }
+  .resize:hover {
+    opacity: 1;
+    color: var(--accent);
+  }
+  .resize.right {
+    right: auto;
+    left: 1px;
+    cursor: nesw-resize;
+  }
+  .resize.bottom {
+    bottom: auto;
+    top: 1px;
+    cursor: nesw-resize;
+  }
+  .resize.right.bottom {
+    cursor: nwse-resize;
   }
 </style>

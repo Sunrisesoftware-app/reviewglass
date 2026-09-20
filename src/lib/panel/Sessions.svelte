@@ -6,8 +6,15 @@
   // identically; the shares are a derived ranking in a different unit. There is no
   // single blended number anywhere on this screen, because there is no honest one.
   import type { UsageView, SessionAttribution, QuotaWindow } from "./types";
+  import { selection, choose } from "./selection.svelte";
 
   let { usage, failure }: { usage: UsageView | null; failure: string | null } = $props();
+
+  /** The chosen session is not in the table now (ended, or its record aged out). */
+  const chosenUnlisted = $derived(
+    selection.session !== null &&
+      !(usage?.sessions ?? []).some((s) => s.session_id === selection.session),
+  );
 
   /** The two account windows as rows, skipping whichever is absent. */
   const windows = $derived(
@@ -130,9 +137,22 @@
       {/if}
     </p>
   {:else}
+    <!-- The first column chooses: all sessions (the header's button) or one, and the
+         Diff tab shows the edits of the choice. The chosen row is bold. -->
     <table>
       <thead>
         <tr>
+          <th class="pick">
+            <input
+              type="radio"
+              name="session-pick"
+              value=""
+              checked={selection.session === null}
+              onchange={() => choose(null)}
+              aria-label="All sessions"
+              title="All sessions: the Diff tab shows every session's edits"
+            />
+          </th>
           <th>Session</th>
           <th>Where</th>
           <th>Model</th>
@@ -144,7 +164,18 @@
       </thead>
       <tbody>
         {#each usage.sessions as s (s.session_id)}
-          <tr>
+          <tr class:chosen={selection.session === s.session_id}>
+            <td class="pick">
+              <input
+                type="radio"
+                name="session-pick"
+                value={s.session_id}
+                checked={selection.session === s.session_id}
+                onchange={() => choose(s.session_id, label(s))}
+                aria-label="Only {label(s)}"
+                title="Only this session: the Diff tab shows its edits alone"
+              />
+            </td>
             <td>
               <span class="label">{label(s)}</span>
               {#if s.cwd && s.session_name}<span class="dim">{s.cwd.split(/[\\/]/).filter(Boolean).pop()}</span>{/if}
@@ -165,6 +196,16 @@
       </tbody>
     </table>
 
+    <p class="note">
+      {#if selection.session === null}
+        Pick a session to see only its edits on the Diff tab; the first button shows all.
+      {:else if chosenUnlisted}
+        <strong>{selection.name}</strong> is chosen for the Diff tab but is not in the table
+        now. <button class="link" onclick={() => choose(null)}>Show all sessions</button>
+      {:else}
+        <strong>{selection.name}</strong> is chosen: the Diff tab shows its edits alone.
+      {/if}
+    </p>
     <p class="note">
       Share is relative between sessions, not a share of the quota — a different unit.
       {#if usage.mixed_basis}
@@ -290,6 +331,31 @@
   }
   .label {
     font-weight: 500;
+  }
+  .pick {
+    width: 1.6em;
+    padding-right: 0;
+  }
+  .pick input {
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  tr.chosen td {
+    background: var(--raised);
+  }
+  tr.chosen .label {
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .note .link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    cursor: pointer;
+    text-decoration: underline;
   }
   .dim {
     color: var(--muted);
