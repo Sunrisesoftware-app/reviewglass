@@ -14,6 +14,7 @@
   import { html as diffHtml } from "diff2html";
   import "diff2html/bundles/css/diff2html.min.css";
   import type { Baseline, DiffTab, DiffView, FileView } from "./types";
+  import { selection, choose } from "./selection.svelte";
 
   let tab = $state<DiffTab | null>(null);
   let selected = $state<string | null>(null);
@@ -28,8 +29,14 @@
   let at = $state(0);
   let viewEl = $state<HTMLElement | null>(null);
 
+  /** The views on show: every session's, or the chosen session's alone. */
+  const shown = $derived<DiffView[]>(
+    tab
+      ? tab.views.filter((v) => selection.session === null || v.session_id === selection.session)
+      : [],
+  );
   const current = $derived<DiffView | null>(
-    tab ? (tab.views.find((v) => v.path === selected) ?? tab.views[0] ?? null) : null,
+    shown.find((v) => v.path === selected) ?? shown[0] ?? null,
   );
   const rendered = $derived(
     current?.unified
@@ -231,10 +238,22 @@
     No edit since ReviewGlass started. When Claude Code edits a file, its diff appears
     here within a second — in Desktop and CLI sessions alike.
   </p>
+{:else if shown.length === 0}
+  <p class="state">
+    No edit from <strong>{selection.name}</strong> since ReviewGlass started; the other
+    sessions have {tab.views.length}.
+    <button class="link" onclick={() => choose(null)}>Show all sessions</button>
+  </p>
 {:else}
-  <div class="diff">
+  {#if selection.session !== null}
+    <p class="filter">
+      Only <strong>{selection.name}</strong> ({shown.length} of {tab.views.length})
+      <button class="link" onclick={() => choose(null)}>show all sessions</button>
+    </p>
+  {/if}
+  <div class="diff" class:filtered={selection.session !== null}>
     <ul class="files" aria-label="Files the agent changed, newest first">
-      {#each tab.views as v (v.path)}
+      {#each shown as v (v.path)}
         <li>
           <button
             class:active={current?.path === v.path}
@@ -337,14 +356,32 @@
   .bad {
     color: var(--bad);
   }
-  /* Sized for the drawer's 640 px (adr.rg.020): the file list and the hunk side by
-     side, each scrolling on its own inside the drawer's height. */
+  /* The file list and the hunk side by side, each scrolling on its own inside the
+     drawer's height. The list stops growing at 260 px, so a drawer dragged wider
+     (adr.rg.021) gives the width to the code. */
   .diff {
     display: grid;
-    grid-template-columns: minmax(170px, 30%) minmax(0, 1fr);
+    grid-template-columns: minmax(170px, min(30%, 260px)) minmax(0, 1fr);
     gap: 12px;
     height: 100%;
     min-height: 0;
+  }
+  .diff.filtered {
+    height: calc(100% - 26px);
+  }
+  .filter {
+    margin: 0 0 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    cursor: pointer;
+    text-decoration: underline;
   }
   .files {
     list-style: none;

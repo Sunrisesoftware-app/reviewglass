@@ -80,6 +80,7 @@ pub fn run() {
             dock::dock_state,
             dock::dock_drawer,
             dock::dock_set_tab,
+            dock::dock_drawer_resized,
             glass::hotkey_set_toggle,
             glass::follow_log_set,
             glass::glass_log,
