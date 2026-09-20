@@ -19,4 +19,4 @@ Development proceeds under the working name. The repository has been public sinc
 
 ## Consequences
 
-Renaming now touches the public repository's name as well (GitHub redirects the old one), the bundle identifier and the installer; the last two are not public before P8. The README, CLAUDE.md and BUILD_INFO say public since 17.9.2026 (reviewglass c96b412); the spec's header moves with spec v3.
+Renaming now touches the public repository's name as well (GitHub redirects the old one), the bundle identifier and the installer; the last two are not public before P8. The README, CLAUDE.md and BUILD_INFO say public since 17.9.2026 (reviewglass 9b3df50); the spec's header moves with spec v3.
