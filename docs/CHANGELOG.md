@@ -4,6 +4,61 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 5 (continued): the owner's proposal — a drawer sized by hand, a chosen session, and the column's session read from the pane — 20.9.2026 (0.1.0)
+
+The owner followed a script being written in the Diff tab and wrote up what the tool
+should do next: the code showed only the left edge of each line and the drawer could
+not be enlarged; with five sessions live, one should be choosable on the Sessions tab
+and the Diff tab should show that one alone; Follow should choose the session of the
+column the glass is on; and, later, a "hawk eye" — an AI watcher through a key of
+one's own — should read the columns and the code as they change and raise what looks
+wrong. "Now the benefits this tool was started for begin to show."
+
+- **The drawer is sized by hand from its free corner** (adr.rg.021, Atlas #319,
+  supersedes adr.rg.020's "a setting, not a drag"). A visible handle (◢ ◣ ◥ ◤, named)
+  in the corner diagonally opposite the snapped one; dragging it resizes the window
+  with the operating system's own resize, the snapped corner staying put; the size
+  persists as `dock.drawer_width` / `dock.drawer_height` and is what the drawer opens
+  to next time. Resizable only while open, between 640 × 344 and the work area;
+  closed, the strip cannot be resized. The Diff tab's file list stops at 260 px, so a
+  wider drawer goes to the code.
+- **A chosen session filters the Diff tab.** The Sessions table's first column is a
+  radio: the header's for all sessions, a row's for that one, the chosen row bold in
+  the accent and the note under the table saying what the choice means. The choice is
+  module state shared with the Diff tab (not persisted: sessions come and go); the
+  Diff tab shows the chosen session's views alone with a line saying so and "show all
+  sessions" one click away, names the session when it has no edits, and the Sessions
+  tab names a chosen session that has left the table with the same way out. Nothing
+  clears the choice but the user.
+- **Follow → the column's session: measured, not built.** Pixels cannot say which
+  session a column belongs to, so the question was whether the desktop app's
+  accessibility tree can. A read-only UI Automation probe (PowerShell, no mouse) says
+  yes: the Code panes are groups named "Primary pane" / "Secondary pane" (class
+  `dframe-pane`) with real bounding rectangles, and a point on a pane's header row
+  hits a button named "<session title>, rename session", with "<project>, <branch>"
+  beside it. Structure, never content — adr.rg.006 stands — and only the header row
+  would ever be read, since the chat's text is exposed too. Walking children from the
+  window returns nothing; reading by points works. To be decided as an ADR (UI
+  Automation as a read source) before it is built as a Rust read at (column centre,
+  pane top + 24 px) when Follow's pane changes.
+- **Hawk eye: a vision, recorded.** It fits adr.rg.002's pluggable backend (local or
+  remote, one's own key), but a continuous send of every change is a different
+  privacy line from today's "one hunk, on demand, payload disclosed" and needs its own
+  decision. Into spec v3's roadmap as a vision item, not built.
+
+Observed on the release build (main `3d3e189`, rebuilt 20:57, launched from a plain
+PowerShell, driven over CDP; the drag itself is the OS's, so the size was changed
+through the window command and the rest of the chain read): the handle present and
+named in the free corner (◣, `nesw-resize`, for a top-right dock); a resize to 900 ×
+760 remembered as 900 / 716 in the config and the window's right edge exactly where
+it was (x 1652 + 900 = the work area's edge less the margin); the Diff tab's grid at
+"260px 598px"; closed, the strip 470 × 44 in the same corner; reopened, 900 × 760
+again. Three Desktop sessions in the table; choosing this session made its row bold
+(weight 700), the note said so, the Diff tab read "Only project-docs-status-check
+(1 of 1) · show all sessions" and listed exactly that session's file; the link
+restored all; choosing a session with no edits gave the named empty state with the
+same way out. The size was restored to 640 × 620 and the drawer closed afterwards.
+
 ## Session 5: the repository was already public; P4b, the whole file around a hunk; the previous edit as the baseline where git has none — 20.9.2026 (0.1.0)
 
 The session opened from the cold-start list and found one thing nobody had picked up:
