@@ -125,9 +125,15 @@
     // read so the wiring repeats when the hunks come back after the file view.
     if (mode !== "hunks" || !rendered || !viewEl) return;
     const undo: (() => void)[] = [];
-    viewEl.querySelectorAll("div.d2h-info").forEach((info) => {
-      const row = (info.closest("tr") ?? info) as HTMLElement;
-      const m = /\+(\d+)/.exec(info.textContent ?? "");
+    // diff2html marks the header's cells `d2h-info` (the line-number cell empty, the
+    // other holding the `@@` text); the row is the control.
+    const rows = new Set<HTMLElement>();
+    viewEl.querySelectorAll("td.d2h-info").forEach((cell) => {
+      const row = cell.closest("tr");
+      if (row) rows.add(row as HTMLElement);
+    });
+    rows.forEach((row) => {
+      const m = /\+(\d+)/.exec(row.textContent ?? "");
       if (!m) return;
       const line = Number(m[1]);
       const open = () => void openFile(line);
