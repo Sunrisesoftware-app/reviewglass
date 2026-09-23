@@ -19,8 +19,58 @@ pub mod usage;
 
 use tauri::Manager;
 
+/// A panic leaves a trace. The release build aborts on panic (`panic = "abort"`) and its
+/// stderr reaches nowhere, so without this a crash is a Windows Error Reporting line
+/// with an offset and nothing else (23.9.2026). One line per panic, appended to
+/// `~/.reviewglass/panic.log` — the profile root, never AppData (adr.rg.019) — with the
+/// build, the thread, the place and the message; the file is rolled over at 64 KB.
+fn install_panic_log() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let msg = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "(no message)".into());
+        let place = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_default();
+        let thread = std::thread::current()
+            .name()
+            .unwrap_or("unnamed")
+            .to_string();
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let line = format!(
+            "{secs} {} thread '{thread}' panicked at {place}: {msg}\n",
+            glass::build_stamp()
+        );
+        if let Some(dir) = dirs::home_dir().map(|h| h.join(".reviewglass")) {
+            let path = dir.join("panic.log");
+            let _ = std::fs::create_dir_all(&dir);
+            if std::fs::metadata(&path).is_ok_and(|m| m.len() > 64 * 1024) {
+                let _ = std::fs::rename(&path, dir.join("panic.log.old"));
+            }
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+            {
+                use std::io::Write;
+                let _ = f.write_all(line.as_bytes());
+            }
+        }
+        previous(info);
+    }));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    install_panic_log();
     tauri::Builder::default()
         // A second launch brings the running copy's dock forward instead of starting
         // another that would fight it for the config file and the capture. The dock is
