@@ -4,6 +4,30 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 6 (continued): the startup crash, read from its own log and fixed — 23.9.2026 (0.1.0)
+
+The crash seen during the Follow check, reproduced with the owner's leave. With the
+panic log in place (`~/.reviewglass/panic.log`, #27), five launches right after a quit
+died within a second, all five logging on the main thread "state() called before
+manage() for reviewglass_lib::config::Store" — four of them before the build agent's
+probe had made a single call, so the probe was not the cause.
+
+- **The cause.** Tauri creates the windows declared in `tauri.conf.json` before
+  `setup` runs, and creating a WebView2 pumps messages while it waits for the
+  controller. A page already loaded — fast when WebView2 is warm, as it is right after
+  a quit — has its commands served in that gap; the state was managed in `setup`, so a
+  command reaching the config through `app.state()` panicked. Possible since the
+  first build; a warm start made it near certain.
+- **The fix.** Every piece of state is managed on the builder, before the app and any
+  window exist. The config directory is computed as Tauri's `app_config_dir` does (the
+  config directory joined with the bundle identifier) from the context generated
+  before the builder; the file is the same.
+
+Measured on the release build of the fix, the same five warm launches with the probe
+calling the dock's state command from the first moment the page existed: all five
+stayed up, each answering about 3 500 calls (the first at 0.65–0.85 s after launch),
+no line added to the panic log. A rule in CLAUDE.md and the story in LESSONS.md.
+
 ## Session 6 (continued): Follow chooses the session — adr.rg.022 — 23.9.2026 (0.1.0)
 
 The owner's wish of 20.9.2026, next on the list they agreed: while the glass follows,

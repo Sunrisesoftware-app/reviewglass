@@ -130,5 +130,8 @@ Full stories in `docs/LESSONS.md`. The short forms:
   once before the tray existed.
 - **A session runs the status line that existed when it started** (11.9.2026). The
   installer must say so.
+- **State is managed on the builder, never in `setup`** (23.9.2026). Tauri creates the
+  config windows before `setup`, and their commands can be served in between; a warm
+  start panicked 5 of 5. A panic is logged to `~/.reviewglass/panic.log`: read it first.
 - **A packaged app's children write to an AppData nobody else can see** (18.9.2026).
   The first live diff passed every agent-side check and showed the owner nothing.
