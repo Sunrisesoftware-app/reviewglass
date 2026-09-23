@@ -5,6 +5,18 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## Git's hunk header names the function above the hunk, not the one the change is in (2026-09-23)
+
+The explain service sends the declaration around a change, and took it first from the
+text git prints after a hunk header's second `@@`. On the first live run the change sat in
+`main()` and the prompt said "Inside: def collect(folder):". Git's function context is the
+last line matching its funcname pattern before the hunk's first line - here the blank line
+above `def main():`, whose last declaration above was `collect`. Unit tests had passed,
+because they asked whether the header was parsed, not whether the header was right about
+the change. Lesson: a field that sounds like the answer is evidence only about what its
+producer measured; git measured the hunk's start, not the change's. The working copy,
+read upward from the first changed line, is the source; git's context is the fallback.
+
 ## A crash that leaves no trace is a crash nobody can fix — and Tauri's windows come before its setup (2026-09-23)
 
 The first launch of a fresh build died a second after start. Windows Error Reporting

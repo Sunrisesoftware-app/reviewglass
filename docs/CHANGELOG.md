@@ -4,6 +4,42 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 6, closing: P6 observed, one fix from what it showed — 23.9.2026 (0.1.0)
+
+**P6 observed** on the release build (main `11877c1`, rebuilt 16:48, launched from a
+plain PowerShell with the owner's leave, driven over CDP, no mouse). No local model
+server runs on this machine, so the local backend was checked against a loopback test
+server that speaks the same protocol, answers with a canned text and records what it
+receives. A throwaway repository, one agent edit (four lines added to `main()`).
+
+- **Off** (the owner's setting and the default): no Explain button on the hunk.
+- **Local** (127.0.0.1:18434, model `rg-test`): "Check the local server" listed `rg-test`;
+  one Explain button on the hunk; after the click the explanation stood above the diff
+  with "via Local · rg-test on 127.0.0.1:18434 — stays on this machine". The test server
+  received `/v1/chat/completions` with the system instructions and a user message of
+  exactly the path, a declaration and the hunk — nothing else of the file.
+- **Remote, no key**: "No API key is stored. Add one in Settings > Explain…" at once, and
+  no disclosure (the order fixed earlier the same day).
+- **Remote, a throwaway key** (stored for the check, removed after): the disclosure showed
+  `POST https://api.anthropic.com/v1/messages`, the version and fallback headers, the key
+  as "(your key, read from Windows Credential Manager — not shown)" — the key's text
+  appeared nowhere — and the body. "Don't send" closed it; nothing was sent; the
+  confirmation stayed unset.
+- The owner's explain settings were restored (Off, not confirmed, no key stored).
+
+**One fix from what it showed.** The declaration sent was "def collect(folder):" while
+the change was inside `main()`: git's hunk header names the last declaration before the
+hunk's first line, and that line was the blank one above `def main():`. The declaration
+is now the nearest less-indented declaration above the first changed line in the working
+copy, and git's header context only when there is no working copy to read
+(`enclosing_declaration`, with the live case as its test). 130 tests.
+
+**Session 6 closes here.** Shipped in it: the latest edit highlighted and the New view;
+Follow choosing the session (adr.rg.022); the startup crash read from its own log and
+fixed (state on the builder, `~/.reviewglass/panic.log`); spec v0.3 and the model's
+modules in step; P6 (adr.rg.023). Session 7 starts from the owner's own look at P6 with a
+real backend and at Follow, then the spec's P6 contract, then the hawk eye as a decision.
+
 ## Session 6 (continued): P6 built — one hunk explained in plain words, local or with the user's own key — 23.9.2026 (0.1.0)
 
 P6 before P5 was the owner's decision the same day: the explain backend is what the hawk
