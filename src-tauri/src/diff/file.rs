@@ -58,6 +58,12 @@ pub struct FileView {
     /// last line for a removal at the end.
     pub removed_before: Vec<u32>,
     pub hunks: Vec<Hunk>,
+    /// The lines the latest edit brought (ReviewGlass's own mark, from the diff view),
+    /// 1-based, ascending; a subset of what the view shows as new.
+    pub fresh: Vec<u32>,
+    /// Whether `fresh` is measured against the previous edit or is the first
+    /// sighting's every added line.
+    pub fresh_from_previous: bool,
     /// Why there is nothing to show, in the user's terms, when there is nothing.
     pub reason: Option<String>,
 }
@@ -143,6 +149,8 @@ pub fn not_offered(path: &str) -> FileView {
         added: Vec::new(),
         removed_before: Vec::new(),
         hunks: Vec::new(),
+        fresh: Vec::new(),
+        fresh_from_previous: false,
         reason: Some("not a file the agent has edited since ReviewGlass started".into()),
     }
 }
@@ -159,6 +167,8 @@ pub fn file_view(view: &DiffView, denylist: &[String]) -> FileView {
         added: Vec::new(),
         removed_before: Vec::new(),
         hunks: Vec::new(),
+        fresh: Vec::new(),
+        fresh_from_previous: view.fresh_from_previous,
         reason: None,
     };
     if view.status == DiffStatus::Denied || denied_by(&file_name_of(&view.path), denylist) {
@@ -201,6 +211,7 @@ pub fn file_view(view: &DiffView, denylist: &[String]) -> FileView {
         out.removed_before = m.removed_before;
         out.hunks = m.hunks;
     }
+    out.fresh = view.fresh.clone();
     out.text = Some(String::from_utf8_lossy(&bytes).into_owned());
     out
 }
@@ -283,6 +294,8 @@ mod tests {
         assert_eq!(fv.added, vec![2, 4]);
         assert_eq!(fv.removed_before, vec![2]);
         assert_eq!(fv.hunks, vec![Hunk { start: 1, lines: 4 }]);
+        assert_eq!(fv.fresh, v.fresh);
+        assert_eq!(fv.fresh, vec![2, 4]);
         assert_eq!(fv.display_path, "a.txt");
         assert!(fv.repo_root.is_some());
         // Unchanged since the commit: the file still opens, with nothing marked.
@@ -313,6 +326,8 @@ mod tests {
             unified: None,
             added: None,
             removed: None,
+            fresh: Vec::new(),
+            fresh_from_previous: false,
             at_ms: 1,
             session_id: None,
             tool: None,
