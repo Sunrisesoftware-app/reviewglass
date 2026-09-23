@@ -4,6 +4,51 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 6 (continued): Follow chooses the session — adr.rg.022 — 23.9.2026 (0.1.0)
+
+The owner's wish of 20.9.2026, next on the list they agreed: while the glass follows,
+the Diff tab should show the session of the column the glass is reading. Pixels
+cannot say which session a column is; the desktop app's accessibility tree can.
+
+- **The decision first** (adr.rg.022, Atlas #344, amended in #345): UI Automation is a
+  read source for one thing only, which session is under the cursor. What is read:
+  the element under the cursor and its ancestors up to the Code pane, and the names
+  on the pane's header row until one is "<title>, rename session"; for a session the
+  desktop app has opened in a window of its own, the page's name. Only windows of the
+  desktop app's process (claude.exe) are read at all. Nothing below the header row,
+  nothing written, nothing kept but the current pane's rectangle and title.
+- **Desktop sessions are named by their titles.** Each Desktop transcript carries a
+  `custom-title` record every few lines — the title the desktop app shows, session
+  state and not conversation. The transcript reader takes the newest (leniently) and
+  keeps a title once seen, since a long transcript may hold one only beyond the tail.
+  The Sessions table shows Desktop sessions by those titles instead of folder names.
+- **follow_session.rs.** A UI Automation client on a thread of its own (COM,
+  multithreaded apartment). While the glass is shown in Follow, not held, with the
+  switch on: the window under the cursor is checked first (the desktop app's, or
+  nothing is asked); a read happens only when the cursor leaves the pane it was last
+  found in, plus a re-check every 4 s; a point that found nothing is not asked again
+  within 40 px for 1.5 s. The title is matched to a session's name (exactly, then by
+  case) and sent to the dock, which makes it the choice, marked as Follow's. A miss
+  leaves the choice as it was; a choice by hand stands until the pane changes.
+- **The affordance.** A checkbox on the Sessions tab, "Follow chooses the session
+  under the glass" (on by default), with a line saying what Follow sees: the title
+  it is on, a title that is not in the table, or why it is idle. The Diff tab's
+  filter line says "chosen by Follow".
+
+Measured without the mouse, against the owner's running desktop app through the
+ignored diagnostic `live_pane_titles` (read-only, points given, the cursor never
+moved): the main window's three Code panes read their titles in 4.5–15 ms each
+("Luviamo projektin tila ja kirjautumisvirhe", "Suno v6 korjaukset jatkuu", "Atlas
+kehitys ja kirjautumisongelman ratkaisu"), every point marked as the desktop app's
+window. The first query of a run found nothing: it is what wakes Chromium's
+accessibility tree. On the same screen the owner had three sessions open in windows
+of their own, whose pages are named with the session titles — the reason for the
+amendment. clippy clean, 114 tests (9 new: the header title, the page title, the
+pane class token, the header points, title matching, the claude.exe image, the
+known-pane and miss holds, the transcript title). svelte-check 0 errors, 0 warnings.
+Not yet seen on screen: the check with the glass and the cursor waits for the owner's
+leave.
+
 ## Session 6: the latest edit in a colour of its own — 23.9.2026 (0.1.0)
 
 The owner had used the drawer, the handle and the session choice the day before:
