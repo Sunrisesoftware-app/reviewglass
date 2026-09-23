@@ -11,6 +11,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 pub use crate::dock::DockConfig;
+pub use crate::explain::ExplainConfig;
 pub use crate::notifier::AlertConfig;
 
 /// The live diff's settings (rg.diff-service).
@@ -122,6 +123,8 @@ pub struct Config {
     pub hotkeys: Hotkeys,
     pub alerts: AlertConfig,
     pub diff: DiffConfig,
+    /// Novice mode (P6): off by default, no backend chosen (spec 6.3).
+    pub explain: ExplainConfig,
 }
 
 /// What happened when the file was loaded, for the panel to show once.

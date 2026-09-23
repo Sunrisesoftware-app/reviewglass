@@ -129,3 +129,46 @@ export type FileView = {
   fresh_from_previous: boolean;
   reason: string | null;
 };
+
+// Novice mode (P6): the shapes of the explain commands. Mirrors src-tauri/src/explain.
+
+export type BackendKind = "off" | "local" | "remote";
+
+export type ExplainConfig = {
+  backend: BackendKind;
+  local_host: string;
+  local_port: number;
+  local_model: string;
+  remote_model: string | null;
+  remote_confirmed: boolean;
+  language: string;
+};
+
+export type ExplainView = {
+  config: ExplainConfig;
+  /** A remote key is stored in Windows Credential Manager; the key itself never reaches the page. */
+  key_stored: boolean;
+  remote_default_model: string;
+  /** The remote service and the known local servers, as the backend names them. */
+  remote_service: string;
+  local_servers: string;
+  /** The active backend's name, when one is chosen and complete. */
+  label: string | null;
+  /** Why the chosen backend cannot run yet. */
+  problem: string | null;
+};
+
+/** Exactly what a request will send (the first remote request shows it before sending). */
+export type ExplainPreview = {
+  method: string;
+  url: string;
+  headers: [string, string][];
+  body: string;
+};
+
+export type ExplainOutcome =
+  | { kind: "done"; label: string; hunk: string; text: string; truncated: boolean }
+  | { kind: "refused"; label: string; hunk: string; reason: string }
+  | { kind: "failed"; label: string; hunk: string; message: string }
+  | { kind: "confirm"; label: string; hunk: string; preview: ExplainPreview }
+  | { kind: "cancelled" };

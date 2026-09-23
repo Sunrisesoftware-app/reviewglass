@@ -385,7 +385,7 @@ pub fn diff_for_with(
 
 /// The working copy as text: within the cap, not binary. The error is the status and
 /// the reason to show when it cannot be.
-fn read_text(path: &Path) -> Result<String, (DiffStatus, String)> {
+pub(crate) fn read_text(path: &Path) -> Result<String, (DiffStatus, String)> {
     let meta = std::fs::metadata(path)
         .map_err(|_| (DiffStatus::Missing, "the file no longer exists".to_string()))?;
     if meta.len() > MAX_SHOWN_BYTES {
