@@ -39,8 +39,27 @@ as it stood at the previous edit.
 Measured: cargo clippy clean, 105 tests (4 new: fresh lines by content across line
 endings; a tracked file's latest edit apart from older uncommitted work; fresh lines
 outside a repository; the state remembering a tracked file between edits);
-svelte-check 0 errors, 0 warnings. Not yet seen on screen: the live check waits for
-the owner's leave.
+svelte-check 0 errors, 0 warnings.
+
+Observed on the release build (main `6ceb181`, the shortcut's exe rebuilt 14:29,
+launched from a plain PowerShell with the owner's leave, driven over CDP, no mouse): a
+throwaway repository with one committed file, edited twice through this session's own
+Edit tool so the hook fired as for any agent edit.
+
+- First edit (four lines added, one changed): the view `changed`, fresh 1, 2, 3, 5,
+  `fresh_from_previous` false; the Hunks view painted exactly those four rows
+  (rgb 255 241 168), the legend "new — the first edit ReviewGlass saw of this file (4
+  lines)"; File the same four lines; New the three runs with "lines 4–4 unchanged".
+- Second edit (three lines): with New open, it re-read in place and showed lines 9–11
+  alone, "new in the latest edit (3 lines)". The HEAD diff held seven added lines; the
+  three fresh rows were yellow and the first edit's four green (rgb 221 255 221), the
+  legend naming both; File the same split.
+- With File open on that file, a write to another file put the other file at the top
+  of the list and left the view where it was: File, the same file, lines 9–11 yellow.
+
+The owner decided the same day that P6 (the explain backend, local or remote with the
+user's own key) comes before P5 (cache and PR panels), since the hawk eye stands on
+P6's backend.
 
 ## Session 5 (continued): the owner's proposal — a drawer sized by hand, a chosen session, and the column's session read from the pane — 20.9.2026 (0.1.0)
 
