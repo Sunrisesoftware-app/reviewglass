@@ -71,7 +71,27 @@ fn install_panic_log() {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     install_panic_log();
+    let context = tauri::generate_context!();
+    // The same directory Tauri's app_config_dir resolves to (the config directory and
+    // the bundle identifier), computed here because the state is managed before the
+    // app exists: see below.
+    let config_dir = dirs::config_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join(&context.config().identifier);
     tauri::Builder::default()
+        // Every piece of state is managed on the builder, before any window exists.
+        // Tauri creates the windows declared in tauri.conf.json before `setup` runs,
+        // and creating a WebView2 pumps messages while it waits: a page that is
+        // already loaded can have its commands served in that gap. State managed in
+        // `setup` was then missing, and a command reaching it through `app.state()`
+        // panicked the app on start (23.9.2026: 5 of 5 warm launches, "state()
+        // called before manage() for config::Store").
+        .manage(config::Store::open(&config_dir))
+        .manage(capture::Engine::new())
+        .manage(panel::PanelState::new())
+        .manage(diff::DiffState::new())
+        .manage(follow_session::FollowSessionState::new())
+        .manage(dock::DockState::new())
         // A second launch brings the running copy's dock forward instead of starting
         // another that would fight it for the config file and the capture. The dock is
         // the fixed point (adr.rg.018): nothing else appears until it is asked — the
@@ -83,14 +103,6 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
-            let config_dir = app.path().app_config_dir()?;
-            app.manage(config::Store::open(&config_dir));
-            app.manage(capture::Engine::new());
-            app.manage(panel::PanelState::new());
-            app.manage(diff::DiffState::new());
-            app.manage(follow_session::FollowSessionState::new());
-            app.manage(dock::DockState::new());
-
             if let Some(w) = app.get_webview_window(glass::GLASS_LABEL) {
                 if let Err(e) = glass::exclude_from_capture(&w) {
                     eprintln!("reviewglass: {e}");
@@ -147,7 +159,7 @@ pub fn run() {
             diff::panel_diffs,
             diff::file::panel_file_view,
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building ReviewGlass")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
