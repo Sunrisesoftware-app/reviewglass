@@ -1,7 +1,7 @@
 # ReviewGlass — notes for the build agent
 
-A Windows 11 desktop companion for Claude Code sessions: a magnifier glass, a session
-and quota panel, threshold alerts, and later a live diff. Tauri v2, Rust core,
+A Windows 11 desktop companion for Claude Code sessions: a magnifier glass hanging from
+a dock whose drawer is the panel — sessions and quota, threshold alerts, a live diff. Tauri v2, Rust core,
 SvelteKit. Apache-2.0. Built first for the author's own use; the repository has been
 public since 17.9.2026, and the public release (P8) waits on the name (adr.rg.008).
 
@@ -73,8 +73,8 @@ modules, connections and decisions; the spec is its prose.
 4. **`docs/adr/`** — the decisions, rendered from the Atlas model; `README.md` there is
    the index.
 5. **`docs/LESSONS.md`** — the pitfalls, with the story behind the rules above.
-6. **`docs/REVIEWGLASS-SPEC.md`** — the product and architecture specification (v0.2
-   at the time of writing; 6.3 carries the module contracts).
+6. **`docs/REVIEWGLASS-SPEC.md`** — the product and architecture specification (v0.3,
+   23.9.2026; 6.3 carries the module contracts, 7 the roadmap in the owner's order).
 7. Atlas (optional but useful): system `reviewglass` — `atlas_get_workspace` for status
    and thread, `atlas_get_rationale` for the ADRs as the model holds them.
 
@@ -91,7 +91,11 @@ collector replaced it in `settings.json` on 11.9.2026.
   Diff tab. **P4b** (the whole file around a hunk) observed 20.9.2026, with the previous
   edit as the baseline where git has none; the latest edit's lines are highlighted and
   a New view shows them alone (23.9.2026).
-- **P8** (public release) waits on name clearance (adr.rg.008).
+- **P6** (novice mode: the explain backend, local or remote with the user's own key) is
+  next, before P5, by the owner's decision of 23.9.2026; the "hawk eye" is P6b, a vision
+  that needs its own privacy decision first (spec v0.3, section 7).
+- **P8** (public release) waits on name clearance (adr.rg.008); the repository itself is
+  already public.
 
 ## Layout
 

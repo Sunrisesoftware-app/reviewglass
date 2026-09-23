@@ -4,6 +4,46 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 6 (continued): spec v0.3, and the model's modules brought in step — 23.9.2026 (0.1.0)
+
+The specification had stood at v0.2 since 11.9.2026, before eleven decisions and four
+windows. v0.3 is the Atlas artifact `REVIEWGLASS-SPEC` version 3 (shared) and its copy
+`docs/REVIEWGLASS-SPEC.md`, changed together; the two are the same 58 970 bytes.
+
+- **What changed from v0.2**, ten points, at the top: the glass as a window with three
+  modes, the pane read, the fixed point, the drawer, the hook on both surfaces, the
+  spool under the profile root, P2/P4/P4b done, UI Automation for the session under the
+  cursor, the roadmap re-cut, state before any window.
+- **Decisions:** D4 records the public repository (the name gates P8 only); D7 records the
+  owner's P6-before-P5.
+- **4.1** gains the two PostToolUse rows (both surfaces, 18.9.2026). **5** gains the
+  transcript's `custom-title`, the hook as the trigger on every surface, the watcher
+  marked not built, and 5.5, the desktop app's accessibility tree.
+- **6.1** is redrawn: the hook under "both surfaces", the spool at `~/.reviewglass/spool`,
+  four windows and one panel, with why the panel window went. **6.2** names diff2html,
+  `similar` and UI Automation. **6.3** gains `dock-window`, `halo-window` and
+  `finder-window`, rewrites `glass-window`, `panel-window` (the drawer), `diff-service`
+  (statuses, the denied view, baselines, the latest edit, the whole file),
+  `hook-collector` and `spool-watcher`, and extends `session-source` with the session
+  under the cursor.
+- **7** carries every phase's state, P4b, P6 as next, P6b the hawk eye as a vision with
+  its privacy condition, P5 after it. **8.4** adds what is read and why (the pane title,
+  the working copies in memory, the panic log) and the memory measured today.
+  **9** adds four risks, two of which fired. **10** the builder rule, the launch rule and
+  the leave for screen checks.
+
+The model's modules had fallen behind the code and are brought in step in the same
+session (Atlas #348, worker deployed): the spool's path (it still said `%APPDATA%`), the
+hook on both surfaces, the spool watcher's polling, the panel as the dock's drawer
+(`src/lib/panel`, it still said "the conventional tabbed window"), the dock's drawer and
+handle, the diff service's statuses and the denylist as a denied view (its acceptance
+still said "no DiffView"), the session source's titles and pane read, and four paths.
+
+Measured for 8.4 (the running app, idle: the glass hidden, the drawer closed, minutes
+after start): ten processes, 318 MB of private bytes, 15 MB of it the Rust core and the
+rest nine WebView2 processes; 660 MB of working set. On 11.9.2026 it was about 700 MB
+private across eight.
+
 ## Session 6 (continued): the startup crash, read from its own log and fixed — 23.9.2026 (0.1.0)
 
 The crash seen during the Follow check, reproduced with the owner's leave. With the

@@ -1,13 +1,48 @@
 # ReviewGlass — Product & Architecture Specification
 
-**Version:** 0.2
-**Date:** 2026-09-11
+**Version:** 0.3
+**Date:** 2026-09-23
 **Owner:** Petri Korhonen / Sunrise Software Oy
-**Status:** In build. P0 complete, P1 shipped, P2 built.
-**Model:** Atlas system `reviewglass` (modules `rg.*`, decisions `adr.rg.001`-`011`).
-**Repository:** github.com/Sunrisesoftware-app/reviewglass (private until P8). The repo
-carries a copy of this document at `docs/REVIEWGLASS-SPEC.md`; this artifact is the
-source of truth.
+**Status:** In daily use by the author. P0-P2 and P4 (with P4b) done, P3 built. Next, in
+the order the owner set on 2026-09-23: P6, then P5, P7, P8.
+**Model:** Atlas system `reviewglass` (modules `rg.*`, decisions `adr.rg.001`-`022`).
+**Repository:** github.com/Sunrisesoftware-app/reviewglass, public since 2026-09-17 by
+the owner's decision; the name check still gates the public release, P8 (`adr.rg.008`).
+The repo carries a copy of this document at `docs/REVIEWGLASS-SPEC.md`; this artifact is
+the source of truth.
+
+### What changed from v0.2
+
+Twelve days of daily use moved the design more than the three measurements behind v0.2
+did. Eleven decisions (`adr.rg.012`-`022`) and the phases they served:
+
+1. **The glass became a window** with a permanent title bar and three named modes -
+   Follow, Lens, Still (`adr.rg.013`) - and a freeze became a still, not a locked live
+   region (`adr.rg.012`). In Follow a halo marks the pointer on screen (`adr.rg.014`).
+2. **The glass reads the pane** (`adr.rg.017`): column boundaries found from pixels,
+   structure and never content, so Follow holds the column under the cursor and a
+   viewfinder frames it on the real screen.
+3. **A hideable app has a fixed point** (`adr.rg.015`, `adr.rg.018`): a tray icon, a
+   single instance, and a dock - a strip snapped to a screen corner from which the glass
+   is switched on in a mode and off again. The glass hangs from the dock.
+4. **The panel is the dock's drawer** (`adr.rg.020`), sized by hand from its free corner
+   (`adr.rg.021`). v0.2's "two windows, not one" became four windows and one panel: the
+   conventional panel window drifted apart from the dock and was removed (6.1).
+5. **`PostToolUse` fires on both surfaces** (4.1, measured 2026-09-18). v0.2 drew the hook
+   in the same "CLI only" bracket as the status line; that was an assumption about a
+   neighbouring channel. The hook is the live diff's trigger everywhere.
+6. **The spool lives under the profile root** (`adr.rg.019`): the Claude desktop app is
+   packaged (MSIX) and Windows virtualises AppData for every child it runs, so a spool
+   under `%APPDATA%` was invisible to the app that read it.
+7. **P2's exit criterion was met** (five concurrent sessions, 2026-09-19), **P4 and P4b
+   shipped**: the diff within a second, the whole file around a hunk, the previous edit
+   as the baseline where git has none, and the latest edit in a colour of its own.
+8. **UI Automation tells which session a column belongs to** (`adr.rg.022`): the pane
+   header's title, nothing below it, only in the desktop app's windows. Follow chooses the
+   session under the glass, and the Diff tab follows the eye.
+9. **The roadmap was re-cut** (7): P6 before P5, and the "hawk eye" recorded as P6b.
+10. **State is managed before any window exists** (10): a warm start panicked five times
+    in five before this; every panic now leaves a line in `~/.reviewglass/panic.log`.
 
 ### What changed from v0.1
 
@@ -25,9 +60,6 @@ measurements:
    path-mangling hazard the draft warned about rather than working around it. Forces
    `adr.rg.010`.
 
-Everything else in the draft survived contact, including the two-window split, the file
-spool, the shared-gauge-versus-attribution rule, and the decision to start at P1.
-
 ---
 
 ## 1. Purpose
@@ -44,8 +76,10 @@ problems that the Claude Code Desktop app does not currently address:
 3. **No live view of the work.** Code being written by the agent is not observable in
    real time outside the session pane itself.
 
-ReviewGlass is a single always-available overlay that magnifies any screen region,
-and a companion panel that surfaces session state, quota consumption, and live diffs.
+ReviewGlass is a magnifier glass that hangs from a small always-present dock, and a
+panel - the dock's drawer - that surfaces session state, quota consumption and live
+diffs. The glass magnifies any screen region; the drawer shows what the agents are doing
+and what they are changing, down to the lines the latest edit brought.
 
 It is built first for the author's own use, distributed later as an open-source tool.
 
@@ -81,9 +115,13 @@ It is built first for the author's own use, distributed later as an open-source 
 | D1 | License | **Apache-2.0** | 2026-09-11 |
 | D2 | Explain-service backend | **Both, behind a pluggable interface.** Remote API and a local compute unit are equal-status options; neither is hardcoded. | 2026-09-11 |
 | D3 | Primary target surface | **Desktop Code tab is primary. Terminal CLI is a supported secondary surface**, not a separate build. | 2026-09-11 |
-| D4 | Name availability | **Open.** Confirm "ReviewGlass" is free of conflicting use before the repository is made public. Blocks P8, not P1. | — |
+| D4 | Name availability | **Open.** Probes on 2026-09-17 (web, GitHub, npm) found nothing; crates.io was not checked. The repository was opened that day by the owner's decision; the name check proper gates P8 - the installer and the bundle identifier - not the source (`adr.rg.008`). | — |
 | D5 | Collector form | **Native binaries, not shell scripts** (`adr.rg.010`). Removes the Git Bash / PowerShell question entirely. | 2026-09-11 |
 | D6 | Payload tolerance | **A field of the wrong type costs that field only** (`adr.rg.011`), not only a field that is absent. | 2026-09-11 |
+| D7 | Roadmap order | **P6 before P5.** The explain backend - local, or remote with the user's own key - is what the "hawk eye" (P6b) stands on; the cache and PR panels wait. Decided by the owner. | 2026-09-23 |
+
+The architecture decisions taken since v0.2 are `adr.rg.012`-`022`, rendered in the
+repository under `docs/adr/`; this table keeps the product-level ones.
 
 ### 3.1 Consequences of D1 (Apache-2.0)
 
@@ -168,6 +206,8 @@ always optional and always fails soft.
 | Is there a native diff panel? | Terminal CLI | **Yes.** Shipped in v2.1.260. Requires the fullscreen renderer, a git repo, and a terminal ≥110 columns; auto-opens at ≥144. State persists in `~/.claude.json` as `diffSidebarOpen`. | 2026-09-11 |
 | Does `statusLine` run? | Desktop Code tab | **No.** Measured on Claude Code 2.1.268. A Desktop session (`entrypoint: claude-desktop`) started after the passthrough was configured, which produced user and assistant messages, wrote nothing to the log. A CLI session in the same directory three minutes later wrote on every message. | 2026-09-11 |
 | Does `statusLine` run? | Terminal CLI | **Yes.** Measured on Claude Code 2.1.268. The first call of a session carries no `rate_limits`, no `prompt_cache` and a null `context_window.current_usage`; from the first API response on, `rate_limits` carries `five_hour` and `seven_day` with `used_percentage` and `resets_at`, `session_name` appears, and `prompt_cache` follows on the next call. `pr` was absent outside a git repository, as specified. Print mode (`claude -p`) runs no status line at all: it has no line to render. | 2026-09-11 |
+| Does `PostToolUse` run? | Desktop Code tab | **Yes.** Measured 2026-09-18 on 2.1.274 (`entrypoint: claude-desktop`): a `Write` with the hook configured wrote its event, in a session that was already running when the hook was configured - unlike the status line, no restart is needed. | 2026-09-18 |
+| Does `PostToolUse` run? | Terminal CLI | **Yes.** Measured 2026-09-18 on 2.1.268 in print mode (`entrypoint: sdk-cli`), where no status line runs. | 2026-09-18 |
 
 **This is the outcome section 4 called "the most likely awkward case": fires in CLI only,
 on the secondary surface, while the primary surface is blind to the channel.**
@@ -231,8 +271,9 @@ channel at all, which is why the spec put it first.
 
 ## 5. Data sources
 
-Four channels. Each degrades gracefully, and which one carries a session depends on the
-surface it runs on — the finding of section 4.1, and the reason 5.2 exists at all.
+Five channels, four of them in use. Each degrades gracefully, and which one carries a
+session depends on the surface it runs on — the finding of section 4.1, and the reason
+5.2 exists at all.
 
 ### 5.1 statusLine JSON (primary for CLI, documented)
 
@@ -285,9 +326,13 @@ the Desktop Code tab, this is the **only** channel that reaches the primary surf
 it is load-bearing rather than a fallback (`adr.rg.003`).
 
 Fields consumed: `entrypoint` (`"claude-desktop"` / `"cli"` — the only surface marker
-there is), `sessionId`, `cwd`, `version`, and the record kinds, for a count of assistant
-turns. Nothing else. **The conversation itself is never read**, and the file is opened
-read-only and never written, truncated or moved.
+there is), `sessionId`, `cwd`, `version`, the record kinds, for a count of assistant
+turns, and the `customTitle` of `custom-title` records - the session's title as the
+desktop app shows it, which names Desktop sessions in the Sessions table and is what
+`adr.rg.022` matches a pane's header against. The record recurs every few lines of a
+live session; a title once seen is kept, since a long transcript may hold one only
+beyond the tail that is read. Nothing else. **The conversation itself is never read**,
+and the file is opened read-only and never written, truncated or moved.
 
 What it does not carry: `rate_limits`, cost, or context percentages. That absence is what
 forces the borrowed gauge of `adr.rg.009`.
@@ -298,20 +343,36 @@ it cannot parse rather than treating it as the end of the data, and falls back t
 name for a session id — so a format change degrades this channel rather than emptying the
 panel.
 
-### 5.3 PostToolUse hook (primary, documented)
+### 5.3 PostToolUse hook (primary, documented, both surfaces)
 
-Fires after every `Edit`, `Write`, or `MultiEdit`, receiving the changed file path in
-its JSON input. This is the real-time trigger for the live diff view.
+Fires after every `Edit`, `Write`, `MultiEdit` or `NotebookEdit` (the configured
+matcher), receiving the changed file path in its JSON input, **in the Desktop Code tab
+and in the CLI alike** (4.1). This is the real-time trigger for the live diff on every
+surface; the transcript's tool records are not needed and are not read.
 
-The hook must be non-blocking and fast. It writes an event file and exits 0. It never
-returns a non-zero exit code, because PostToolUse "blocking errors" surface in the
-session UI without actually blocking anything, which would be pure noise.
+The hook must be non-blocking and fast. It writes one content-free event file - which
+file, which session, which tool, when - and exits 0. It never returns a non-zero exit
+code, because PostToolUse "blocking errors" surface in the session UI without actually
+blocking anything, which would be pure noise. It prunes its own events older than an
+hour, so a ReviewGlass that is not running leaves nothing to pile up.
 
-### 5.4 Filesystem watcher (fallback, universal)
+### 5.4 Filesystem watcher (fallback, universal - not built)
 
-Watches the project directory for changes and runs `git diff` on modification. Slower
-and coarser than the hook, but agent-agnostic. This is the path that a future Codex
-adapter reuses.
+Would watch the project directory for changes and run `git diff` on modification. Slower
+and coarser than the hook, but agent-agnostic: the path a future Codex adapter reuses.
+Not built in v1: the hook turned out to reach both surfaces (5.3), which took away the
+reason v0.2 had for it.
+
+### 5.5 The desktop app's accessibility tree (Desktop only, `adr.rg.022`)
+
+The Claude desktop app is a Chromium application and answers Windows UI Automation. One
+fact is taken from it: which session the point under the cursor belongs to. In the main
+window each Code pane is a group (class token `dframe-pane`) whose header row holds a
+button named "<session title>, rename session"; a session opened in a window of its own
+has a page named with the session's title. Only windows of the desktop app's process are
+asked, only the pane and its header row are read - the same tree exposes the chat's text,
+which is never touched - and only while the glass is in Follow. The first query of a run
+wakes Chromium's accessibility and finds nothing; a read takes 4-15 ms (2026-09-23).
 
 ---
 
@@ -320,34 +381,45 @@ adapter reuses.
 ### 6.1 Topology
 
 ```
-Claude Code session 1..N
+Claude Code session 1..N  (Desktop Code tab and terminal CLI)
   │
-  ├─ CLI sessions only ─────────────────────────────────────────────────┐
-  │    statusLine collector ─────────► spool/sessions/<session_id>.json │ (atomic)
-  │    PostToolUse hook ─────────────► spool/events/<ts>-<uuid>.json    │
-  │                                                                     │
-  └─ both surfaces ─────────────────────────────────────────────────────┤
-       transcript (Claude Code's own) ~/.claude/projects/…/<id>.jsonl   │ (read-only)
-                                                                        │
-                                                    filesystem watcher ◄┘
-                                                              │
+  ├─ CLI sessions only
+  │    statusLine collector ──► ~/.reviewglass/spool/sessions/<session_id>.json   (atomic)
+  │
+  ├─ both surfaces
+  │    PostToolUse hook ──────► ~/.reviewglass/spool/events/<ts>-<tool_use_id>.json (content-free)
+  │    transcript (Claude Code's own)  ~/.claude/projects/<slug>/<id>.jsonl        (read-only)
+  │
+  └─ Desktop Code tab only
+       the desktop app's accessibility tree: a pane's header title             (read-only, 5.5)
+
 ReviewGlass process (Tauri v2)
-  ├─ Rust core: session sources, usage model, git, capture
-  ├─ Window A: glass   (frameless, transparent, always-on-top, skip-taskbar)
-  └─ Window B: panel   (normal window, sessions / diff / cache / PR)
+  ├─ Rust core: session sources, usage model, diff loop and git, capture, follow-session
+  ├─ glass   frameless, always-on-top: the magnifier, in Follow, Lens or Still
+  ├─ dock    a strip in a screen corner; its drawer is the panel (Sessions, Diff, Settings)
+  ├─ halo    a ring on the pointer in Follow; click-through
+  └─ finder  a frame on the real screen around what the glass shows; click-through
 ```
 
-The split down the middle is the P0 result made structural: the spool reaches CLI
-sessions, the transcript reaches every session, and only the transcript knows which is
-which.
+The split down the middle is the P0 result made structural: the status line reaches CLI
+sessions, the hook and the transcript reach every session, and only the transcript
+knows which is which.
 
 **No network listener. No localhost port. No IPC socket.** Inter-process
-communication is plain files under the user profile. This is both the simplest
+communication is plain files under the user profile - `~/.reviewglass/spool`, never
+under AppData: the Claude desktop app is packaged, and Windows virtualises AppData for
+every child it runs, the collectors included (`adr.rg.019`). This is both the simplest
 implementation and the strongest privacy claim for the public repository.
 
-Two windows, not one. The glass is small and chromeless; the panel is a conventional
-window. Attempting to host both in a single window is the failure mode that stalls
-projects of this shape.
+**Four windows, one panel.** v0.2 kept the glass and a conventional panel window apart,
+since hosting both in one window is the failure mode that stalls projects of this shape.
+That still holds for the glass. The panel did not survive as a window of its own: opened
+beside the dock but not of it, it could drift away from the thing it belonged to, and in
+the owner's words no design had been done for it. It became the dock's drawer, in the
+dock's own window, growing from the strip in the corner the dock is snapped to
+(`adr.rg.020`) and sized by hand from its free corner (`adr.rg.021`). The halo and the
+finder are single-purpose overlays that never take a click. All four windows are
+excluded from capture, so the glass never shows ReviewGlass itself.
 
 ### 6.2 Technology stack
 
@@ -356,9 +428,11 @@ projects of this shape.
 | Shell | Tauri v2 | Transparent always-on-top windows with an HTML/CSS UI at a fraction of Electron's footprint. Electron reserves 200-300 MB before doing anything. |
 | Core | Rust | Required by Tauri; also the right layer for Win32 capture interop. |
 | Capture | `windows-capture` crate over `Windows.Graphics.Capture` | Microsoft's current recommendation over the legacy Magnification API. |
-| Watcher | `notify` | Cross-platform filesystem events. |
+| Watcher | none yet | The spool is read on a 300 ms tick; `notify` stays the choice for 5.4 if it is ever built. |
+| Pane identity | Windows UI Automation through the `windows` crate | The only structural source for which session a column belongs to (`adr.rg.022`). |
 | Frontend | SvelteKit (adapter-static) | Small bundle, no virtual-DOM overhead in an overlay redrawn continuously. |
-| Diff rendering | Existing library | Do not hand-roll a diff renderer. |
+| Diff rendering | `diff2html` (MIT) | Do not hand-roll a diff renderer. |
+| Line diff | `similar` (Apache-2.0) | Where git has no baseline (a file outside a repository, or untracked), and for the lines the latest edit brought. |
 
 ### 6.3 Module contracts
 
@@ -369,8 +443,9 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
 **`statusline-collector`** *(native binary, ships as an installed asset - `adr.rg.010`)*
 
 - **inputs:** statusLine JSON on stdin
-- **outputs:** atomic write to `spool/sessions/<session_id>.json`; a rendered status
-  line string on stdout
+- **outputs:** atomic write to `~/.reviewglass/spool/sessions/<session_id>.json`; a
+  rendered status line string on stdout. Installed as
+  `~/.reviewglass/bin/reviewglass-statusline.exe`
 - **dependsOn:** none
 - **contract:** MUST always print a status line to stdout. `statusLine` is a
   single-value setting, so ReviewGlass takes over the user's status line entirely; if
@@ -392,23 +467,32 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
 
 **`hook-collector`** *(native binary, ships as an installed asset - `adr.rg.010`)*
 
-- **inputs:** PostToolUse JSON on stdin
-- **outputs:** `spool/events/<ts>-<uuid>.json` containing `{session_id, file_path, tool, ts}`
+- **inputs:** PostToolUse JSON on stdin, on both surfaces (5.3)
+- **outputs:** `~/.reviewglass/spool/events/<ts>-<tool_use_id>.json` containing
+  `{ts, session_id, transcript_path, cwd, hook_event, tool, tool_use_id, file_path}` -
+  never the file's content. Installed as `~/.reviewglass/bin/reviewglass-hook.exe`,
+  configured with the matcher `Edit|Write|MultiEdit|NotebookEdit`
 - **dependsOn:** none
-- **contract:** fire-and-forget; always exits 0; never writes to stderr.
+- **contract:** fire-and-forget; always exits 0; never writes to stderr; does no git
+  work itself; prunes its own events older than an hour.
 
 ---
 
 **`spool-watcher`** *(Rust)*
 
-- **inputs:** filesystem events on the spool directory
-- **outputs:** `SessionSnapshot` and `ChangeEvent` values on an internal channel
+- **inputs:** the spool directory, `~/.reviewglass/spool` (`adr.rg.019`)
+- **outputs:** `SessionSnapshot` and `ChangeEvent` values
 - **dependsOn:** none
-- **contract:** MUST tolerate partially written files (readers retry once on parse
-  failure). MUST expire session records whose file has not been touched within a TTL
+- **contract:** reads by polling, not by filesystem events: the session records on the
+  usage loop's tick, the events on the diff loop's 300 ms tick. MUST tolerate partially
+  written files (readers retry once on parse failure, then leave the file for the next
+  pass). MUST expire session records whose file has not been touched within a TTL
   (10 minutes) so closed sessions leave the panel — Claude Code writes no close record on
   either channel, so age is the only signal a session ended. MUST handle N concurrent
-  writers and one reader without locking.
+  writers and one reader without locking. Event files are consumed: deleted once read,
+  and events from before the app started are consumed without being reported. The path
+  is named in one function that the app and both collectors share, and nothing shared
+  ever lives under AppData.
 
 ---
 
@@ -432,6 +516,17 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
   `surface` outright. A session already found through the spool resolves its surface
   from the transcript its own payload names, rather than depending on a directory scan
   reaching it. Transcripts are opened read-only and never written, truncated or moved.
+  A Desktop session's name is its transcript's `custom-title` (5.2); a statusLine
+  `session_name` wins where both exist.
+- **which session is under the cursor** (`adr.rg.022`, `follow_session.rs`): while the
+  glass is shown in Follow and the owner's switch is on, a UI Automation client on a
+  thread of its own reads the pane header's title (or a session window's page name) at
+  the cursor, only in the desktop app's windows, and matches it exactly (then by case)
+  to a session's name; the match becomes the session choice that filters the Diff tab.
+  A read happens only when the cursor leaves the pane it was last found in, plus a
+  re-check every 4 s; a point that found nothing is not asked again within 40 px for
+  1.5 s; nothing is read over ReviewGlass's own windows. A miss leaves the choice as it
+  was; a choice made by hand stands until the pane changes.
 
 ---
 
@@ -486,48 +581,126 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
   - Zoom is clamped to 150-400%. Above roughly 400% bitmap scaling visibly degrades;
     offering higher factors would promise sharpness the technique cannot deliver.
   - A hidden glass holds no capture session at all.
+  - **Pane detection** (`adr.rg.017`): the column under the cursor is found from pixels -
+    a gutter or a border line between two textured spans is a boundary, an indentation
+    gap narrower than a gutter is not - and a tracker holds the column through brief
+    losses (the right edge is the furthest line of the last ten seconds; a lost column is
+    held two seconds). Structure only, never content: no OCR (`adr.rg.006`).
 
 ---
 
 **`glass-window`** *(Tauri window + frontend)*
 
-- **inputs:** frame buffer, user input
-- **outputs:** rendered overlay; region selection
-- **dependsOn:** `capture-engine`, `config-store`
-- **contract:** frameless, transparent, always-on-top, excluded from taskbar. Draggable
-  by its body, resizable by explicit grips (a frameless transparent window has no system
-  border). Supports **freeze mode**: detach from the cursor, lock the source region, and
-  scroll content with the mouse wheel. Global hotkey to show/hide. Geometry, zoom, and
-  freeze state persist across restarts. Every action MUST have a visible control as well
-  as its keyboard or mouse gesture, and the control bar MUST be discoverable on first
-  run — but it MUST NOT stand over the magnified content once it has been found, since
-  the glass is a reading surface.
+- **inputs:** frame buffer, user input, the dock's activation
+- **outputs:** rendered overlay
+- **dependsOn:** `capture-engine`, `config-store`, `dock-window`
+- **contract:** a window like any other (`adr.rg.013`): frameless and always-on-top,
+  with a permanent title bar carrying the drag handle, the mode as three labelled
+  buttons, zoom, size, the halo toggle and a chrome-scale step; resizable by explicit
+  grips. Three named modes: **Follow** (the glass stays put and shows the column around
+  the cursor, held by the pane lock, with Fit sizing the glass to the column),
+  **Lens** (the glass rides on the cursor, click-through), **Still** (the picture stops -
+  a still, not a locked live region, so a captured instruction survives working
+  elsewhere, `adr.rg.012`). Switched on and off from the dock (`adr.rg.018`) or the global
+  shortcut, which the dock names. Starts hidden at every start. In Follow the source holds
+  still while the pointer is over the glass or the dock, so reaching for a control never
+  swaps the picture. Geometry, zoom and mode persist; the parked glass and the lens keep
+  separate sizes, stored only when the user resizes. Every action has a visible control
+  as well as its keyboard or mouse gesture.
 
 ---
 
-**`panel-window`** *(Tauri window + frontend)*
+**`dock-window`** *(Tauri window + frontend)*
 
-- **inputs:** `AccountQuota`, `SessionAttribution[]`, `DiffView`, `CacheStats`, `PrInfo`
+- **inputs:** glass state, the usage view, user input
+- **outputs:** activation of the glass; the drawer
+- **dependsOn:** `glass-window`, `usage-model`, `config-store`
+- **contract:** the control panel and the fixed point (`adr.rg.018`): a strip snapped to a
+  screen corner, visible at every start, carrying the three mode buttons (a click shows
+  the glass in that mode, a click on the lit one hides it), the account gauge in
+  miniature (the same account-wide figure as the panel, its absence named), the drawer
+  button, the build stamp and a visible quit. Dragged anywhere, it snaps to the nearest
+  corner and remembers it. Its drawer is the panel (`adr.rg.020`): the same window grows
+  from the strip away from the screen's edge and back; its free corner is a named handle
+  that resizes it with the snapped corner fixed, and the size is remembered
+  (`adr.rg.021`). The tray, the glass's bar and its menu open the same drawer; there is
+  no other panel window.
+
+---
+
+**`halo-window`** *(Tauri window + frontend)*
+
+- **inputs:** the cursor position, glass mode
+- **outputs:** a ring on the pointer
+- **dependsOn:** `glass-window`
+- **contract:** while the glass is in Follow, a ring rides on the pointer so the eye, on
+  the parked glass, still knows where the hand is (`adr.rg.014`). Centred to the pixel;
+  never takes a click; excluded from capture; hidden in Lens and Still and while the
+  glass is hidden; off by one click on the glass's bar, and the choice persists.
+
+---
+
+**`finder-window`** *(Tauri window + frontend)*
+
+- **inputs:** the engine's source rectangle, the pane
+- **outputs:** a frame on the real screen
+- **dependsOn:** `capture-engine`
+- **contract:** while the glass is in Follow with the pane lock on, a frame drawn on the
+  real screen around the rectangle the glass shows, in the Follow colour: it answers
+  what the pane detector found and where exactly the glass is looking (`adr.rg.017`).
+  Coincides with the source rectangle to the pixel; never takes a click; excluded from
+  capture; hidden in Lens and Still, while the glass is hidden, while the lock is off and
+  while no pane is found.
+
+---
+
+**`panel-window`** *(the dock's drawer - frontend, `src/lib/panel/`)*
+
+- **inputs:** `AccountQuota`, `SessionAttribution[]`, `DiffView`, `FileView`, the Follow
+  sighting; later `CacheStats`, `PrInfo`
 - **outputs:** user interactions
-- **dependsOn:** `usage-model`, `diff-service`
-- **contract:** tabbed. Sessions tab is the default view. All tabs render correctly
-  when their data source is absent (no Pro/Max plan, no git repo, no CLI session, older
-  Claude Code version) by hiding the affected element rather than showing zeros or
-  errors — and by naming the reason wherever the user can act on it. Closing the panel
-  hides it rather than destroying it, and the glass can bring it back: two windows that
-  cannot reach each other are two tools.
+- **dependsOn:** `usage-model`, `diff-service`, `dock-window`
+- **contract:** the dock's drawer (`adr.rg.020`), not a window of its own. Tabs in its
+  first row: **Sessions** (the default: one shared quota gauge above, N relative shares
+  below, never blended; Desktop sessions by their titles), **Diff**, **Settings**; the
+  last tab is remembered. All tabs render correctly when their data source is absent
+  (no Pro/Max plan, no git repo, no CLI session, older Claude Code version) by hiding the
+  affected element rather than showing zeros or errors — and by naming the reason
+  wherever the user can act on it. **The session choice:** a radio column on the Sessions
+  table chooses all sessions or one, the chosen row bold; the Diff tab then shows that
+  session's edits alone and says so, with "show all sessions" one click away. Follow can
+  make the choice (5.5, `session-source`), marked as Follow's, behind a visible switch on
+  the Sessions tab that says what Follow sees.
 
 ---
 
 **`diff-service`** *(Rust)*
 
 - **inputs:** `ChangeEvent`
-- **outputs:** `DiffView` (hunks, file path, add/remove counts)
-- **dependsOn:** `spool-watcher`
-- **contract:** runs `git diff` scoped to the changed path. MUST debounce rapid
-  successive edits to the same file. MUST handle files outside a git repository by
-  reporting "untracked" rather than failing. MUST NOT run on paths matching a
-  configurable secret-file denylist (`.env*`, `*.pem`, `*.key`, `id_*`, `*.tfvars`).
+- **outputs:** `DiffView` (path, status, baseline, unified text, add/remove counts, the
+  lines the latest edit brought); `FileView` (the working copy with the last diff's marks)
+- **dependsOn:** `spool-watcher`, `config-store`
+- **contract:** runs `git diff HEAD` scoped to the changed path, in the repository that
+  contains it, on its own 300 ms loop; a tick is the debounce: every event for one path
+  within it becomes one diff. Never edits, stages or writes into a repository.
+  - **Statuses, each with its reason:** changed, unchanged, untracked, not in a
+    repository, denied, missing, too large (over 512 KB), binary, git failed.
+  - **Denylist first:** a path matching the configurable secret-file denylist (`.env*`,
+    `*.pem`, `*.key`, `id_*`, `*.tfvars`) is shown as denied - the user sees that the
+    agent touched it - and is never handed to git or read.
+  - **Where git has no baseline** (outside a repository, or untracked) the baseline is
+    the working copy remembered from the previous edit ReviewGlass saw, diffed with
+    `similar` in git's unified form; the first sighting shows the whole file as new. The
+    view says which baseline it has: `head`, `last-edit` or `whole-file`.
+  - **The latest edit:** the working copy of every listed file that reads as text within
+    the cap is remembered in memory (dropped with the view) and each view carries the
+    lines the latest edit brought against it; at the first sighting, every added line.
+    The Diff tab paints them with ReviewGlass's own highlighter and leaves older
+    uncommitted work diff-green; a New view shows them alone.
+  - **The whole file (P4b):** `panel_file_view` reads the working copy of a path the
+    loop has listed - no other path - under the same denylist, cap and binary check, and
+    returns it with the last diff's marks (added lines, where lines were removed, the
+    hunks). The hunk view stays the default; a hunk header opens the file at that hunk.
 
 ---
 
@@ -591,16 +764,20 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
 - **inputs:** user settings
 - **outputs:** persisted configuration
 - **dependsOn:** none
-- **contract:** JSON under the user profile. Contains no secrets. Writes atomically
-  (temp file plus rename). A corrupt config file resets to defaults, keeps the old one
-  beside it as `.bak`, and says so visibly rather than failing to start.
+- **contract:** JSON under the user profile
+  (`%APPDATA%/app.sunrisesoftware.reviewglass/config.json`, which the app creates itself
+  and is therefore real, not virtualised). Contains no secrets. Writes atomically (temp
+  file plus rename). A corrupt config file resets to defaults, keeps the old one beside
+  it as `.bak`, and says so visibly rather than failing to start. Opened before the
+  app's windows exist (10).
 
 ---
 
 **`installer-integration`** *(installer step)*
 
 - **inputs:** existing `~/.claude/settings.json`
-- **outputs:** updated settings with `statusLine` and `PostToolUse` entries
+- **outputs:** both collectors placed under `~/.reviewglass/bin`; updated settings with
+  `statusLine` and `PostToolUse` entries; the app's own toast identity
 - **dependsOn:** none
 - **contract:** MUST back up the existing settings file before modification. MUST
   detect an existing `statusLine` value and ask before replacing it, offering to
@@ -609,7 +786,10 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
   until it is, and when `disableAllHooks` or `allowManagedHooksOnly` is set, which
   suppresses both silently. MUST tell the user that sessions already running are
   unaffected until they are restarted, since a session only runs the status line that
-  existed when it started (4.1).
+  existed when it started (4.1) - the hook, measured, does not need the restart. MUST
+  place the spool and the collectors under the profile root, never under AppData
+  (`adr.rg.019`). MUST give the app its own toast identity: the unpackaged exe's toasts
+  are attributed to Windows PowerShell today.
 
 ---
 
@@ -619,15 +799,17 @@ Each phase is independently useful and independently shippable.
 
 | Phase | Deliverable | Modules | Exit criterion |
 |---|---|---|---|
-| **P0** | Spike | — | **Done.** Diff-surface question resolved per surface; statusLine confirmed on both surfaces (CLI yes, Desktop no). D4 remains open and gates P8 only |
-| **P1** | Magnifier | `capture-engine`, `glass-window`, `config-store` | **Done.** Readable magnified text over the Code tab, no self-capture, geometry persists. Idle CPU measured at 1.35 % of one core on a release build with a static source (0.06 % of a 24-thread machine); 30.9 % with the screen churning |
-| **P2** | Session panel | `statusline-collector`, `spool-watcher`, `session-source`, `usage-model`, `panel-window` | **Built; exit criterion not yet met.** Both channels verified against two live sessions (one Desktop via transcript, one CLI via the spool) with correct shared-vs-attributed semantics. Five concurrent sessions still to be observed |
-| **P3** | Burn rate & alerts | `notifier`, `usage-model` extension | Threshold toast fires before a limit is reached |
-| **P4** | Live diff | `hook-collector`, `diff-service`, panel tab | Agent edit appears in the panel within ~1 s |
-| **P5** | Cache & PR panels | panel tabs | `prompt_cache` and `pr` surfaces rendered, absent-data paths verified |
-| **P6** | Novice mode | `explain-service`, `explain-backend` | Explanation on demand through both backends; disclosure and credential storage verified; default-off state verified on a clean install |
-| **P7** | Packaging | `installer-integration`, updater | Clean install and uninstall on a fresh Windows 11 machine |
-| **P8** | Public release | — | License, README, contribution notes, repo opened |
+| **P0** | Spike | — | **Done.** Diff-surface question resolved per surface; statusLine confirmed on both surfaces (CLI yes, Desktop no); PostToolUse on both (2026-09-18) |
+| **P1** | Magnifier | `capture-engine`, `glass-window`, `halo-window`, `finder-window`, `dock-window`, `config-store` | **Done.** Readable magnified text over the Code tab, no self-capture, geometry persists. Idle CPU 1.35 % of one core with a static source. Since grown into three modes, the pane lock and the dock (`adr.rg.012`-`018`) |
+| **P2** | Session panel | `statusline-collector`, `spool-watcher`, `session-source`, `usage-model`, `panel-window` | **Done.** Five concurrent CLI sessions observed 2026-09-19 through the app's own reader, with the same account-wide figures and per-session cost and context, beside Desktop sessions from their transcripts |
+| **P3** | Burn rate & alerts | `notifier`, `usage-model` extension | **Built.** The toast measured working through the test button (2026-09-12); a real threshold crossing not yet observed |
+| **P4** | Live diff | `hook-collector`, `diff-service`, the Diff tab | **Done.** An edit in the Diff tab 0.23 s after the hook (2026-09-18), on both surfaces |
+| **P4b** | The whole file, the new code, the session under the glass | `diff-service`, `session-source`, the drawer | **Done.** The whole file around a hunk (2026-09-20); the previous edit as the baseline where git has none; the latest edit highlighted and a New view (2026-09-23); the drawer sized by hand (`adr.rg.021`); a session choice, made by hand or by Follow (`adr.rg.022`) |
+| **P6** | Novice mode | `explain-service`, `explain-backend` | **Next** (D7). Explanation on demand through both backends - local on `127.0.0.1`, or remote with the user's own key; disclosure and credential storage verified; default-off state verified on a clean install |
+| **P6b** | Hawk eye | `explain-service`, `explain-backend`, `diff-service` | **Vision.** A watcher through the P6 backend that reads the columns and the new code as they change and raises what looks wrong. A continuous send is a new privacy line (opt-in, per repository, denylist, payload disclosed) and needs its own decision before anything is built |
+| **P5** | Cache & PR panels | drawer tabs | `prompt_cache` and `pr` surfaces rendered, absent-data paths verified |
+| **P7** | Packaging | `installer-integration`, updater | Clean install and uninstall on a fresh Windows 11 machine; both collectors placed; the app's own toast identity |
+| **P8** | Public release | — | The name cleared (D4), a signed or documented installer, release notes. The repository itself is already public |
 | **v2** | macOS, Codex adapter | new `session-source` impl, ScreenCaptureKit backend | out of v1 scope |
 
 Phase 1 alone solved the original complaint and was shipped to the author before anything
@@ -653,8 +835,9 @@ NSIS (`-setup.exe`) is the primary artifact: it can be built on non-Windows host
 which keeps CI options open. MSI is secondary; building it requires the VBSCRIPT
 optional Windows feature to be enabled, otherwise the WiX step fails.
 
-Two binaries ship: the app, and the statusLine collector installed beside it
-(`adr.rg.010`), which is why the crate declares `default-run`.
+Three binaries ship: the app, and the two collectors - the statusLine collector and the
+PostToolUse hook collector - installed under `~/.reviewglass/bin` (`adr.rg.010`,
+`adr.rg.019`), which is why the crate declares `default-run`.
 
 ### 8.2 Updates
 
@@ -678,7 +861,18 @@ Stated plainly in the README, because it is a genuine differentiator:
   transmitted.
 - Session data is read from files Claude Code already writes on the same machine: the
   spool the collectors fill, and the JSONL transcripts, which are opened read-only. Only
-  session state is read from a transcript - never the conversation.
+  session state is read from a transcript - its surface, folder, version, record kinds
+  and title - never the conversation. The hook records which file an edit touched,
+  never its content.
+- While the glass is in Follow, the desktop app's accessibility tree is asked which
+  session is under the cursor: the pane header's title, nothing below it, only in the
+  desktop app's windows (`adr.rg.022`). The same tree exposes the chat; it is not read.
+- The files an agent edits are read to show their diff: git answers for a repository;
+  elsewhere, and to mark the latest edit, the working copy is remembered in memory
+  between edits and forgotten with the view. Nothing is written into a file, a
+  repository or a session.
+- A crash writes one line - build, thread, place, message - to
+  `~/.reviewglass/panic.log`, on this machine only.
 - The account quota reaches ReviewGlass only through a terminal `claude` session, because
   that is the only surface Claude Code runs a status line on. A Desktop-only user sees
   sessions but no gauge, and the panel says so rather than showing a blank.
@@ -692,11 +886,13 @@ Stated plainly in the README, because it is a genuine differentiator:
 - Only the selected hunk and its immediate context are ever sent. Never the file,
   the repository, or the conversation.
 
-**One measurement that does not support a claim in 6.2.** The running app holds about
-700 MB of private bytes across eight processes, essentially all of it WebView2's seven.
-The stack table's "a fraction of Electron's 200-300 MB" does not hold as written. The
-Rust core itself is ~62 MB. This is recorded rather than quietly dropped; it is not a
-P1 criterion, and it should not stand in the README unexamined.
+**One measurement that does not support a claim in 6.2.** On 2026-09-11 the running app
+held about 700 MB of private bytes across eight processes, essentially all of it
+WebView2's. On 2026-09-23, with four windows, idle (the glass hidden, the drawer closed,
+a few minutes after start): 318 MB of private bytes across ten processes, 15 MB of it the
+Rust core and the rest nine WebView2 processes (660 MB of working set). The stack table's
+"a fraction of Electron's 200-300 MB" still does not hold as written. This is recorded
+rather than quietly dropped, and it should not stand in the README unexamined.
 
 ---
 
@@ -711,6 +907,10 @@ P1 criterion, and it should not stand in the README unexamined.
 | Capture recursion | Unusable overlay | `WDA_EXCLUDEFROMCAPTURE`, verified in P1 |
 | Mixed-DPI multi-monitor | Misaligned or wrongly scaled capture | Per-monitor DPI awareness from the start, not retrofitted |
 | Idle CPU cost of continuous capture | Tool becomes annoying to leave running | Measured in P1: 14 % of one core before the dirty-region skip, 1.35 % after |
+| A packaged app virtualises what its children write | Collectors write where the app cannot read | **This fired** (2026-09-18): the spool under AppData was invisible to the app. It lives under the profile root (`adr.rg.019`), and the app under test is launched the way the owner launches it |
+| The desktop app changes its pane structure | Follow stops choosing the session | Every read then finds "no match", never a wrong session; the choice stays as it was and the Sessions tab says what Follow saw (`adr.rg.022`) |
+| Chromium's accessibility cost in the desktop app | The desktop app does more work while Follow runs | Reads only when the cursor changes pane, every 4 s otherwise; measured at 4-15 ms per read. The app's own load could not be separated from the owner's running sessions on 2026-09-23 |
+| State missing when a window's first command arrives | The app dies on start | **This fired** (2026-09-23, 5 of 5 warm starts). State is managed on the builder, before any window exists; a panic leaves a line in `~/.reviewglass/panic.log` |
 | Scope creep into an IDE | Project never ships | Non-goals in 2.2 are binding |
 
 ---
@@ -728,9 +928,18 @@ P1 criterion, and it should not stand in the README unexamined.
   outside `explain-backend`, the boundary has been violated.
 - ReviewGlass is a read surface. It never writes into a session, a repository or a
   transcript.
-- P0, P1 and the build of P2 are done. P3 (burn-rate alerts) is next and depends only on
-  the usage model P2 shipped.
+- P0-P2, P4 and P4b are done and P3 is built. P6 is next (D7), then P5, P7, P8.
+- Tauri creates the windows declared in `tauri.conf.json` before `setup` runs, and serves
+  a loaded page's commands while it creates the others. Every piece of state is managed
+  on the builder, never in `setup`; a panic is logged to `~/.reviewglass/panic.log`, and
+  that log is read before anything else is guessed.
+- Nothing shared lives under AppData (`adr.rg.019`). The app under test is launched the
+  way the owner launches it - Explorer or a plain PowerShell - never from the agent's
+  shell, whose children see a virtualised AppData.
+- A check that needs the screen or the mouse is run with the owner's leave, once per
+  change; everything that can be verified without the screen comes first.
 - Ship the affordance with the mechanism: a visible control for every action, a
   discoverable first-run state, and a named empty state. A feature reachable only by a
   keystroke nobody was told about is not finished.
-- D4 (name) blocks P8 only. Development proceeds under the working name.
+- D4 (name) blocks P8 only. Development proceeds under the working name, in a public
+  repository.
