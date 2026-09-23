@@ -21,8 +21,9 @@
   import { listen } from "@tauri-apps/api/event";
   import { html as diffHtml } from "diff2html";
   import "diff2html/bundles/css/diff2html.min.css";
-  import type { Baseline, DiffTab, DiffView, FileView } from "./types";
+  import type { Baseline, DiffTab, DiffView, ExplainOutcome, ExplainPreview, FileView } from "./types";
   import { selection, choose } from "./selection.svelte";
+  import { explain, explainReady, loadExplain } from "./explain.svelte";
 
   let tab = $state<DiffTab | null>(null);
   let selected = $state<string | null>(null);
@@ -100,9 +101,70 @@
 
   /** Another file from the list: its hunks, the default view. */
   function pick(path: string) {
+    if (path !== selected) closeExplanation();
     selected = path;
     mode = "hunks";
     file = null;
+  }
+
+  // ---- Novice mode (P6): one hunk explained, on its button ---------------------------
+
+  type Ex =
+    | { state: "idle" }
+    | { state: "running"; index: number; hunk: string; label: string }
+    | { state: "confirm"; index: number; hunk: string; label: string; preview: ExplainPreview }
+    | { state: "done"; hunk: string; label: string; text: string; truncated: boolean }
+    | { state: "refused"; hunk: string; label: string; reason: string }
+    | { state: "failed"; hunk: string; label: string; message: string };
+  let ex = $state<Ex>({ state: "idle" });
+  /** The path the explanation is about, so it goes with the file it belongs to. */
+  let exPath = $state<string | null>(null);
+
+  async function explainHunk(index: number, hunk: string, confirmed = false) {
+    if (!current) return;
+    exPath = current.path;
+    ex = { state: "running", index, hunk, label: explain.view?.label ?? "" };
+    let o: ExplainOutcome;
+    try {
+      o = await invoke<ExplainOutcome>("explain_run", {
+        path: current.path,
+        hunk: index,
+        locale: navigator.language,
+        confirmed,
+      });
+    } catch (e) {
+      ex = { state: "failed", hunk, label: explain.view?.label ?? "", message: e instanceof Error ? e.message : String(e) };
+      return;
+    }
+    switch (o.kind) {
+      case "done":
+        ex = { state: "done", hunk: o.hunk, label: o.label, text: o.text, truncated: o.truncated };
+        break;
+      case "refused":
+        ex = { state: "refused", hunk: o.hunk, label: o.label, reason: o.reason };
+        break;
+      case "failed":
+        ex = { state: "failed", hunk: o.hunk, label: o.label, message: o.message };
+        break;
+      case "confirm":
+        ex = { state: "confirm", index, hunk: o.hunk, label: o.label, preview: o.preview };
+        break;
+      case "cancelled":
+        // Cancelled by the user, or replaced by a newer request that set its own state.
+        if (ex.state === "running" && ex.index === index) ex = { state: "idle" };
+        break;
+    }
+    if (o.kind === "confirm" || o.kind === "done") void loadExplain();
+  }
+
+  function cancelExplanation() {
+    void invoke("explain_cancel");
+    ex = { state: "idle" };
+  }
+
+  function closeExplanation() {
+    if (ex.state === "running") void invoke("explain_cancel");
+    ex = { state: "idle" };
   }
 
   /** Read the working copy of the selected file. Nothing is written. */
@@ -206,6 +268,38 @@
   });
 
   $effect(() => {
+    // An Explain button on each hunk's header, when a backend is chosen and complete and
+    // the file is not denied (spec 6.3: the button is absent until a backend is chosen).
+    // Its click and keys stop at the button, so they never also open the file.
+    const ready = explainReady();
+    if (mode !== "hunks" || !rendered || !viewEl || !ready || !current || current.status === "denied") return;
+    const made: HTMLElement[] = [];
+    const rows = new Set<HTMLElement>();
+    viewEl.querySelectorAll("td.d2h-info:not(.d2h-code-linenumber)").forEach((cell) => {
+      const row = cell.closest("tr");
+      if (row) rows.add(row as HTMLElement);
+    });
+    [...rows].forEach((row, index) => {
+      const cell = row.querySelector("td.d2h-info:not(.d2h-code-linenumber)");
+      const header = row.textContent?.trim() ?? "";
+      if (!cell) return;
+      const b = document.createElement("button");
+      b.className = "rg-explain";
+      b.type = "button";
+      b.textContent = "Explain";
+      b.title = `Explain this change in plain words — via ${explain.view?.label ?? "the chosen backend"}`;
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        void explainHunk(index, header);
+      });
+      b.addEventListener("keydown", (e) => e.stopPropagation());
+      cell.appendChild(b);
+      made.push(b);
+    });
+    return () => made.forEach((b) => b.remove());
+  });
+
+  $effect(() => {
     // The latest edit's lines in the rendered hunks: diff2html's added rows whose
     // new-side number is fresh carry ReviewGlass's highlighter. Cleared first, so a
     // change of the fresh set alone repaints too.
@@ -268,6 +362,7 @@
 
   onMount(() => {
     void refresh();
+    void loadExplain();
     const tick = setInterval(() => (now = Date.now()), 5000);
     let unlisten: (() => void) | undefined;
     void listen("diff:update", () => void onUpdate()).then((u) => (unlisten = u));
@@ -377,6 +472,59 @@
               <span class="swatch older" aria-hidden="true"></span> earlier, not yet committed
             {/if}
           </p>
+        {/if}
+        {#if ex.state !== "idle" && ex.state !== "confirm" && exPath === current.path}
+          <!-- The explanation of one hunk, always with the backend it came through. -->
+          <div class="explanation" class:bad={ex.state === "failed"} role="region" aria-label="Explanation">
+            <div class="ex-head">
+              <span class="ex-hunk">{ex.hunk}</span>
+              <span class="ex-via">via {ex.label}</span>
+              {#if ex.state === "running"}
+                <button onclick={cancelExplanation}>Cancel</button>
+              {:else}
+                <button onclick={closeExplanation} aria-label="Close the explanation">✕</button>
+              {/if}
+            </div>
+            {#if ex.state === "running"}
+              <p class="ex-wait">Explaining…</p>
+            {:else if ex.state === "done"}
+              <div class="ex-text">{ex.text}</div>
+              {#if ex.truncated}
+                <p class="ex-note">The explanation hit its length limit and stops here.</p>
+              {/if}
+            {:else if ex.state === "refused"}
+              <p class="ex-note">The model declined to explain this change: {ex.reason}</p>
+            {:else if ex.state === "failed"}
+              <p class="ex-note">{ex.message}</p>
+            {/if}
+          </div>
+        {/if}
+        {#if ex.state === "confirm" && exPath === current.path}
+          <!-- The first remote request of this installation: nothing has been sent. -->
+          <div class="disclosure" role="dialog" aria-modal="true" aria-label="What will leave this machine">
+            <h3>This is exactly what will leave this machine</h3>
+            <p class="help">
+              The first explanation through {ex.label} is sent only after you have seen it. Only
+              this hunk, its file's path and the declaration around it are sent. Your API key
+              goes in a header and is not shown. After you send it, later explanations go without
+              asking; Settings > Explain can show this again.
+            </p>
+            <p class="req"><b>{ex.preview.method}</b> {ex.preview.url}</p>
+            <table class="hdrs">
+              <tbody>
+                {#each ex.preview.headers as [name, value] (name)}
+                  <tr><td>{name}</td><td>{value}</td></tr>
+                {/each}
+              </tbody>
+            </table>
+            <pre class="body">{ex.preview.body}</pre>
+            <div class="actions">
+              <button class="send" onclick={() => ex.state === "confirm" && void explainHunk(ex.index, ex.hunk, true)}>
+                Send it
+              </button>
+              <button onclick={closeExplanation}>Don't send</button>
+            </div>
+          </div>
         {/if}
         {#if mode !== "hunks"}
           {#if fileFailure}
@@ -619,6 +767,134 @@
   }
   .rendered :global(tr.rg-fresh td.d2h-code-linenumber) {
     box-shadow: inset 3px 0 0 #d9a400;
+  }
+  /* Novice mode: the Explain button on a hunk header, the explanation, the disclosure. */
+  .rendered :global(button.rg-explain) {
+    margin-left: 12px;
+    padding: 1px 8px;
+    border: 1px solid #9bb4e6;
+    border-radius: 4px;
+    background: #eef3fd;
+    color: #1d4fb8;
+    font: 11px system-ui, sans-serif;
+    cursor: pointer;
+    vertical-align: middle;
+  }
+  .rendered :global(button.rg-explain:hover) {
+    background: #dce7fb;
+  }
+  .explanation {
+    margin: 0 0 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    background: var(--raised);
+    position: sticky;
+    left: 0;
+  }
+  .explanation.bad {
+    border-left-color: var(--bad);
+  }
+  .ex-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .ex-hunk {
+    font-family: ui-monospace, Consolas, monospace;
+  }
+  .ex-via {
+    flex: 1;
+  }
+  .ex-head button {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--fg);
+    font: inherit;
+    padding: 1px 8px;
+    cursor: pointer;
+  }
+  .ex-text {
+    margin-top: 6px;
+    white-space: pre-wrap;
+    font: 13px/1.5 system-ui, sans-serif;
+    max-width: 90ch;
+  }
+  .ex-wait,
+  .ex-note {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .explanation.bad .ex-note {
+    color: var(--bad);
+  }
+  .disclosure {
+    margin: 0 0 10px;
+    padding: 10px 12px;
+    border: 2px solid var(--warn);
+    border-radius: 8px;
+    background: var(--bg);
+    position: sticky;
+    left: 0;
+  }
+  .disclosure h3 {
+    margin: 0 0 4px;
+    font-size: 13px;
+  }
+  .disclosure .help {
+    margin: 0 0 8px;
+    font-size: 12px;
+    color: var(--muted);
+    max-width: 80ch;
+  }
+  .disclosure .req {
+    margin: 0 0 4px;
+    font: 12px ui-monospace, Consolas, monospace;
+    word-break: break-all;
+  }
+  .disclosure .hdrs {
+    border-collapse: collapse;
+    font: 11px ui-monospace, Consolas, monospace;
+    margin-bottom: 6px;
+  }
+  .disclosure .hdrs td {
+    padding: 1px 10px 1px 0;
+    vertical-align: top;
+  }
+  .disclosure .body {
+    max-height: 220px;
+    overflow: auto;
+    margin: 0 0 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--raised);
+    font: 11px/1.4 ui-monospace, Consolas, monospace;
+    white-space: pre-wrap;
+  }
+  .disclosure .actions {
+    display: flex;
+    gap: 8px;
+  }
+  .disclosure button {
+    padding: 3px 12px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--fg);
+    font: 12px system-ui, sans-serif;
+    cursor: pointer;
+  }
+  .disclosure button.send {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
   }
   .legend {
     display: flex;

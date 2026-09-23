@@ -7,6 +7,7 @@ mod capture;
 mod config;
 mod diff;
 mod dock;
+mod explain;
 mod follow_session;
 mod glass;
 mod measure;
@@ -92,6 +93,7 @@ pub fn run() {
         .manage(diff::DiffState::new())
         .manage(follow_session::FollowSessionState::new())
         .manage(dock::DockState::new())
+        .manage(explain::ExplainState::new())
         // A second launch brings the running copy's dock forward instead of starting
         // another that would fight it for the config file and the capture. The dock is
         // the fixed point (adr.rg.018): nothing else appears until it is asked — the
@@ -158,6 +160,14 @@ pub fn run() {
             panel::alerts_test,
             diff::panel_diffs,
             diff::file::panel_file_view,
+            explain::explain_settings,
+            explain::explain_set,
+            explain::explain_key_set,
+            explain::explain_key_clear,
+            explain::explain_reset_confirmation,
+            explain::explain_check_local,
+            explain::explain_run,
+            explain::explain_cancel,
         ])
         .build(context)
         .expect("error while building ReviewGlass")
