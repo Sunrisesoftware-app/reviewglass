@@ -46,8 +46,35 @@ of their own, whose pages are named with the session titles — the reason for t
 amendment. clippy clean, 114 tests (9 new: the header title, the page title, the
 pane class token, the header points, title matching, the claude.exe image, the
 known-pane and miss holds, the transcript title). svelte-check 0 errors, 0 warnings.
-Not yet seen on screen: the check with the glass and the cursor waits for the owner's
-leave.
+
+Observed on the release build (main `23b2d01`, rebuilt 15:15, launched from a plain
+PowerShell; the cursor moved with `SetCursorPos` with the owner's leave and put back
+afterwards; the drawer read over CDP). The Sessions table named every live Desktop
+session by its title. By the time of the check the owner's session windows stood over
+the main window, so the three points landed on windows of their own — the amended
+path:
+
+- Three moves, three reads (12.0, 4.5, 4.1 ms), each choosing its session: "Virus-
+  seuranta näkymät ja tiedotteet", then "Tilastosilta Projektin tilanteen
+  tarkistus", then Virus-seuranta again; the row bold, the note "… is chosen by
+  Follow", the switch's line naming the title.
+- A choice by hand (another row) held through a re-check 5 s later with the cursor
+  still in the same window: one read, no new choice.
+- Over the dock: no read, the choice held. Back to a point in the same window: no
+  read (the known rectangle held).
+- Switch off: moving to another window changed nothing ("off: the choice is yours
+  alone"). Switch on: the window under the cursor was chosen at once.
+- Cost with the cursor still for 10 s: no UI Automation read; ReviewGlass used 1.14 s
+  of CPU (the glass rendering in Follow) against 0.22 s with the glass off. The
+  desktop app used 10.5 s with Follow on and 15.7 s with the glass off: its load is
+  the owner's running sessions, and Follow's share is not separable from it.
+
+One crash on the way: the first launch of the rebuilt exe died about a second after
+start (Windows Error Reporting: 0xc0000409 in reviewglass.exe, the release build's
+panic-abort) while the build agent's readiness probe was already calling the dock's
+state command; the second launch stayed up. The release build's stderr goes nowhere,
+so nothing said why: a panic now leaves a line in `~/.reviewglass/panic.log`, and
+the cause is to be read from there.
 
 ## Session 6: the latest edit in a colour of its own — 23.9.2026 (0.1.0)
 
