@@ -88,7 +88,9 @@ collector replaced it in `settings.json` on 11.9.2026.
 - **P1** done. **P2** done (five concurrent sessions observed 19.9.2026). **P3** built;
   the toast is measured working.
 - **P4** (live diff) built and observed 18.9.2026: `hook-collector`, `diff-service`, the
-  Diff tab. P4b (a read-only whole-file view around a hunk) is planned.
+  Diff tab. **P4b** (the whole file around a hunk) observed 20.9.2026, with the previous
+  edit as the baseline where git has none; the latest edit's lines are highlighted and
+  a New view shows them alone (23.9.2026).
 - **P8** (public release) waits on name clearance (adr.rg.008).
 
 ## Layout

@@ -4,6 +4,44 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 6: the latest edit in a colour of its own — 23.9.2026 (0.1.0)
+
+The owner had used the drawer, the handle and the session choice the day before:
+"the direction is right; the Diff view is fine". The wish: see the code that is new
+in its own window, or in the diff in a different colour — ReviewGlass's own effect,
+nothing written into the files.
+
+In a tracked file the Diff tab measures against HEAD, so the latest edit and every
+earlier uncommitted change looked the same. What was missing was a memory of the file
+as it stood at the previous edit.
+
+- **The diff loop remembers every listed file.** The working copy is kept in memory
+  for every file in the list that reads as text within the 512 KB cap — tracked files
+  too, no longer only those git has no baseline for — and dropped with the view. Each
+  view carries `fresh`: the lines the latest edit brought, 1-based in the working
+  copy, measured against the remembered copy (`similar`, 250 ms timeout, line endings
+  normalised). At the first sighting every line the diff adds is fresh, and the view
+  says so (`fresh_from_previous`).
+- **A highlighter.** The Diff tab paints the fresh lines yellow with a darker bar at
+  the left — in the Hunks view over diff2html's rows by their new-side number, in the
+  File view over the green tint — and older uncommitted additions stay diff-green. A
+  legend under the header names both colours and counts the new lines.
+- **New: the new code alone.** A third view beside Hunks and File shows only the
+  fresh lines, as they stand now, in runs with their line numbers and "lines a–b
+  unchanged" between them; a named empty state when the latest edit only removed
+  lines. This is the "own window" of the wish, inside the drawer: the drawer is one
+  window (adr.rg.020) and can now be made as large as the work area (adr.rg.021).
+- **File and New pin their file.** With no file clicked, the Diff tab follows the
+  newest edit; an edit to another file used to take an open File view away. That was
+  the one-time fall-back to the hunks seen on 20.9.2026: the build agent's own edit
+  to `Diff.svelte` landed between two writes of the watched script.
+
+Measured: cargo clippy clean, 105 tests (4 new: fresh lines by content across line
+endings; a tracked file's latest edit apart from older uncommitted work; fresh lines
+outside a repository; the state remembering a tracked file between edits);
+svelte-check 0 errors, 0 warnings. Not yet seen on screen: the live check waits for
+the owner's leave.
+
 ## Session 5 (continued): the owner's proposal — a drawer sized by hand, a chosen session, and the column's session read from the pane — 20.9.2026 (0.1.0)
 
 The owner followed a script being written in the Diff tab and wrote up what the tool
