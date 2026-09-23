@@ -44,6 +44,14 @@ impl RemoteBackend {
         }
     }
 
+    pub fn ready(&self) -> Result<(), Failure> {
+        if self.key.as_deref().is_some_and(|k| !k.trim().is_empty()) {
+            Ok(())
+        } else {
+            Err(Failure::NoKey)
+        }
+    }
+
     pub fn label(&self) -> String {
         format!("Remote · Claude API · {} — leaves this machine", self.model)
     }
@@ -225,6 +233,12 @@ mod tests {
     #[test]
     fn no_key_sends_nothing() {
         let b = RemoteBackend::at("http://127.0.0.1:9", "m", None);
+        assert_eq!(b.ready(), Err(Failure::NoKey));
+        assert_eq!(
+            RemoteBackend::at("x", "m", Some(" ")).ready(),
+            Err(Failure::NoKey)
+        );
+        assert_eq!(RemoteBackend::at("x", "m", Some("k")).ready(), Ok(()));
         assert_eq!(
             tauri::async_runtime::block_on(b.explain(&prompt())),
             Err(Failure::NoKey)

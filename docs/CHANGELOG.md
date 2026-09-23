@@ -4,6 +4,48 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 6 (continued): P6 built — one hunk explained in plain words, local or with the user's own key — 23.9.2026 (0.1.0)
+
+P6 before P5 was the owner's decision the same day: the explain backend is what the hawk
+eye (P6b) will stand on. The protocols are a decision of their own (adr.rg.023, Atlas
+#349): the remote backend speaks the Claude Messages API with the user's own API key, the
+local one the OpenAI-compatible chat completions protocol on loopback (Ollama, LM
+Studio, llama.cpp's server).
+
+- **explain-service** (`src-tauri/src/explain/`, no provider named): off by default in a
+  fresh installation, and a config file from before P6 is off too. One hunk of a path the
+  diff loop has listed, on that hunk's button; the secret-file denylist first; up to 400
+  lines. The prompt holds the hunk, the file's path and the declaration around it — git's
+  function context from the hunk header, or the nearest less-indented declaration line in
+  the working copy — and nothing else. The language follows the setting, or the system's
+  with "auto". One request at a time: a new one cancels the one in flight, and Cancel in
+  the UI drops the request's future, which drops the connection. Every answer names the
+  backend it came through. The first remote request of an installation returns its exact
+  method, URL, headers (the key withheld) and body instead of sending, and is sent only on
+  the user's yes; the yes is asked for only when a key is stored.
+- **explain-backend** (`src-tauri/src/explain/backend/`, the only place a provider is
+  named): the local backend takes a loopback host only; the remote one uses
+  `claude-opus-5` unless the setting names another, at effort medium, max_tokens 16000,
+  with the server-side refusal fallback (`fallbacks: "default"`); a refusal is shown as
+  an answer, not an error; 60 s timeout (the spec had proposed 30 s); no retries. HTTP
+  through reqwest over native-tls (SChannel). The key lives in Windows Credential Manager
+  as the generic credential `ReviewGlass/explain-remote`, never in the settings file or a
+  log, and is never handed back to the page.
+- **The UI.** Settings > Explain: Off / Local / Remote; the local host, port and model
+  with "Check the local server" (lists its models, sends no prompt); the remote model and
+  the key — stored, removable, never shown again; the language; and a line saying what is
+  ready or what is missing. The Diff tab: an Explain button on each hunk header when a
+  backend is ready and the file is not denied; the explanation above the diff with the
+  backend named and Cancel while it runs; the disclosure with "Send it" and "Don't send".
+
+Measured: clippy clean, 129 tests (16 new, among them both backends against a loopback
+HTTP server that records what it receives — the key, version and fallback headers, a body
+equal to its disclosure, refusals, cut-off answers, 401/429/529/404, a silent local
+endpoint reported as unavailable, the model list); the Credential Manager round trip run
+once (write, read, replace, delete a throwaway credential); svelte-check 0 errors, 0
+warnings. Not yet seen on screen; no local model server runs on this machine (ports 11434,
+1234 and 8080 closed), so the live check uses a loopback test server.
+
 ## Session 6 (continued): spec v0.3, and the model's modules brought in step — 23.9.2026 (0.1.0)
 
 The specification had stood at v0.2 since 11.9.2026, before eleven decisions and four

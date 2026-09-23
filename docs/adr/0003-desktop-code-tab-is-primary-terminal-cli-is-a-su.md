@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Atlas id:** `adr.rg.003`
-**Links:** `rg.session-source` (Session source (trait)), `rg.panel-window` (Panel window)
+**Links:** `rg.session-source` (Session source (trait)), `rg.panel-window` (Panel (the dock's drawer))
 
 > Rendered from the Atlas model (system `reviewglass`). The model is the source of
 > truth; edit it there and run `node scripts/adr-from-model.mjs`.
