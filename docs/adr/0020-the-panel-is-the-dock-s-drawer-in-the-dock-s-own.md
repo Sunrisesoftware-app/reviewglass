@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Atlas id:** `adr.rg.020`
-**Links:** `rg.dock-window` (Dock), `rg.panel-window` (Panel window), `rg.diff-service` (Diff service), `rg.usage-model` (Usage model), `rg.config-store` (Config store)
+**Links:** `rg.dock-window` (Dock), `rg.panel-window` (Panel (the dock's drawer)), `rg.diff-service` (Diff service), `rg.usage-model` (Usage model), `rg.config-store` (Config store)
 
 > Rendered from the Atlas model (system `reviewglass`). The model is the source of
 > truth; edit it there and run `node scripts/adr-from-model.mjs`.

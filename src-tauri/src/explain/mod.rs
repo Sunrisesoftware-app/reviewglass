@@ -511,6 +511,13 @@ pub async fn explain_run(
 ) -> Result<Outcome, String> {
     let p = prepare(&store, &diff, &path, hunk, &locale)?;
     let label = p.backend.label();
+    if let Err(f) = p.backend.ready() {
+        return Ok(Outcome::Failed {
+            label,
+            hunk: p.hunk_header,
+            message: f.to_string(),
+        });
+    }
     if p.backend.is_remote() && !store.get().explain.remote_confirmed {
         if !confirmed {
             return Ok(Outcome::Confirm {

@@ -91,8 +91,8 @@ collector replaced it in `settings.json` on 11.9.2026.
   Diff tab. **P4b** (the whole file around a hunk) observed 20.9.2026, with the previous
   edit as the baseline where git has none; the latest edit's lines are highlighted and
   a New view shows them alone (23.9.2026).
-- **P6** (novice mode: the explain backend, local or remote with the user's own key) is
-  next, before P5, by the owner's decision of 23.9.2026; the "hawk eye" is P6b, a vision
+- **P6** (novice mode: the explain backend, local or remote with the user's own key)
+  built 23.9.2026 (adr.rg.023), before P5 by the owner's decision; the "hawk eye" is P6b, a vision
   that needs its own privacy decision first (spec v0.3, section 7).
 - **P8** (public release) waits on name clearance (adr.rg.008); the repository itself is
   already public.
@@ -113,6 +113,7 @@ collector replaced it in `settings.json` on 11.9.2026.
 | `src-tauri/src/spool.rs` | `rg.spool`: paths (`~/.reviewglass/spool`), atomic write, safe file names |
 | `src-tauri/src/bin/hook.rs` | `rg.hook-collector` (PostToolUse → `spool/events`) |
 | `src-tauri/src/diff/` | `rg.diff-service` and the events reader: git diff per changed path, the Diff tab's data |
+| `src-tauri/src/explain/` | `rg.explain-service` (provider-agnostic) and `backend/` (`rg.explain-backend`: local, remote, the key in Credential Manager) — the only place a provider is named |
 | `src-tauri/src/follow_session.rs` | Follow chooses the session (adr.rg.022): the Code pane's header title under the cursor, by UI Automation |
 | `src-tauri/src/bin/statusline.rs` | `rg.statusline-collector` |
 | `src/routes/glass`, `dock`, `halo`, `finder` | the four windows; `src/lib/panel/` holds the drawer's tabs (Sessions, Diff, Settings) |

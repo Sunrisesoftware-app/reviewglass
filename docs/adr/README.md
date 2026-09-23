@@ -33,3 +33,4 @@ here. A hand edit here is lost on the next run.
 - [ADR-0020](0020-the-panel-is-the-dock-s-drawer-in-the-dock-s-own.md) — The panel is the dock's drawer, in the dock's own window: one window that grows, not two that can drift apart *(accepted)*
 - [ADR-0021](0021-the-drawer-is-sized-by-hand-from-its-free-corner.md) — The drawer is sized by hand from its free corner, and the size is remembered *(accepted)*
 - [ADR-0022](0022-ui-automation-tells-which-session-a-column-belon.md) — UI Automation tells which session a column belongs to: the pane header's title, nothing below it *(accepted)*
+- [ADR-0023](0023-the-explain-backends-the-claude-messages-api-wit.md) — The explain backends: the Claude Messages API with the user's own key, and the OpenAI-compatible chat protocol on loopback *(accepted)*

@@ -187,6 +187,16 @@ impl Backend {
         matches!(self, Backend::Remote(_))
     }
 
+    /// What must be in place before a request is worth preparing: for the remote
+    /// backend, a stored key. Checked before the disclosure, so a yes is never asked for
+    /// (and never spent) on a request that could not be sent.
+    pub fn ready(&self) -> Result<(), Failure> {
+        match self {
+            Backend::Local(_) => Ok(()),
+            Backend::Remote(b) => b.ready(),
+        }
+    }
+
     pub fn preview(&self, prompt: &Prompt) -> Preview {
         match self {
             Backend::Local(b) => b.preview(prompt),
