@@ -18,6 +18,12 @@
 //! each edit brought (the owner's wish, 20.9.2026: to watch a script come into being).
 //! The first sighting shows the whole file as new. Nothing is written for this either.
 //!
+//! Every view also carries the lines the latest edit brought (`fresh`), measured
+//! against the working copy ReviewGlass remembered from the previous edit — for tracked
+//! files too, so the latest edit stands out from older uncommitted work in the HEAD
+//! diff (the owner's wish, 23.9.2026: see the new code in a colour of its own). It is
+//! ReviewGlass's mark on its own view; the files are only read.
+//!
 //! The loop runs on its own thread (as the usage loop does, adr.rg.016): edits happen
 //! whether or not the panel is open, and the Diff tab shows what accumulated.
 
@@ -106,6 +112,13 @@ pub struct DiffView {
     pub unified: Option<String>,
     pub added: Option<u64>,
     pub removed: Option<u64>,
+    /// The lines the latest edit brought, 1-based in the working copy, ascending: the
+    /// lines inserted since the copy ReviewGlass remembered from the previous edit, or
+    /// at the first sighting every line the diff adds.
+    pub fresh: Vec<u32>,
+    /// Whether `fresh` is measured against the previous edit (true) or is the first
+    /// sighting's every added line (false).
+    pub fresh_from_previous: bool,
     /// When the edit happened (the hook's clock), epoch ms.
     pub at_ms: u64,
     pub session_id: Option<String>,
@@ -117,8 +130,9 @@ pub struct DiffView {
 /// The diff loop's state: the latest views, newest first.
 pub struct DiffState {
     views: Mutex<Vec<DiffView>>,
-    /// The working copy at the previous edit, for the listed files git has no
-    /// baseline for: text within the cap only, dropped with the view.
+    /// The working copy at the previous edit, for every listed file that could be read
+    /// as text within the cap: the baseline where git has none, and the measure of
+    /// what the latest edit brought everywhere. Dropped with the view.
     snapshots: Mutex<HashMap<String, String>>,
     /// Events from before this are stale (the app's start).
     since_ms: u64,
@@ -157,8 +171,8 @@ impl DiffState {
     }
 
     /// One batch of events into the list: the last event per path wins (it carries the
-    /// latest tool and time, and one diff answers for the whole burst), and a file git
-    /// has no baseline for is remembered for the next edit.
+    /// latest tool and time, and one diff answers for the whole burst), and the working
+    /// copy is remembered for the next edit.
     pub fn absorb(&self, events: Vec<ChangeEvent>, denylist: &[String]) {
         let mut latest: HashMap<String, ChangeEvent> = HashMap::new();
         let mut order: Vec<String> = Vec::new();
@@ -226,8 +240,9 @@ pub fn diff_for(ev: &ChangeEvent, denylist: &[String]) -> DiffView {
 }
 
 /// The view for one event, with `previous` the working copy at the previous edit when
-/// git has no baseline and one is remembered. The second value is the working copy
-/// now, for the caller to remember, when it was read for want of a git baseline.
+/// one is remembered: the baseline where git has none, and the measure of the fresh
+/// lines everywhere. The second value is the working copy now, for the caller to
+/// remember, when it could be read as text within the cap.
 pub fn diff_for_with(
     ev: &ChangeEvent,
     denylist: &[String],
@@ -248,6 +263,8 @@ pub fn diff_for_with(
         unified: None,
         added: None,
         removed: None,
+        fresh: Vec::new(),
+        fresh_from_previous: false,
         at_ms: ev.ts,
         session_id: ev.session_id.clone(),
         tool: ev.tool.clone(),
@@ -343,7 +360,53 @@ pub fn diff_for_with(
             view.reason = Some(format!("git could not be run: {e}"));
         }
     }
-    (view, None)
+    if !matches!(view.status, DiffStatus::Changed | DiffStatus::Unchanged) {
+        return (view, None);
+    }
+    // The fresh lines: against the remembered copy, or at the first sighting every line
+    // the HEAD diff adds. A file too large or unreadable as text keeps the first-sighting
+    // measure every time, and nothing is remembered for it.
+    let text = read_text(path).ok();
+    match (previous, &text) {
+        (Some(prev), Some(now)) => {
+            view.fresh = fresh_lines(prev, now);
+            view.fresh_from_previous = true;
+        }
+        _ => {
+            view.fresh = view
+                .unified
+                .as_deref()
+                .map(|u| file::marks(u).added)
+                .unwrap_or_default();
+        }
+    }
+    (view, text)
+}
+
+/// The working copy as text: within the cap, not binary. The error is the status and
+/// the reason to show when it cannot be.
+fn read_text(path: &Path) -> Result<String, (DiffStatus, String)> {
+    let meta = std::fs::metadata(path)
+        .map_err(|_| (DiffStatus::Missing, "the file no longer exists".to_string()))?;
+    if meta.len() > MAX_SHOWN_BYTES {
+        return Err((
+            DiffStatus::TooLarge,
+            format!(
+                "a file of {} KB; too large to show line by line",
+                meta.len() / 1024
+            ),
+        ));
+    }
+    let bytes = std::fs::read(path).map_err(|_| {
+        (
+            DiffStatus::Missing,
+            "the file could not be read".to_string(),
+        )
+    })?;
+    if bytes.iter().take(8192).any(|b| *b == 0) {
+        return Err((DiffStatus::Binary, "binary content".to_string()));
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 /// A file git has no baseline for (outside a repository, or not yet tracked; the
@@ -356,42 +419,29 @@ fn no_baseline(
     path: &Path,
     previous: Option<&str>,
 ) -> (DiffView, Option<String>) {
-    let Ok(meta) = std::fs::metadata(path) else {
-        view.status = DiffStatus::Missing;
-        view.reason = Some("the file no longer exists".into());
-        return (view, None);
+    let text = match read_text(path) {
+        Ok(t) => t,
+        Err((status, reason)) => {
+            view.status = status;
+            view.reason = Some(reason);
+            return (view, None);
+        }
     };
-    if meta.len() > MAX_SHOWN_BYTES {
-        view.status = DiffStatus::TooLarge;
-        view.reason = Some(format!(
-            "a file of {} KB; too large to show line by line",
-            meta.len() / 1024
-        ));
-        return (view, None);
-    }
-    let Ok(bytes) = std::fs::read(path) else {
-        view.status = DiffStatus::Missing;
-        view.reason = Some("the file could not be read".into());
-        return (view, None);
-    };
-    if bytes.iter().take(8192).any(|b| *b == 0) {
-        view.status = DiffStatus::Binary;
-        view.reason = Some("binary content".into());
-        return (view, None);
-    }
-    let text = String::from_utf8_lossy(&bytes).into_owned();
     let rel = view.display_path.replace('\\', "/");
     match previous {
         Some(prev) if prev == text => {
             view.baseline = Some(Baseline::LastEdit);
+            view.fresh_from_previous = true;
             view.reason = Some("no change since the previous edit".into());
         }
         Some(prev) => {
-            let (unified, a, r) = delta(prev, &text, &rel);
+            let d = delta(prev, &text, &rel);
             view.baseline = Some(Baseline::LastEdit);
-            view.added = Some(a);
-            view.removed = Some(r);
-            view.unified = Some(unified);
+            view.added = Some(d.added);
+            view.removed = Some(d.removed);
+            view.unified = Some(d.unified);
+            view.fresh = d.fresh;
+            view.fresh_from_previous = true;
         }
         None => {
             let lines: Vec<&str> = text.lines().collect();
@@ -408,21 +458,48 @@ fn no_baseline(
             view.added = Some(lines.len() as u64);
             view.removed = Some(0);
             view.unified = Some(unified);
+            view.fresh = (1..=lines.len() as u32).collect();
         }
     }
     (view, Some(text))
 }
 
-/// The unified diff between two texts, in git's form (three lines of context), and
-/// the counts. Line endings are normalised so a CRLF file diffs by content.
-fn delta(old: &str, new: &str, rel: &str) -> (String, u64, u64) {
+/// A line diff gives up refining after this and settles for a coarser answer: the
+/// loop must not stall on a pathological file.
+const DIFF_TIMEOUT: Duration = Duration::from_millis(250);
+
+/// Two texts compared line by line, by content: line endings normalised, so a CRLF
+/// file diffs as its lines, not as its terminators.
+fn line_diff<'a>(old: &'a str, new: &'a str) -> TextDiff<'a, 'a, str> {
+    TextDiff::configure()
+        .timeout(DIFF_TIMEOUT)
+        .diff_lines(old, new)
+}
+
+/// What one working copy did to the previous one.
+struct Delta {
+    /// In git's unified form, three lines of context.
+    unified: String,
+    added: u64,
+    removed: u64,
+    /// The inserted lines, 1-based in `new`.
+    fresh: Vec<u32>,
+}
+
+fn delta(old: &str, new: &str, rel: &str) -> Delta {
     let old = old.replace("\r\n", "\n");
     let new = new.replace("\r\n", "\n");
-    let diff = TextDiff::from_lines(old.as_str(), new.as_str());
+    let diff = line_diff(&old, &new);
     let (mut added, mut removed) = (0u64, 0u64);
+    let mut fresh = Vec::new();
     for c in diff.iter_all_changes() {
         match c.tag() {
-            ChangeTag::Insert => added += 1,
+            ChangeTag::Insert => {
+                added += 1;
+                if let Some(i) = c.new_index() {
+                    fresh.push(i as u32 + 1);
+                }
+            }
             ChangeTag::Delete => removed += 1,
             ChangeTag::Equal => {}
         }
@@ -432,7 +509,23 @@ fn delta(old: &str, new: &str, rel: &str) -> (String, u64, u64) {
         .context_radius(3)
         .header(&format!("a/{rel}"), &format!("b/{rel}"))
         .to_string();
-    (unified, added, removed)
+    Delta {
+        unified,
+        added,
+        removed,
+        fresh,
+    }
+}
+
+/// The lines `new` has that `old` did not, 1-based in `new`: what an edit brought.
+pub fn fresh_lines(old: &str, new: &str) -> Vec<u32> {
+    let old = old.replace("\r\n", "\n");
+    let new = new.replace("\r\n", "\n");
+    line_diff(&old, &new)
+        .iter_all_changes()
+        .filter(|c| c.tag() == ChangeTag::Insert)
+        .filter_map(|c| c.new_index().map(|i| i as u32 + 1))
+        .collect()
 }
 
 enum NumStat {
@@ -781,10 +874,11 @@ mod tests {
         );
         assert_eq!((v.added, v.removed), (Some(1), Some(0)));
         assert!(v.unified.unwrap().contains("+fn b() {}\n"));
-        // A tracked file is measured from HEAD and remembers nothing.
+        // A tracked file is measured from HEAD; its working copy is still remembered,
+        // for the next edit's fresh lines.
         let (v, text) = diff_for_with(&event(&d.join("a.txt")), &[], None);
         assert_eq!(v.baseline, Some(Baseline::Head));
-        assert!(text.is_none());
+        assert_eq!(text.as_deref(), Some("one\ntwo\nthree\n"));
         let _ = fs::remove_dir_all(&d);
     }
 
@@ -816,6 +910,78 @@ mod tests {
     }
 
     #[test]
+    fn fresh_lines_are_the_inserted_lines_by_content_not_line_ending() {
+        assert_eq!(fresh_lines("a\nb\nc\n", "a\nx\nb\nc\ny\n"), vec![2, 5]);
+        // A changed line is new; a removed one is not counted.
+        assert_eq!(fresh_lines("a\nb\nc\n", "a\nB\n"), vec![2]);
+        // The same lines with CRLF endings bring nothing.
+        assert!(fresh_lines("a\r\nb\r\n", "a\nb\n").is_empty());
+        assert_eq!(fresh_lines("", "one\ntwo\n"), vec![1, 2]);
+    }
+
+    #[test]
+    fn a_tracked_files_latest_edit_stands_out_from_older_uncommitted_work() {
+        let Some(d) = repo("fresh") else { return };
+        let f = d.join("a.txt");
+        // First edit: line 2 changed. First sighting: every added line is fresh.
+        fs::write(&f, "one\n2\nthree\n").unwrap();
+        let (v, text) = diff_for_with(&event(&f), &[], None);
+        assert_eq!(v.status, DiffStatus::Changed, "{:?}", v.reason);
+        assert_eq!(v.fresh, vec![2]);
+        assert!(!v.fresh_from_previous);
+        assert_eq!(text.as_deref(), Some("one\n2\nthree\n"));
+        // Second edit: a line appended. The HEAD diff has both changes; only the
+        // appended line is fresh.
+        fs::write(&f, "one\n2\nthree\nfour\n").unwrap();
+        let (v, text) = diff_for_with(&event(&f), &[], text.as_deref());
+        assert_eq!((v.added, v.removed), (Some(2), Some(1)));
+        assert_eq!(v.fresh, vec![4]);
+        assert!(v.fresh_from_previous);
+        // Written back as committed: unchanged against HEAD, and nothing fresh.
+        fs::write(&f, "one\ntwo\nthree\n").unwrap();
+        let (v, _) = diff_for_with(&event(&f), &[], text.as_deref());
+        assert_eq!(v.status, DiffStatus::Unchanged);
+        assert_eq!(v.fresh, vec![2]);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn outside_a_repository_the_fresh_lines_follow_the_baseline() {
+        let out = std::env::temp_dir().join(format!("reviewglass-freshout-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&out);
+        fs::create_dir_all(&out).unwrap();
+        let f = out.join("clean.py");
+        fs::write(&f, "import os\nprint(1)\n").unwrap();
+        let (v, text) = diff_for_with(&event(&f), &[], None);
+        assert_eq!(v.baseline, Some(Baseline::WholeFile));
+        assert_eq!(v.fresh, vec![1, 2]);
+        assert!(!v.fresh_from_previous);
+        fs::write(&f, "import os\nimport sys\nprint(2)\n").unwrap();
+        let (v, _) = diff_for_with(&event(&f), &[], text.as_deref());
+        assert_eq!(v.baseline, Some(Baseline::LastEdit));
+        assert_eq!(v.fresh, vec![2, 3]);
+        assert!(v.fresh_from_previous);
+        let _ = fs::remove_dir_all(&out);
+    }
+
+    #[test]
+    fn the_state_remembers_a_tracked_file_between_edits() {
+        let Some(d) = repo("fresh-state") else { return };
+        let f = d.join("a.txt");
+        fs::write(&f, "one\n2\nthree\n").unwrap();
+        let s = DiffState::new();
+        s.absorb(vec![event(&f)], &[]);
+        assert_eq!(s.views()[0].fresh, vec![2]);
+        fs::write(&f, "zero\none\n2\nthree\n").unwrap();
+        s.absorb(vec![event(&f)], &[]);
+        let v = &s.views()[0];
+        assert_eq!(v.baseline, Some(Baseline::Head));
+        assert_eq!(v.fresh, vec![1]);
+        assert!(v.fresh_from_previous);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn the_state_coalesces_a_burst_into_one_view_per_path() {
         let s = DiffState::new();
         assert!(s.views().is_empty());
@@ -834,6 +1000,8 @@ mod tests {
                     unified: None,
                     added: None,
                     removed: None,
+                    fresh: Vec::new(),
+                    fresh_from_previous: false,
                     at_ms: i as u64,
                     session_id: None,
                     tool: None,

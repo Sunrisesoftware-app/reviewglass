@@ -73,6 +73,10 @@ export type DiffView = {
   unified: string | null;
   added: number | null;
   removed: number | null;
+  /** The lines the latest edit brought, 1-based in the working copy: ReviewGlass's own mark. */
+  fresh: number[];
+  /** Measured against the previous edit (true), or the first sighting's every added line (false). */
+  fresh_from_previous: boolean;
   at_ms: number;
   session_id: string | null;
   tool: string | null;
@@ -120,5 +124,8 @@ export type FileView = {
   /** Line numbers before which the last diff removed lines; one past the last line for a removal at the end. */
   removed_before: number[];
   hunks: Hunk[];
+  /** The lines the latest edit brought, 1-based: ReviewGlass's own mark. */
+  fresh: number[];
+  fresh_from_previous: boolean;
   reason: string | null;
 };
