@@ -5,6 +5,25 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## A crash that leaves no trace is a crash nobody can fix — and Tauri's windows come before its setup (2026-09-23)
+
+The first launch of a fresh build died a second after start. Windows Error Reporting
+said 0xc0000409 in reviewglass.exe and nothing more: the release build aborts on a
+panic and its stderr goes nowhere. The build agent's readiness probe had been calling
+the dock's state command at that moment, so the probe looked guilty. A panic hook that
+appends one line to `~/.reviewglass/panic.log` went in first; then the crash was
+reproduced on purpose, five warm launches in a row, and all five logged the same line:
+"state() called before manage() for config::Store", on the main thread — four of them
+before the probe had made a single call. The probe was innocent. Tauri creates the
+windows declared in `tauri.conf.json` before `setup` runs, creating a WebView2 pumps
+messages while it waits, and a page already loaded (quick when WebView2 is warm, as it
+is right after a quit) has its commands served in that gap; state managed in `setup`
+was not there yet, and a command reaching it through `app.state()` panicked. It had
+been possible since the first build and only a warm start made it likely. Lessons: a
+release build must leave a trace of how it died before anything else is debugged; a
+suspect found at the scene is not the cause until the cause is read; and state is
+managed on the builder, before any window can exist.
+
 ## A packaged app's children write to an AppData nobody else can see (2026-09-18)
 
 The Diff tab worked in every check the build agent ran and showed nothing for the
