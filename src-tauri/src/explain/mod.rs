@@ -210,6 +210,17 @@ pub fn declaration_above(text: &str, line: u32) -> Option<String> {
         .map(|l| cut(l.trim(), MAX_DECLARATION))
 }
 
+/// The declaration around a hunk's first change: the nearest less-indented declaration
+/// above that line in the working copy, and only without one git's function context from
+/// the hunk header - which names the last declaration before the hunk's first line, not
+/// the one the change is in (seen 23.9.2026: a change in `main()` was sent as inside
+/// `collect()`, the function above the hunk's leading context).
+pub fn enclosing_declaration(h: &Hunk, working_copy: Option<&str>) -> Option<String> {
+    working_copy
+        .and_then(|t| declaration_above(t, h.first_change))
+        .or_else(|| declaration_from_header(&h.header))
+}
+
 fn cut(s: &str, n: usize) -> String {
     if s.chars().count() <= n {
         s.to_string()
@@ -383,11 +394,8 @@ fn prepare(
             "This hunk is too large to explain: one hunk of up to {MAX_HUNK_LINES} lines is explained at a time."
         ));
     }
-    let declaration = declaration_from_header(&h.header).or_else(|| {
-        crate::diff::read_text(std::path::Path::new(&view.path))
-            .ok()
-            .and_then(|t| declaration_above(&t, h.first_change))
-    });
+    let working = crate::diff::read_text(std::path::Path::new(&view.path)).ok();
+    let declaration = enclosing_declaration(&h, working.as_deref());
     let language = language_name(&cfg.explain.language, locale);
     let prompt = build_prompt(
         &view.display_path,
@@ -608,6 +616,36 @@ mod tests {
         assert_eq!(
             declaration_above(ts, 3).as_deref(),
             Some("export const load = async () => {")
+        );
+    }
+
+    #[test]
+    fn the_declaration_is_the_one_the_change_is_in_not_the_one_git_names() {
+        // The live check of 23.9.2026: git's header named collect(); the change is in main().
+        let working = "def collect(folder):
+    return sorted(folder.rglob(\"*.wav\"))
+
+
+def main():
+    files = collect(\".\")
+    kept = [p for p in files if p.stat().st_size > 1024]
+";
+        let unified = "@@ -4,4 +4,5 @@ def collect(folder):
+ 
+ def main():
+     files = collect(\".\")
++    kept = [p for p in files if p.stat().st_size > 1024]
+";
+        let h = &hunks(unified)[0];
+        assert_eq!(h.first_change, 7);
+        assert_eq!(
+            enclosing_declaration(h, Some(working)).as_deref(),
+            Some("def main():")
+        );
+        // Without the working copy, git's context is still better than nothing.
+        assert_eq!(
+            enclosing_declaration(h, None).as_deref(),
+            Some("def collect(folder):")
         );
     }
 

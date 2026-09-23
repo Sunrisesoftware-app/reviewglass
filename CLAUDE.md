@@ -92,7 +92,7 @@ collector replaced it in `settings.json` on 11.9.2026.
   edit as the baseline where git has none; the latest edit's lines are highlighted and
   a New view shows them alone (23.9.2026).
 - **P6** (novice mode: the explain backend, local or remote with the user's own key)
-  built 23.9.2026 (adr.rg.023), before P5 by the owner's decision; the "hawk eye" is P6b, a vision
+  built and observed 23.9.2026 (adr.rg.023), before P5 by the owner's decision; the "hawk eye" is P6b, a vision
   that needs its own privacy decision first (spec v0.3, section 7).
 - **P8** (public release) waits on name clearance (adr.rg.008); the repository itself is
   already public.
