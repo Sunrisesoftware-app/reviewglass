@@ -9,6 +9,11 @@
 //! "<title>, rename session". Nothing below the header row is read; nothing is written
 //! into the desktop app; nothing is kept but the current pane's rectangle and title.
 //!
+//! A session the desktop app has opened in a window of its own has no pane and no
+//! header button: there the window's page is named with the session's title, and that
+//! name is the title. Only a window of the desktop app's own process counts, so a
+//! browser tab of the same name never does.
+//!
 //! A read happens only when the cursor leaves the pane it was last found in (or its
 //! window changes), plus a re-check every few seconds; between reads the loop costs a
 //! cursor query and a rectangle test. Never in Lens or Still, never while the glass is
@@ -36,6 +41,10 @@ const RECHECK: Duration = Duration::from_secs(4);
 const RENAME_SUFFIX: &str = ", rename session";
 /// The class token the desktop app gives each Code pane.
 const PANE_CLASS: &str = "dframe-pane";
+/// The page name of the desktop app's main window, which holds panes, not one session.
+const MAIN_WINDOW_PAGE: &str = "Claude";
+/// The desktop app's executable.
+const CLAUDE_EXE: &str = "claude.exe";
 /// Ancestors walked from the element under the cursor before giving up.
 const MAX_DEPTH: usize = 40;
 /// A point that is not in a Code pane (the sidebar, another app) is not asked again
@@ -85,6 +94,20 @@ impl FollowSessionState {
 pub fn title_from_name(name: &str) -> Option<&str> {
     let t = name.strip_suffix(RENAME_SUFFIX)?.trim();
     (!t.is_empty()).then_some(t)
+}
+
+/// The session title a page's name gives, for a session in a window of its own: the
+/// name itself, unless it is empty or the main window's "Claude".
+pub fn title_from_page(name: &str) -> Option<&str> {
+    let t = name.trim();
+    (!t.is_empty() && t != MAIN_WINDOW_PAGE).then_some(t)
+}
+
+/// Whether a process image is the desktop app's: its file name is claude.exe.
+pub fn is_claude_image(path: &str) -> bool {
+    path.rsplit(['\\', '/'])
+        .next()
+        .is_some_and(|f| f.eq_ignore_ascii_case(CLAUDE_EXE))
 }
 
 /// Whether an element's class names a Code pane: one of its space-separated tokens is
@@ -169,19 +192,29 @@ impl Known {
 
 #[cfg(windows)]
 mod uia {
-    use windows::core::Interface;
-    use windows::Win32::Foundation::POINT;
+    use std::collections::HashMap;
+
+    use parking_lot::Mutex;
+    use windows::core::{Interface, PWSTR};
+    use windows::Win32::Foundation::{CloseHandle, POINT};
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
     };
+    use windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
     use windows::Win32::UI::Accessibility::{
         CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationTreeWalker,
+        UIA_DocumentControlTypeId,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         GetAncestor, GetWindowThreadProcessId, WindowFromPoint, GA_ROOT,
     };
 
-    use super::{header_points, is_pane_class, title_from_name, MAX_DEPTH};
+    use super::{
+        header_points, is_claude_image, is_pane_class, title_from_name, title_from_page, MAX_DEPTH,
+    };
 
     /// A UI Automation client, on the thread that made it.
     pub struct Reader {
@@ -213,12 +246,14 @@ mod uia {
             unsafe { self.uia.ElementFromPoint(POINT { x, y }).ok() }
         }
 
-        /// The Code pane under (x, y): its rectangle (left, top, right, bottom) and the
-        /// title on its header row. `None` when the point is not in a Code pane, or its
-        /// header names no session.
+        /// The session under (x, y): the rectangle it holds (left, top, right, bottom)
+        /// and its title. In the main window, the Code pane and the title on its header
+        /// row; in a session's own window, the page and its name. `None` when the point
+        /// is in neither, or the header names no session.
         pub fn pane_at(&self, x: i32, y: i32) -> Option<((i32, i32, i32, i32), String)> {
             let mut el = self.at(x, y)?;
             let mut rect = None;
+            let mut page = None;
             for _ in 0..MAX_DEPTH {
                 // SAFETY: read-only properties of an element this thread holds.
                 let class = unsafe { el.CurrentClassName() }.ok()?.to_string();
@@ -227,12 +262,24 @@ mod uia {
                     rect = Some((r.left, r.top, r.right, r.bottom));
                     break;
                 }
+                // SAFETY: as above.
+                if unsafe { el.CurrentControlType() }.ok() == Some(UIA_DocumentControlTypeId) {
+                    let name = unsafe { el.CurrentName() }.ok()?.to_string();
+                    if let Some(t) = title_from_page(&name) {
+                        let r = unsafe { el.CurrentBoundingRectangle() }.ok()?;
+                        page = Some(((r.left, r.top, r.right, r.bottom), t.to_string()));
+                    }
+                    // The page is the top of the web content: no pane above it.
+                    break;
+                }
                 el = unsafe { self.walker.GetParentElement(&el) }.ok()?;
                 if el.as_raw().is_null() {
                     return None;
                 }
             }
-            let (l, t, r, b) = rect?;
+            let Some((l, t, r, b)) = rect else {
+                return page.filter(|((l, t, r, b), _)| r > l && b > t);
+            };
             if r <= l || b <= t {
                 return None;
             }
@@ -283,15 +330,66 @@ mod uia {
         }
     }
 
-    /// The top-level window under (x, y) and whether it is one of ReviewGlass's own.
-    pub fn root_at(x: i32, y: i32) -> (isize, bool) {
+    /// The top-level window under a point, and whose it is.
+    #[derive(Clone, Copy, Debug)]
+    pub struct Root {
+        pub hwnd: isize,
+        /// One of ReviewGlass's own windows (the glass, the dock).
+        pub own: bool,
+        /// A window of the desktop app's process: the only windows ever read.
+        pub claude: bool,
+    }
+
+    /// Whether a process is the desktop app, by its image's file name; remembered per
+    /// process id, so a window check costs one query per process.
+    fn is_claude_pid(pid: u32) -> bool {
+        static SEEN: Mutex<Option<HashMap<u32, bool>>> = Mutex::new(None);
+        let mut seen = SEEN.lock();
+        let map = seen.get_or_insert_with(HashMap::new);
+        if let Some(&c) = map.get(&pid) {
+            return c;
+        }
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        // SAFETY: a limited query handle, closed before return; the buffer and its
+        // length are valid for the call.
+        let claude = unsafe {
+            match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
+                Ok(h) => {
+                    let ok = QueryFullProcessImageNameW(
+                        h,
+                        PROCESS_NAME_WIN32,
+                        PWSTR(buf.as_mut_ptr()),
+                        &mut len,
+                    )
+                    .is_ok();
+                    let _ = CloseHandle(h);
+                    ok && is_claude_image(&String::from_utf16_lossy(&buf[..len as usize]))
+                }
+                Err(_) => false,
+            }
+        };
+        if map.len() > 256 {
+            map.clear();
+        }
+        map.insert(pid, claude);
+        claude
+    }
+
+    pub fn root_at(x: i32, y: i32) -> Root {
         // SAFETY: plain window queries with a point and a handle they returned.
-        unsafe {
+        let (hwnd, pid) = unsafe {
             let w = WindowFromPoint(POINT { x, y });
             let root = GetAncestor(w, GA_ROOT);
             let mut pid = 0u32;
             GetWindowThreadProcessId(root, Some(&mut pid));
-            (root.0 as isize, pid == std::process::id())
+            (root.0 as isize, pid)
+        };
+        let own = pid == std::process::id();
+        Root {
+            hwnd,
+            own,
+            claude: !own && pid != 0 && is_claude_pid(pid),
         }
     }
 }
@@ -333,11 +431,17 @@ fn run(app: AppHandle) {
             continue;
         }
         let (x, y) = cursor_pos();
-        let (root, own) = uia::root_at(x, y);
-        if own {
+        let at = uia::root_at(x, y);
+        if at.own {
             // Over the glass or the dock: Follow holds, and so does the choice.
             continue;
         }
+        if !at.claude {
+            // Another application: nothing is read, and the choice stays.
+            known = None;
+            continue;
+        }
+        let root = at.hwnd;
         let now = Instant::now();
         if known.as_ref().is_some_and(|k| k.holds((x, y), root, now))
             || missed.is_some_and(|m| m.holds((x, y), root, now))
@@ -444,6 +548,29 @@ mod tests {
     }
 
     #[test]
+    fn a_page_name_is_a_title_unless_it_is_the_main_window() {
+        assert_eq!(
+            title_from_page(" Tilastosilta Projektin tilanteen tarkistus "),
+            Some("Tilastosilta Projektin tilanteen tarkistus")
+        );
+        assert_eq!(title_from_page("Claude"), None);
+        assert_eq!(title_from_page("  "), None);
+    }
+
+    #[test]
+    fn only_the_desktop_apps_image_is_claude() {
+        assert!(is_claude_image(
+            r"C:\Program Files\WindowsApps\Claude_1.0_x64__pzs8sxrjxfjjc\app\claude.exe"
+        ));
+        assert!(is_claude_image("C:/x/Claude.EXE"));
+        assert!(!is_claude_image(
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+        ));
+        assert!(!is_claude_image(r"C:\tools\not-claude.exe"));
+        assert!(!is_claude_image(""));
+    }
+
+    #[test]
     fn the_pane_class_is_a_whole_token() {
         assert!(is_pane_class(
             "dframe-pane dframe-pane-primary min-w-0 relative flex flex-col"
@@ -516,8 +643,11 @@ mod tests {
             let t0 = Instant::now();
             let found = r.pane_at(x, y);
             let ms = t0.elapsed().as_secs_f64() * 1000.0;
-            let (root, own) = uia::root_at(x, y);
-            println!("({x},{y}) {ms:7.1} ms root={root:#x} own={own} -> {found:?}");
+            let at = uia::root_at(x, y);
+            println!(
+                "({x},{y}) {ms:7.1} ms root={:#x} own={} claude={} -> {found:?}",
+                at.hwnd, at.own, at.claude
+            );
             if found.is_none() && std::env::var("RG_PANE_CHAIN").is_ok() {
                 for c in r.chain(x, y, 14) {
                     println!("      {c}");
