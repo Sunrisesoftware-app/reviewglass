@@ -302,7 +302,7 @@
 {:else}
   {#if selection.session !== null}
     <p class="filter">
-      Only <strong>{selection.name}</strong> ({shown.length} of {tab.views.length})
+      Only <strong>{selection.name}</strong>{selection.by === "follow" ? ", chosen by Follow," : ""} ({shown.length} of {tab.views.length})
       <button class="link" onclick={() => choose(null)}>show all sessions</button>
     </p>
   {/if}

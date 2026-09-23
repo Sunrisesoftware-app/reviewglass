@@ -45,6 +45,21 @@ impl PanelState {
         }
     }
 
+    /// The sessions in the latest view, by id with their names: what a title read
+    /// from a Code pane is matched against (adr.rg.022).
+    pub fn session_names(&self) -> Vec<(String, Option<String>)> {
+        self.latest
+            .lock()
+            .as_ref()
+            .map(|v| {
+                v.sessions
+                    .iter()
+                    .map(|s| (s.session_id.clone(), s.session_name.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// One pass: read both channels, update the model, decide alerts. Returns the
     /// alerts so the caller can deliver them; the state has already recorded them.
     pub fn tick(&self, alerts_cfg: &AlertConfig) -> Vec<Alert> {

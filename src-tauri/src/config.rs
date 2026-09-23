@@ -67,6 +67,9 @@ pub struct GlassConfig {
     /// Fit: the glass's width follows the pane at the current zoom. The width the fit
     /// chooses is never stored in `width`, which stays the user's own.
     pub pane_fit: bool,
+    /// Follow chooses the session (adr.rg.022): the Code pane under the cursor, by the
+    /// title on its header, becomes the session the Diff tab shows.
+    pub follow_session: bool,
 }
 
 impl Default for GlassConfig {
@@ -88,6 +91,7 @@ impl Default for GlassConfig {
             ui_scale: 1.0,
             pane_lock: true,
             pane_fit: true,
+            follow_session: true,
         }
     }
 }

@@ -109,6 +109,7 @@ collector replaced it in `settings.json` on 11.9.2026.
 | `src-tauri/src/spool.rs` | `rg.spool`: paths (`~/.reviewglass/spool`), atomic write, safe file names |
 | `src-tauri/src/bin/hook.rs` | `rg.hook-collector` (PostToolUse → `spool/events`) |
 | `src-tauri/src/diff/` | `rg.diff-service` and the events reader: git diff per changed path, the Diff tab's data |
+| `src-tauri/src/follow_session.rs` | Follow chooses the session (adr.rg.022): the Code pane's header title under the cursor, by UI Automation |
 | `src-tauri/src/bin/statusline.rs` | `rg.statusline-collector` |
 | `src/routes/glass`, `dock`, `halo`, `finder` | the four windows; `src/lib/panel/` holds the drawer's tabs (Sessions, Diff, Settings) |
 | `scripts/adr-from-model.mjs` | renders `docs/adr/` from the Atlas model |
