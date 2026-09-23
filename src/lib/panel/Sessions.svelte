@@ -6,7 +6,34 @@
   // identically; the shares are a derived ranking in a different unit. There is no
   // single blended number anywhere on this screen, because there is no honest one.
   import type { UsageView, SessionAttribution, QuotaWindow } from "./types";
-  import { selection, choose } from "./selection.svelte";
+  import { invoke } from "@tauri-apps/api/core";
+  import { selection, choose, follow, type FollowStatus } from "./selection.svelte";
+
+  /** The switch: Follow chooses the session under the glass (adr.rg.022). */
+  async function setFollow(on: boolean) {
+    try {
+      Object.assign(follow, await invoke<FollowStatus>("follow_session_set", { on }));
+    } catch {
+      follow.on = !on;
+    }
+  }
+
+  /** The switch's status line refreshed while this tab is open: active or not, reads. */
+  $effect(() => {
+    const t = setInterval(async () => {
+      try {
+        const s = await invoke<FollowStatus>("follow_session_state");
+        follow.on = s.on;
+        follow.active = s.active;
+        follow.reads = s.reads;
+        follow.last_read_ms = s.last_read_ms;
+        follow.unavailable = s.unavailable;
+      } catch {
+        // The core is not answering; the line keeps what it last knew.
+      }
+    }, 2000);
+    return () => clearInterval(t);
+  });
 
   let { usage, failure }: { usage: UsageView | null; failure: string | null } = $props();
 
@@ -196,6 +223,28 @@
       </tbody>
     </table>
 
+    <!-- Follow chooses the session: a visible switch, and a line saying what it sees. -->
+    <div class="follow">
+      <label>
+        <input type="checkbox" checked={follow.on} onchange={(e) => void setFollow(e.currentTarget.checked)} />
+        Follow chooses the session under the glass
+      </label>
+      <span class="dim">
+        {#if !follow.on}
+          off: the choice is yours alone
+        {:else if follow.unavailable}
+          not available: {follow.unavailable}
+        {:else if !follow.active}
+          works while the glass is in Follow
+        {:else if follow.saw && follow.saw.session_id}
+          on “{follow.saw.title}”
+        {:else if follow.saw}
+          sees “{follow.saw.title}”, which is not in the table
+        {:else}
+          move the glass over a Code pane
+        {/if}
+      </span>
+    </div>
     <p class="note">
       {#if selection.session === null}
         Pick a session to see only its edits on the Diff tab; the first button shows all.
@@ -203,7 +252,8 @@
         <strong>{selection.name}</strong> is chosen for the Diff tab but is not in the table
         now. <button class="link" onclick={() => choose(null)}>Show all sessions</button>
       {:else}
-        <strong>{selection.name}</strong> is chosen: the Diff tab shows its edits alone.
+        <strong>{selection.name}</strong> is chosen{selection.by === "follow" ? " by Follow" : ""}: the
+        Diff tab shows its edits alone.
       {/if}
     </p>
     <p class="note">
@@ -331,6 +381,24 @@
   }
   .label {
     font-weight: 500;
+  }
+  .follow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    margin: 0 0 10px;
+    font-size: 12px;
+  }
+  .follow label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+  .follow input {
+    margin: 0;
+    accent-color: var(--accent);
   }
   .pick {
     width: 1.6em;

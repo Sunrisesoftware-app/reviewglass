@@ -7,6 +7,7 @@ mod capture;
 mod config;
 mod diff;
 mod dock;
+mod follow_session;
 mod glass;
 mod measure;
 mod notifier;
@@ -37,6 +38,7 @@ pub fn run() {
             app.manage(capture::Engine::new());
             app.manage(panel::PanelState::new());
             app.manage(diff::DiffState::new());
+            app.manage(follow_session::FollowSessionState::new());
             app.manage(dock::DockState::new());
 
             if let Some(w) = app.get_webview_window(glass::GLASS_LABEL) {
@@ -54,6 +56,7 @@ pub fn run() {
             panel::spawn_usage_loop(app.handle().clone());
             glass::spawn_lens_rider(app.handle().clone());
             diff::spawn_diff_loop(app.handle().clone());
+            follow_session::spawn(app.handle().clone());
             Ok(())
         })
         .on_menu_event(|app, event| glass::on_menu(app, event.id().as_ref()))
@@ -81,6 +84,8 @@ pub fn run() {
             dock::dock_drawer,
             dock::dock_set_tab,
             dock::dock_drawer_resized,
+            follow_session::follow_session_state,
+            follow_session::follow_session_set,
             glass::hotkey_set_toggle,
             glass::follow_log_set,
             glass::glass_log,

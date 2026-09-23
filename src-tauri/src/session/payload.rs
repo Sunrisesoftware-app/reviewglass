@@ -21,7 +21,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 /// Deserialize a field into `Some(T)`, or into `None` if it is absent, null, or of a
 /// shape `T` cannot accept. The type mismatch is swallowed on purpose: a status line is
 /// a display, and no display is worth failing a parse over.
-fn lenient<'de, D, T>(d: D) -> Result<Option<T>, D::Error>
+pub(crate) fn lenient<'de, D, T>(d: D) -> Result<Option<T>, D::Error>
 where
     D: Deserializer<'de>,
     T: serde::de::DeserializeOwned,

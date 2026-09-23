@@ -9,11 +9,14 @@
 //! is frequently half-written, so a line that does not parse is skipped rather than
 //! treated as the end of the data.
 
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use parking_lot::Mutex;
 use serde::Deserialize;
 
 use super::snapshot::{Origin, SessionSnapshot, Surface};
@@ -41,6 +44,19 @@ struct Record {
     timestamp: Option<String>,
     #[serde(rename = "type")]
     kind: Option<String>,
+    /// The session's title as the desktop app shows it (a `custom-title` record): session
+    /// state, the same title the Code pane's header carries (adr.rg.022). Lenient: a
+    /// title of another shape is no title, never a lost line.
+    #[serde(alias = "customTitle", deserialize_with = "super::payload::lenient")]
+    custom_title: Option<String>,
+}
+
+/// Titles seen, by session id. A title record recurs every few lines in a live
+/// session, but a long transcript can hold one only near its start, out of the tail's
+/// reach: once seen, a title is kept (and replaced by a newer one) for the app's life.
+fn titles() -> &'static Mutex<HashMap<String, String>> {
+    static T: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+    T.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 /// What one transcript file yields.
@@ -54,6 +70,9 @@ pub struct TranscriptFacts {
     /// tail may hold none, but the file is touched on every write.
     pub modified_ms: u64,
     pub assistant_messages: u64,
+    /// The session's title from its latest `custom-title` record, or the one seen
+    /// before; `None` when no title has been seen.
+    pub title: Option<String>,
 }
 
 /// Read the tail of one transcript. `None` when the file yields no session id at all,
@@ -92,6 +111,7 @@ pub fn read_facts(path: &Path) -> Option<TranscriptFacts> {
         version: None,
         modified_ms,
         assistant_messages: 0,
+        title: None,
     };
     for line in lines {
         let Ok(r) = serde_json::from_str::<Record>(line) else {
@@ -114,6 +134,11 @@ pub fn read_facts(path: &Path) -> Option<TranscriptFacts> {
         if r.kind.as_deref() == Some("assistant") {
             facts.assistant_messages += 1;
         }
+        if let Some(t) = r.custom_title.map(|t| t.trim().to_string()) {
+            if !t.is_empty() {
+                facts.title = Some(t);
+            }
+        }
         let _ = r.timestamp;
     }
 
@@ -122,6 +147,13 @@ pub fn read_facts(path: &Path) -> Option<TranscriptFacts> {
         // Code names after the session id — a weaker source, but it keeps a session
         // visible rather than dropping it for want of a field.
         facts.session_id = path.file_stem()?.to_string_lossy().into_owned();
+    }
+    let mut known = titles().lock();
+    match &facts.title {
+        Some(t) => {
+            known.insert(facts.session_id.clone(), t.clone());
+        }
+        None => facts.title = known.get(&facts.session_id).cloned(),
     }
     Some(facts)
 }
@@ -179,7 +211,7 @@ impl TranscriptFacts {
             surface: self.surface,
             origin: Origin::Transcript,
             observed_at_ms: self.modified_ms,
-            session_name: None,
+            session_name: self.title,
             transcript_path: None,
             cwd: self.cwd,
             project_dir: None,
@@ -274,6 +306,35 @@ mod tests {
         let f = read_facts(&p).unwrap();
         assert_eq!(f.session_id, "d-5", "the file name is the weaker source");
         assert_eq!(f.surface, Surface::Unknown);
+    }
+
+    #[test]
+    fn the_latest_custom_title_names_the_session_and_is_remembered() {
+        let p = write(
+            "t-title.jsonl",
+            &[
+                r#"{"type":"custom-title","customTitle":"First title","sessionId":"t-1"}"#,
+                r#"{"type":"user","entrypoint":"claude-desktop"}"#,
+                r#"{"type":"custom-title","customTitle":"  Projektin tilan tarkistus ","sessionId":"t-1"}"#,
+                r#"{"type":"custom-title","customTitle":42,"sessionId":"t-1"}"#,
+            ],
+        );
+        let f = read_facts(&p).unwrap();
+        // The newest string title, trimmed; a title of another shape does not count.
+        assert_eq!(f.title.as_deref(), Some("Projektin tilan tarkistus"));
+        assert_eq!(
+            f.clone().into_snapshot().session_name.as_deref(),
+            Some("Projektin tilan tarkistus")
+        );
+        // A later tail with no title record keeps the title seen before.
+        let p = write(
+            "t-title.jsonl",
+            &[r#"{"sessionId":"t-1"}"#, r#"{"type":"assistant"}"#],
+        );
+        assert_eq!(
+            read_facts(&p).unwrap().title.as_deref(),
+            Some("Projektin tilan tarkistus")
+        );
     }
 
     #[test]

@@ -21,6 +21,7 @@
   import Diff from "$lib/panel/Diff.svelte";
   import Settings from "$lib/panel/Settings.svelte";
   import type { UsageView } from "$lib/panel/types";
+  import { follow, followSaw, type FollowSaw, type FollowStatus } from "$lib/panel/selection.svelte";
 
   type GlassState = {
     visible: boolean;
@@ -210,6 +211,16 @@
           }
         }),
       );
+      // Follow chooses the session (adr.rg.022): the Code pane under the glass names
+      // its session, and the Sessions and Diff tabs follow the choice. Listened for
+      // here, where the page lives as long as the app, not in a tab that may be closed.
+      try {
+        Object.assign(follow, await invoke<FollowStatus>("follow_session_state"));
+        if (follow.saw) followSaw(follow.saw);
+      } catch {
+        // The core is not answering yet; the next sighting arrives as an event anyway.
+      }
+      unlisten.push(await listen<FollowSaw>("follow:session", (ev) => followSaw(ev.payload)));
       // Dragged: once the drag has settled, snap to the nearest corner.
       unlisten.push(
         await win.onMoved(() => {
