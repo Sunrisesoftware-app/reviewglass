@@ -59,6 +59,11 @@ fn titles() -> &'static Mutex<HashMap<String, String>> {
     T.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// A session's title as last seen in its transcript, if one has been.
+pub fn known_title(session_id: &str) -> Option<String> {
+    titles().lock().get(session_id).cloned()
+}
+
 /// What one transcript file yields.
 #[derive(Debug, Clone)]
 pub struct TranscriptFacts {
@@ -158,23 +163,65 @@ pub fn read_facts(path: &Path) -> Option<TranscriptFacts> {
     Some(facts)
 }
 
-/// Every transcript modified within `ttl`, across every project directory.
+/// How long a session's own transcript may lie still while its subagents are still
+/// looked for. A parent writes nothing while it waits for its agents — 7 to 27 minutes
+/// measured on 27.9.2026 — so its subagents' transcripts are the only sign it is alive;
+/// a session silent for longer than this is not waiting on an agent, and not listing
+/// every old session's subagent folder keeps the two-second scan cheap.
+const SUBAGENT_LOOKBACK: Duration = Duration::from_secs(12 * 60 * 60);
+
+fn modified_ms(meta: &fs::Metadata) -> Option<u64> {
+    meta.modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+}
+
+/// The newest write among a session's subagents' transcripts:
+/// `<project>/<session>/subagents/*.jsonl` beside `<project>/<session>.jsonl`.
+fn subagents_modified_ms(transcript: &Path) -> Option<u64> {
+    let dir = transcript.with_extension("").join("subagents");
+    fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("jsonl"))
+        .filter_map(|e| e.metadata().ok().as_ref().and_then(modified_ms))
+        .max()
+}
+
+fn epoch_ms_before(d: Duration) -> u64 {
+    SystemTime::now()
+        .checked_sub(d)
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Every session written within `ttl`, across every project directory.
 ///
 /// Age is the only liveness signal there is: Claude Code writes no close record, so a
 /// session that stops being written is a session that ended (the same TTL rule the spool
-/// uses). Subdirectories are walked one level deep for a session's own subagents.
+/// uses). A session's age is its newest write in its own transcript or in one of its
+/// subagents': while agents work, the parent's own file lies still, and a session that
+/// vanished from the panel whenever it launched agents was the owner's finding of
+/// 27.9.2026.
 pub fn recent(ttl: Duration) -> Vec<TranscriptFacts> {
     let Some(root) = projects_dir() else {
         return Vec::new();
     };
-    let cutoff = SystemTime::now()
-        .checked_sub(ttl)
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
+    recent_in(
+        &root,
+        epoch_ms_before(ttl),
+        epoch_ms_before(SUBAGENT_LOOKBACK),
+    )
+}
 
+/// `recent` over a given projects directory, with its two cut-offs in epoch ms: a
+/// session is live when written at or after `cutoff`, and its subagents are looked at
+/// only when its own transcript was written at or after `lookback`.
+fn recent_in(root: &Path, cutoff: u64, lookback: u64) -> Vec<TranscriptFacts> {
     let mut out = Vec::new();
-    let Ok(projects) = fs::read_dir(&root) else {
+    let Ok(projects) = fs::read_dir(root) else {
         return out;
     };
     for project in projects.flatten() {
@@ -186,17 +233,18 @@ pub fn recent(ttl: Duration) -> Vec<TranscriptFacts> {
             if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
                 continue;
             }
-            let fresh = entry
-                .metadata()
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .map(|d| d.as_millis() as u64)
-                .is_some_and(|ms| ms >= cutoff);
-            if !fresh {
+            let Some(own) = entry.metadata().ok().as_ref().and_then(modified_ms) else {
+                continue;
+            };
+            if own < lookback {
                 continue;
             }
-            if let Some(f) = read_facts(&path) {
+            let last = own.max(subagents_modified_ms(&path).unwrap_or(0));
+            if last < cutoff {
+                continue;
+            }
+            if let Some(mut f) = read_facts(&path) {
+                f.modified_ms = last;
                 out.push(f);
             }
         }
@@ -335,6 +383,62 @@ mod tests {
             read_facts(&p).unwrap().title.as_deref(),
             Some("Projektin tilan tarkistus")
         );
+    }
+
+    /// A file under `root` with its modification time set `ago` in the past.
+    fn aged(root: &Path, rel: &str, line: &str, ago: Duration) -> PathBuf {
+        let p = root.join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        let mut f = File::create(&p).unwrap();
+        writeln!(f, "{line}").unwrap();
+        f.set_modified(SystemTime::now() - ago).unwrap();
+        p
+    }
+
+    #[test]
+    fn a_session_waiting_on_its_agents_stays_live() {
+        let root = std::env::temp_dir().join(format!("rg-recent-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let min = |m: u64| Duration::from_secs(m * 60);
+        // Waiting: its own file 27 minutes still, an agent wrote a minute ago.
+        aged(&root, "p/w.jsonl", r#"{"sessionId":"w"}"#, min(27));
+        aged(
+            &root,
+            "p/w/subagents/agent-1.jsonl",
+            r#"{"sessionId":"w"}"#,
+            min(1),
+        );
+        // Ended: its own file and its agent both long still.
+        aged(&root, "p/e.jsonl", r#"{"sessionId":"e"}"#, min(40));
+        aged(
+            &root,
+            "p/e/subagents/agent-2.jsonl",
+            r#"{"sessionId":"e"}"#,
+            min(35),
+        );
+        // Plain and live, no agents at all.
+        aged(&root, "q/l.jsonl", r#"{"sessionId":"l"}"#, min(2));
+        // Silent past the look-back: its agents are not even looked at.
+        aged(&root, "q/o.jsonl", r#"{"sessionId":"o"}"#, min(24 * 60));
+        aged(
+            &root,
+            "q/o/subagents/agent-3.jsonl",
+            r#"{"sessionId":"o"}"#,
+            min(1),
+        );
+
+        let mut found = recent_in(
+            &root,
+            epoch_ms_before(min(10)),
+            epoch_ms_before(SUBAGENT_LOOKBACK),
+        );
+        found.sort_by(|a, b| a.session_id.cmp(&b.session_id));
+        let ids: Vec<&str> = found.iter().map(|f| f.session_id.as_str()).collect();
+        assert_eq!(ids, ["l", "w"]);
+        // The waiting session's age is its agent's write, not its own file's.
+        let w = &found[1];
+        assert!(w.modified_ms >= epoch_ms_before(min(2)));
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
