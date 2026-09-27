@@ -34,3 +34,5 @@ here. A hand edit here is lost on the next run.
 - [ADR-0021](0021-the-drawer-is-sized-by-hand-from-its-free-corner.md) — The drawer is sized by hand from its free corner, and the size is remembered *(accepted)*
 - [ADR-0022](0022-ui-automation-tells-which-session-a-column-belon.md) — UI Automation tells which session a column belongs to: the pane header's title, nothing below it *(accepted)*
 - [ADR-0023](0023-the-explain-backends-the-claude-messages-api-wit.md) — The explain backends: the Claude Messages API with the user's own key, and the OpenAI-compatible chat protocol on loopback *(accepted)*
+- [ADR-0024](0024-the-diff-tab-keeps-edits-by-session-as-the-deskt.md) — The Diff tab keeps edits by session, as the desktop app does: each session's own files, the hour before the start, an agent's own files set aside *(accepted)*
+- [ADR-0025](0025-the-dock-is-visible-to-screen-capture-and-the-dr.md) — The dock is visible to screen capture and the drawer takes its own picture; the glass, the halo and the finder stay hidden *(accepted)*
