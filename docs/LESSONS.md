@@ -5,6 +5,28 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## A reader that deletes what it reads cannot look back (2026-09-27)
+
+The Diff tab was to pick up "the hour before the start" from the spool, where the hook
+keeps its events for an hour. Every unit test passed, and the first restart on the
+owner's machine showed "No edit yet" while four sessions were at work: the instance
+before it had read — and, by design, deleted — every event the moment it appeared, so
+the hour the new instance looked back on was empty. The look-back and the consume were
+each right on their own and wrong together; the test that would have caught it is the
+one the live check was: a restart with a running predecessor. Events now stay for the
+hook's prune and the reader remembers the names it has read. Lesson: when a feature
+reads history, check who else consumes that history — including your own previous
+process.
+
+## One shared cap across many producers starves the quiet one (2026-09-27)
+
+The Diff tab kept the 30 newest files across every session. With one session that was a
+generous window; with four at work it was nine minutes. The owner's file left the list
+while its session's desktop card still showed it, and a cap that looked like a UI detail
+turned out to decide whose work was visible. Every agent's scratch and memory files took
+slots too. Lesson: when several sources share a buffer, cap per source (and set aside
+what is not the work), or the busiest source decides what the others may show.
+
 ## Git's hunk header names the function above the hunk, not the one the change is in (2026-09-23)
 
 The explain service sends the declaration around a change, and took it first from the

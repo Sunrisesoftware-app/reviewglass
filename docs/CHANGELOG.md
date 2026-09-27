@@ -4,6 +4,40 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 7 (continued): the frame — a click locks the glass to a pane — 27.9.2026 (0.1.0)
+
+adr.rg.026 (Atlas #395, worker 5fb9a1c3), in the owner's words confirmed the same day:
+inside the Claude app the glass takes its frame from the app.
+
+- **The click.** While the glass is shown in Follow with the column lock on, a press of
+  the primary button over a window of `claude.exe` locks the glass to the pane there: the
+  Code pane's element through UI Automation, or a popped-out session window's page. The
+  button is polled every 20 ms (swapped buttons respected); nothing is hooked, and a
+  click is never swallowed or recorded. A click on another pane moves the lock; a click
+  on the sidebar or a resize handle leaves it.
+- **The frame.** The finder window becomes the pane — a quiet outline — and the box, the
+  glass's source rectangle, moves inside it, clamped: the cursor outside leaves the box at
+  the nearest edge. The frame is the engine's pane, so Fit follows it. The pane's element
+  is kept and read twice a second, so the frame follows the window.
+- **A window in front.** Four times a second the windows above the app's are looked at:
+  another application's visible window over the box, or the app minimised, holds the
+  glass on its last picture (nothing is published), the box goes dashed, and the bar
+  says "held — <window> in front". It never widens for it.
+- **The bar.** "▣ <session title>" with a release ✕; "click a pane to lock" while the
+  cursor is over the app with nothing locked; a note when a click found no pane. The
+  locked pane's session chooses the Diff tab's, and Follow's cursor-based choosing
+  stands aside while locked. Over the app the pixel detector is not consulted.
+
+Measured, read-only (`cargo test --lib live_lock -- --ignored --nocapture`, no mouse):
+four panes locked to their own rectangles with their session titles in 3–12 ms, the
+popped-out SCC2 window to its page, the sidebar and the handle between two panes to
+nothing; no window covered a box. 148 tests, clippy and svelte-check clean. Known
+limit, by the decision's wording: a window of the Claude app itself (a popped-out
+session) in front of the locked pane is not "another application" and does not hold
+the glass. Not yet seen by the owner's hand.
+
+
+
 ## Session 7: the Diff tab by session, the drawer's own picture, sessions that wait on their agents — 27.9.2026 (0.1.0)
 
 The owner's verdict at the start: ReviewGlass is not yet in daily use because it does not
@@ -52,7 +86,7 @@ its frame), keyboard focus inside a pane's message box, the z-order check for wi
 front in 0.03 ms and a pane read in ~3 ms. The frame's decision (adr.rg.026) stands on
 these numbers.
 
-
+## Session 6, closing: P6 observed, one fix from what it showed — 23.9.2026 (0.1.0)
 
 **P6 observed** on the release build (main `11877c1`, rebuilt 16:48, launched from a
 plain PowerShell with the owner's leave, driven over CDP, no mouse). No local model
