@@ -653,8 +653,8 @@
     padding: 4px 10px;
     font-size: 15px;
   }
+  /* Not dimmed while busy: the button is in the picture it is taking. */
   nav .shoot:disabled {
-    opacity: 0.5;
     cursor: progress;
   }
   nav .shot-note {
