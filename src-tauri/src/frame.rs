@@ -405,7 +405,10 @@ mod tests {
                     "({x},{y}) claude={} locks {:?} title={:?} own_window={} in {ms:.1} ms",
                     root.claude, l.rect, l.title, l.own_window
                 ),
-                None => println!("({x},{y}) claude={} locks nothing ({ms:.1} ms)", root.claude),
+                None => println!(
+                    "({x},{y}) claude={} locks nothing ({ms:.1} ms)",
+                    root.claude
+                ),
             }
             if root.claude {
                 let src = SourceRect {
