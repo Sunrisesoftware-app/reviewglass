@@ -36,7 +36,7 @@
 pub mod events;
 pub mod file;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
@@ -162,6 +162,8 @@ pub struct DiffState {
     /// Events from before this are stale: the app's start less the hour the hook keeps
     /// them.
     since_ms: u64,
+    /// The event files already read (they stay in the spool for the hook's hour).
+    seen: Mutex<HashSet<String>>,
     unreadable: Mutex<usize>,
 }
 
@@ -178,6 +180,7 @@ impl DiffState {
             snapshots: Mutex::new(HashMap::new()),
             labels: Mutex::new(HashMap::new()),
             since_ms: now_ms().saturating_sub(spool::EVENT_TTL.as_millis() as u64),
+            seen: Mutex::new(HashSet::new()),
             unreadable: Mutex::new(0),
         }
     }
@@ -188,7 +191,7 @@ impl DiffState {
         let Some(dir) = spool::events_dir() else {
             return false;
         };
-        let batch = events::take(&dir, self.since_ms);
+        let batch = events::take(&dir, self.since_ms, &mut self.seen.lock());
         *self.unreadable.lock() = batch.unreadable;
         if batch.events.is_empty() {
             return false;

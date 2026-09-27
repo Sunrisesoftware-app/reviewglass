@@ -5,13 +5,17 @@
 //! sees a half file — but it may see a file the collector is about to rename over, or
 //! one written by a version of the collector this build does not know, so every field
 //! is read leniently (adr.rg.011) and a file that will not parse is retried once and
-//! then left for the collector's own prune. An event the app has read is consumed:
-//! deleted, so the directory never holds more than the last few hundred milliseconds
-//! of work and "seen" needs no bookkeeping across restarts.
+//! then left for the collector's own prune.
 //!
-//! Events from before the app started are consumed without being reported. The live
-//! diff is a live view; what happened before it was watching is git's to tell.
+//! Events are read, never deleted: they stay for the hour the hook keeps them
+//! (`spool::EVENT_TTL`; the hook prunes older ones on every run), and the reader
+//! remembers the names it has read. So a restart — an update, a reboot, a crash —
+//! finds the last hour's edits again (adr.rg.024), whether or not an app was running
+//! when they were made. Deleting on read, as the reader first did, left a restarted
+//! app an empty list (measured 27.9.2026: the previous instance had consumed every
+//! event, and the new one showed "No edit yet" with four sessions at work).
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::time::Duration;
@@ -37,17 +41,19 @@ pub struct ChangeEvent {
 /// What one pass over the events directory found.
 #[derive(Debug, Default)]
 pub struct Batch {
-    /// Events at or after `since_ms`, oldest first.
+    /// Events at or after `since_ms` not read before, oldest first.
     pub events: Vec<ChangeEvent>,
-    /// Files that could not be parsed on this pass (left in place).
+    /// Files that could not be parsed on this pass (left in place, tried again).
     pub unreadable: usize,
-    /// Events from before `since_ms`, consumed without being reported.
+    /// Events from before `since_ms`, passed over without being reported.
     pub stale: usize,
 }
 
-/// Read and consume every event file in `dir`. Events with `ts < since_ms` are
-/// consumed silently.
-pub fn take(dir: &Path, since_ms: u64) -> Batch {
+/// Read every event file in `dir` whose name is not in `seen`, and add the names read
+/// to it. Nothing is deleted. Events with `ts < since_ms` are passed over silently; a
+/// file that will not parse is not marked, so the next pass tries it again. Names of
+/// files that have gone (pruned by the hook) are forgotten.
+pub fn take(dir: &Path, since_ms: u64, seen: &mut HashSet<String>) -> Batch {
     let mut batch = Batch::default();
     let Ok(entries) = fs::read_dir(dir) else {
         return batch;
@@ -59,10 +65,21 @@ pub fn take(dir: &Path, since_ms: u64) -> Batch {
         .collect();
     // Oldest first: the names begin with the millisecond.
     paths.sort();
+    let present: HashSet<String> = paths
+        .iter()
+        .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .collect();
+    seen.retain(|n| present.contains(n));
     for path in paths {
+        let Some(name) = path.file_name().map(|n| n.to_string_lossy().into_owned()) else {
+            continue;
+        };
+        if seen.contains(&name) {
+            continue;
+        }
         match read_event(&path) {
             Some(ev) => {
-                let _ = fs::remove_file(&path);
+                seen.insert(name);
                 if ev.ts < since_ms {
                     batch.stale += 1;
                 } else {
@@ -122,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn events_are_read_oldest_first_and_consumed() {
+    fn events_are_read_oldest_first_once_and_left_for_a_restart() {
         let d = temp_dir("order");
         fs::write(
             d.join("2000-toolu_b.json"),
@@ -134,20 +151,29 @@ mod tests {
             br#"{"ts":1000,"session_id":"s","tool":"Write","file_path":"E:\\p\\a.rs"}"#,
         )
         .unwrap();
-        let b = take(&d, 0);
+        let mut seen = HashSet::new();
+        let b = take(&d, 0, &mut seen);
         assert_eq!(b.events.len(), 2);
         assert_eq!(b.events[0].file_path.as_deref(), Some("E:\\p\\a.rs"));
         assert_eq!(b.events[1].tool.as_deref(), Some("Edit"));
+        // Read once: the next pass reports nothing, and the files are still there.
+        assert!(take(&d, 0, &mut seen).events.is_empty());
         assert_eq!(
             fs::read_dir(&d).unwrap().count(),
-            0,
-            "read events are consumed"
+            2,
+            "events are left in place"
         );
+        // A restart (a reader that has seen nothing) finds them again.
+        assert_eq!(take(&d, 0, &mut HashSet::new()).events.len(), 2);
+        // A file the hook pruned is forgotten.
+        fs::remove_file(d.join("1000-toolu_a.json")).unwrap();
+        take(&d, 0, &mut seen);
+        assert_eq!(seen.len(), 1);
         let _ = fs::remove_dir_all(&d);
     }
 
     #[test]
-    fn events_from_before_the_start_are_consumed_silently() {
+    fn events_from_before_the_look_back_are_passed_over_silently() {
         let d = temp_dir("stale");
         fs::write(
             d.join("1000-toolu_a.json"),
@@ -159,11 +185,13 @@ mod tests {
             br#"{"ts":5000,"file_path":"y"}"#,
         )
         .unwrap();
-        let b = take(&d, 3000);
+        let mut seen = HashSet::new();
+        let b = take(&d, 3000, &mut seen);
         assert_eq!(b.stale, 1);
         assert_eq!(b.events.len(), 1);
         assert_eq!(b.events[0].file_path.as_deref(), Some("y"));
-        assert_eq!(fs::read_dir(&d).unwrap().count(), 0);
+        // Passed over once, not counted again.
+        assert_eq!(take(&d, 3000, &mut seen).stale, 0);
         let _ = fs::remove_dir_all(&d);
     }
 
@@ -179,7 +207,8 @@ mod tests {
         .unwrap();
         fs::write(d.join("1002-toolu_c.json"), br#"{"tool":"Edit"}"#).unwrap();
         fs::write(d.join("notes.txt"), b"ignored").unwrap();
-        let b = take(&d, 0);
+        let mut seen = HashSet::new();
+        let b = take(&d, 0, &mut seen);
         assert_eq!(b.unreadable, 2);
         assert_eq!(b.events.len(), 1);
         assert_eq!(b.events[0].tool, None);
@@ -192,14 +221,21 @@ mod tests {
         left.sort();
         assert_eq!(
             left,
-            vec!["1000-toolu_a.json", "1002-toolu_c.json", "notes.txt"]
+            vec![
+                "1000-toolu_a.json",
+                "1001-toolu_b.json",
+                "1002-toolu_c.json",
+                "notes.txt"
+            ]
         );
+        // The unreadable ones are tried again on the next pass.
+        assert_eq!(take(&d, 0, &mut seen).unreadable, 2);
         let _ = fs::remove_dir_all(&d);
     }
 
     #[test]
     fn a_missing_directory_is_an_empty_batch() {
-        let b = take(Path::new("Z:\\no\\such\\dir"), 0);
+        let b = take(Path::new("Z:\\no\\such\\dir"), 0, &mut HashSet::new());
         assert!(b.events.is_empty());
         assert_eq!(b.unreadable, 0);
     }
