@@ -9,6 +9,7 @@ mod diff;
 mod dock;
 mod explain;
 mod follow_session;
+mod frame;
 mod glass;
 mod measure;
 mod notifier;
@@ -93,6 +94,7 @@ pub fn run() {
         .manage(panel::PanelState::new())
         .manage(diff::DiffState::new())
         .manage(follow_session::FollowSessionState::new())
+        .manage(frame::FrameState::new())
         .manage(dock::DockState::new())
         .manage(explain::ExplainState::new())
         // A second launch brings the running copy's dock forward instead of starting
@@ -122,6 +124,7 @@ pub fn run() {
             glass::spawn_lens_rider(app.handle().clone());
             diff::spawn_diff_loop(app.handle().clone());
             follow_session::spawn(app.handle().clone());
+            frame::spawn(app.handle().clone());
             Ok(())
         })
         .on_menu_event(|app, event| glass::on_menu(app, event.id().as_ref()))
@@ -162,6 +165,8 @@ pub fn run() {
             diff::panel_diffs,
             picture::dock_picture,
             picture::picture_show,
+            frame::frame_state,
+            frame::frame_release,
             diff::file::panel_file_view,
             explain::explain_settings,
             explain::explain_set,

@@ -79,6 +79,26 @@ impl SourceRect {
     }
 }
 
+/// A pane the glass is locked to by a click (adr.rg.026), as the Claude app reports it:
+/// `[left, right) × [top, bottom)` in virtual-desktop physical pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct PaneFrame {
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+}
+
+impl PaneFrame {
+    pub fn width(&self) -> i32 {
+        self.right - self.left
+    }
+
+    pub fn height(&self) -> i32 {
+        self.bottom - self.top
+    }
+}
+
 /// The newest cropped frame. `seq` increases only when the pixels changed, so a
 /// consumer polling with its last seen `seq` can skip redraws on a static source.
 #[derive(Default)]
@@ -140,6 +160,14 @@ struct Shared {
     /// The lock was switched off: the column tracker forgets its column on the next
     /// scan. A pause (hover, a menu, the dock) keeps the memory, which ages by itself.
     tracker_reset: AtomicBool,
+    /// The pane a click locked the glass to (adr.rg.026). While there is one, Follow's
+    /// box stays inside it and the pixel detector is not consulted.
+    frame: Mutex<Option<PaneFrame>>,
+    /// Another application's window covers the box: the glass holds its last picture.
+    covered: AtomicBool,
+    /// The cursor is over a window of the Claude app with no frame locked: no pixel is
+    /// guessed at there (adr.rg.026); Follow follows the cursor until a click locks.
+    in_app: AtomicBool,
     /// The pane under the cursor in virtual-desktop coordinates, or none found.
     pane: Mutex<Option<Pane>>,
     /// Bumped whenever `pane` changes, so a consumer can notice without comparing.
@@ -258,7 +286,10 @@ impl GraphicsCaptureApiHandler for Handler {
         frame: &mut Frame,
         _control: InternalCaptureControl,
     ) -> Result<(), Self::Error> {
-        if self.shared.still.load(Ordering::Relaxed) || self.shared.held.load(Ordering::Relaxed) {
+        if self.shared.still.load(Ordering::Relaxed)
+            || self.shared.held.load(Ordering::Relaxed)
+            || self.shared.covered.load(Ordering::Relaxed)
+        {
             return Ok(());
         }
         {
@@ -439,6 +470,9 @@ impl Engine {
                 want_pane: AtomicBool::new(false),
                 over_dock: AtomicBool::new(false),
                 tracker_reset: AtomicBool::new(false),
+                frame: Mutex::new(None),
+                covered: AtomicBool::new(false),
+                in_app: AtomicBool::new(false),
                 pane: Mutex::new(None),
                 pane_seq: AtomicU64::new(0),
                 source: Mutex::new(SourceRect {
@@ -602,6 +636,49 @@ impl Engine {
         }
     }
 
+    /// Lock Follow to a pane (adr.rg.026), or release it. The pane's columns become the
+    /// engine's pane, so Fit and the finder follow it as they follow a detected one; a
+    /// release forgets the pane and lets the detector start afresh.
+    pub fn set_frame(&self, frame: Option<PaneFrame>) {
+        let before = std::mem::replace(&mut *self.shared.frame.lock(), frame);
+        if before == frame {
+            return;
+        }
+        if frame.is_none() {
+            self.shared.covered.store(false, Ordering::Relaxed);
+            self.shared.tracker_reset.store(true, Ordering::Relaxed);
+        }
+        let pane = frame.map(|f| Pane {
+            x0: f.left,
+            x1: f.right,
+        });
+        let mut p = self.shared.pane.lock();
+        if *p != pane {
+            *p = pane;
+            self.shared.pane_seq.fetch_add(1, Ordering::Relaxed);
+        }
+        crate::measure::log(|| format!("frame {frame:?}"));
+    }
+
+    /// The pane a click locked the glass to, if any.
+    pub fn frame(&self) -> Option<PaneFrame> {
+        *self.shared.frame.lock()
+    }
+
+    /// Another application's window covers the box (or the app is minimised): hold.
+    pub fn set_covered(&self, covered: bool) {
+        self.shared.covered.store(covered, Ordering::Relaxed);
+    }
+
+    pub fn is_covered(&self) -> bool {
+        self.shared.covered.load(Ordering::Relaxed)
+    }
+
+    /// The cursor is over a window of the Claude app (and no frame is locked).
+    pub fn set_in_app(&self, in_app: bool) {
+        self.shared.in_app.store(in_app, Ordering::Relaxed);
+    }
+
     /// The pane under the cursor, virtual-desktop coordinates; none when the lock is
     /// off or nothing was found.
     pub fn pane(&self) -> Option<Pane> {
@@ -657,10 +734,20 @@ impl Engine {
 
         let held = self.shared.held.load(Ordering::Relaxed);
         let over_dock = self.shared.over_dock.load(Ordering::Relaxed);
-        // Follow holds while the pointer is over the glass or the dock; every mode
-        // holds while a menu is open.
-        let hold = held || (v.mode == Mode::Follow && (v.hovered || over_dock));
-        let want_pane = v.mode == Mode::Follow && v.pane_lock && !hold;
+        let frame = if v.mode == Mode::Follow {
+            self.frame()
+        } else {
+            None
+        };
+        let covered = frame.is_some() && self.shared.covered.load(Ordering::Relaxed);
+        // Follow holds while the pointer is over the glass or the dock, and while a
+        // window of another application covers its box; every mode holds while a menu
+        // is open.
+        let hold = held || (v.mode == Mode::Follow && (v.hovered || over_dock || covered));
+        // Inside the Claude app the pane comes from the app, never from pixels.
+        let in_app = self.shared.in_app.load(Ordering::Relaxed);
+        let want_pane =
+            v.mode == Mode::Follow && v.pane_lock && !hold && frame.is_none() && !in_app;
         self.shared.want_pane.store(want_pane, Ordering::Relaxed);
         let pane = if want_pane { self.pane() } else { None };
 
@@ -674,6 +761,17 @@ impl Engine {
                     w: src_w,
                     h: src_h,
                 }
+            }
+            Mode::Follow if frame.is_some() => {
+                // Locked to a pane by a click: the box follows the cursor and stays
+                // inside the pane's frame.
+                let f = frame.unwrap_or(PaneFrame {
+                    left: 0,
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                });
+                inside(f, cursor_pos(), src_w, src_h)
             }
             Mode::Follow if pane.is_some() => {
                 // Locked to the pane: the cursor sets the row, the pane sets the
@@ -787,6 +885,26 @@ impl Engine {
             let _ = c.stop();
         }
         *self.shared.monitor.lock() = None;
+    }
+}
+
+/// The box for a Follow locked to a frame (adr.rg.026): centred on the cursor and
+/// clamped inside the frame, so a cursor outside leaves the box at the nearest edge.
+/// A box wider (or taller) than the frame sits centred on it on that axis.
+fn inside(f: PaneFrame, (cx, cy): (i32, i32), w: u32, h: u32) -> SourceRect {
+    let axis = |c: i32, lo: i32, hi: i32, len: u32| {
+        let len = len as i32;
+        if len >= hi - lo {
+            lo - (len - (hi - lo)) / 2
+        } else {
+            (c - len / 2).clamp(lo, hi - len)
+        }
+    };
+    SourceRect {
+        x: axis(cx, f.left, f.right, w),
+        y: axis(cy, f.top, f.bottom, h),
+        w,
+        h,
     }
 }
 
@@ -984,6 +1102,57 @@ mod tests {
         let narrow = Pane { x0: 100, x1: 300 };
         let r = pane_rect(narrow, 500, 600, 200);
         assert_eq!((r.x, r.y), (-100, 400));
+    }
+
+    #[test]
+    fn a_framed_box_follows_the_cursor_and_never_leaves_the_frame() {
+        let f = PaneFrame {
+            left: 936,
+            top: 175,
+            right: 1465,
+            bottom: 1305,
+        };
+        // Inside: centred on the cursor.
+        assert_eq!(
+            inside(f, (1200, 600), 264, 120),
+            SourceRect {
+                x: 1068,
+                y: 540,
+                w: 264,
+                h: 120
+            }
+        );
+        // The cursor left of the frame, and below it: the box at the nearest edges.
+        let r = inside(f, (200, 1400), 264, 120);
+        assert_eq!((r.x, r.y), (936, 1305 - 120));
+        // Right of it, above it.
+        let r = inside(f, (2400, 0), 264, 120);
+        assert_eq!((r.x, r.y), (1465 - 264, 175));
+        // A box wider than the frame sits centred on it.
+        let r = inside(f, (1200, 600), 629, 120);
+        assert_eq!(r.x, 936 - 50);
+    }
+
+    #[test]
+    fn a_frame_becomes_the_pane_and_a_release_forgets_both() {
+        let e = Engine::new();
+        let f = PaneFrame {
+            left: 409,
+            top: 175,
+            right: 937,
+            bottom: 1305,
+        };
+        let seq = e.pane_seq();
+        e.set_frame(Some(f));
+        assert_eq!(e.frame(), Some(f));
+        assert_eq!(e.pane(), Some(Pane { x0: 409, x1: 937 }));
+        assert!(e.pane_seq() > seq);
+        e.set_covered(true);
+        assert!(e.is_covered());
+        e.set_frame(None);
+        assert_eq!(e.frame(), None);
+        assert_eq!(e.pane(), None);
+        assert!(!e.is_covered(), "a release uncovers");
     }
 
     #[test]
