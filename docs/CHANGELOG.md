@@ -4,7 +4,55 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
-## Session 6, closing: P6 observed, one fix from what it showed — 23.9.2026 (0.1.0)
+## Session 7: the Diff tab by session, the drawer's own picture, sessions that wait on their agents — 27.9.2026 (0.1.0)
+
+The owner's verdict at the start: ReviewGlass is not yet in daily use because it does not
+feel like part of the Claude app, which they always run windowed. The direction agreed:
+polish before new phases — the glass bound to the app's window and panes (a frame locked
+by a click, the windows in front recognised, a frameless diff window beside the pane),
+and first the three things that made the drawer hard to use that day. P6's real backend,
+autostart, P5, P7 and P8 wait.
+
+- **A session waiting on its subagents stays listed.** The Atlas session vanished from the
+  Sessions tab whenever it launched agents: a session's age was its own transcript's, and
+  a parent writes nothing while its agents work (measured: 7, 7, 8, 17 and 27 minutes of
+  stillness against a 10-minute TTL). Its age is now the newest write in its own or its
+  subagents' transcripts.
+- **The Diff tab by session (adr.rg.024).** One list of the 30 newest files across every
+  session lost the owner's `lukitus.ts` nine minutes after its edit (four sessions, 50
+  files in 24 minutes; it ranked 48th). Now each session keeps up to 100 project files
+  and 100 set-aside files (400 in all), grouped under the session's name, each file named
+  first with its project and folder under it; a worktree is named by its repository. An
+  agent's own files (its temp scratchpad, `~/.claude`) sit in a closed group of their own.
+  Events stay in the spool for the hook's hour and the reader remembers what it read, so
+  a restart finds the last hour's edits again — the first build deleted events on read,
+  and the live check showed a restarted app with an empty list while four sessions
+  worked.
+- **The drawer's own picture (adr.rg.025).** No screenshot tool could see the drawer: every
+  ReviewGlass window was excluded from capture. The dock no longer is (the glass, the halo
+  and the finder still are: affinity measured 0x0 for the dock, 0x11 for the other three),
+  and a 📷 button at the end of the tab row renders the drawer through WebView2 and puts
+  it on the clipboard (PNG and DIB) and in `Pictures\ReviewGlass`.
+
+Measured on the release build (launched from a plain PowerShell with a debug port, with
+the owner's leave, no mouse): the camera gave a 638×711 picture of the drawer without the
+strip, on the clipboard as PNG and DeviceIndependentBitmap and saved as
+`ReviewGlass-2026-09-27-201009.png`; an Edit of `docs/CHANGELOG.md` in this worktree
+reached the Diff tab as "CHANGELOG.md — reviewglass/docs" under the session "Reviewglass
+projektin tila", a Write in the agent's scratchpad as a set-aside file, and both were
+listed again after a quit and relaunch. The subagent case was not live at the time (no
+session was waiting on an agent); its test pins it. 142 tests, clippy and svelte-check
+clean. Atlas: adr.rg.024 and adr.rg.025 (atlas#393, worker ed41066b), the modules in step.
+
+**The frame, measured first.** For the next step — the glass locked to a Code pane by a
+click, inside the app's window — the app's structure was read (read-only, no mouse): the
+main window windowed at 2387×1167, four panes of ~528 px whose rectangles are exact to
+±1 px and stable across four runs, a popped-out session window with no pane (its page is
+its frame), keyboard focus inside a pane's message box, the z-order check for windows in
+front in 0.03 ms and a pane read in ~3 ms. The frame's decision (adr.rg.026) stands on
+these numbers.
+
+
 
 **P6 observed** on the release build (main `11877c1`, rebuilt 16:48, launched from a
 plain PowerShell with the owner's leave, driven over CDP, no mouse). No local model
