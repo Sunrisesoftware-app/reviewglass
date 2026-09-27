@@ -110,6 +110,45 @@
     void invoke("dock_set_tab", { tab: next });
   }
 
+  // The drawer's own picture (adr.rg.025): the drawer as it stands — the strip left out —
+  // on the clipboard and in Pictures\ReviewGlass, so a diff can be pasted into a
+  // conversation. The note beside the button says where it went and fades.
+  type Picture = { path: string | null; copied: boolean; problem: string | null };
+  let drawerEl = $state<HTMLElement | null>(null);
+  let shot = $state<{ busy: boolean; note: string | null; bad: boolean; path: string | null }>({
+    busy: false,
+    note: null,
+    bad: false,
+    path: null,
+  });
+  let shotTimer: ReturnType<typeof setTimeout> | undefined;
+
+  async function takePicture() {
+    if (!drawerEl || shot.busy) return;
+    const r = drawerEl.getBoundingClientRect();
+    shot = { busy: true, note: null, bad: false, path: null };
+    try {
+      const p = await invoke<Picture>("dock_picture", {
+        crop: { x: r.left, y: r.top, width: r.width, height: r.height, page_width: window.innerWidth },
+      });
+      const name = p.path?.split(/[\\/]/).pop() ?? null;
+      shot = {
+        busy: false,
+        bad: !p.copied,
+        path: p.path,
+        note: p.copied
+          ? `Copied — paste with Ctrl+V${name ? ` · saved as ${name}` : ""}`
+          : name
+            ? `Saved as ${name}, not copied (${p.problem})`
+            : `No picture: ${p.problem}`,
+      };
+    } catch (e) {
+      shot = { busy: false, bad: true, path: null, note: `No picture: ${e instanceof Error ? e.message : String(e)}` };
+    }
+    clearTimeout(shotTimer);
+    shotTimer = setTimeout(() => (shot.note = null), 10000);
+  }
+
   function pct(v: number): string {
     return `${v < 10 ? v.toFixed(1) : Math.round(v)}%`;
   }
@@ -344,7 +383,7 @@
   </div>
 
   {#if open}
-    <div class="drawer" role="region" aria-label="Sessions, diff and settings">
+    <div class="drawer" role="region" aria-label="Sessions, diff and settings" bind:this={drawerEl}>
       <nav aria-label="Drawer tabs">
         {#each TABS as t (t.id)}
           <button class:active={tab === t.id} onclick={() => pick(t.id)} aria-pressed={tab === t.id}>
@@ -352,6 +391,25 @@
             {#if t.id === "sessions" && usage}<span class="count">{usage.sessions.length}</span>{/if}
           </button>
         {/each}
+        {#if shot.note}
+          {#if shot.path}
+            <button
+              class="shot-note"
+              class:bad={shot.bad}
+              title="Show the picture in its folder"
+              onclick={() => shot.path && void invoke("picture_show", { path: shot.path })}>{shot.note}</button
+            >
+          {:else}
+            <span class="shot-note" class:bad={shot.bad} role="status">{shot.note}</span>
+          {/if}
+        {/if}
+        <button
+          class="shoot"
+          disabled={shot.busy}
+          title="Copy a picture of the drawer to the clipboard, and save it in Pictures\ReviewGlass"
+          aria-label="Copy a picture of the drawer"
+          onclick={() => void takePicture()}>📷</button
+        >
       </nav>
       <section>
         {#if tab === "sessions"}
@@ -587,6 +645,39 @@
     border-color: var(--line);
     background: var(--raised);
     color: var(--fg);
+  }
+  /* The camera sits at the row's far end; its note beside it, in the row, so nothing
+     below moves when it appears. */
+  nav .shoot {
+    margin-left: auto;
+    padding: 4px 10px;
+    font-size: 15px;
+  }
+  nav .shoot:disabled {
+    opacity: 0.5;
+    cursor: progress;
+  }
+  nav .shot-note {
+    margin-left: auto;
+    align-self: center;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0 4px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  nav .shot-note + .shoot {
+    margin-left: 0;
+  }
+  nav button.shot-note {
+    display: block;
+    border: 0;
+    text-decoration: underline dotted;
+  }
+  nav .shot-note.bad {
+    color: var(--bad);
   }
   .count {
     padding: 0 6px;

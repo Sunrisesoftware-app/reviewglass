@@ -13,6 +13,7 @@ mod glass;
 mod measure;
 mod notifier;
 mod panel;
+mod picture;
 pub mod session;
 pub mod spool;
 mod tray;
@@ -159,6 +160,8 @@ pub fn run() {
             panel::alerts_set,
             panel::alerts_test,
             diff::panel_diffs,
+            picture::dock_picture,
+            picture::picture_show,
             diff::file::panel_file_view,
             explain::explain_settings,
             explain::explain_set,
