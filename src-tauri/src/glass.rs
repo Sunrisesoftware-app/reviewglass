@@ -317,7 +317,9 @@ pub fn set_lens_inner(app: &AppHandle, engine: &Engine, lens: bool) {
 /// Two riders share the thread: the lens (the glass itself, in Lens mode) and the halo
 /// (the ring around the pointer, in Follow mode). At most one is riding at a time. The
 /// finder (adr.rg.017) sits on the engine's source rectangle rather than the cursor,
-/// and moves only when that rectangle does.
+/// and moves only when that rectangle does. With a pane locked by a click (adr.rg.026)
+/// the finder covers the pane instead and draws the frame, with the box inside it
+/// (`finder:layout`).
 pub fn spawn_lens_rider(app: AppHandle) {
     thread::Builder::new()
         .name("reviewglass-rider".into())
@@ -325,6 +327,7 @@ pub fn spawn_lens_rider(app: AppHandle) {
             let mut halo_shown = false;
             let mut finder_shown = false;
             let mut finder_rect: Option<crate::capture::SourceRect> = None;
+            let mut finder_layout: Option<FinderLayout> = None;
             loop {
                 let engine = app.state::<Engine>();
                 let mode = engine.mode();
@@ -374,10 +377,19 @@ pub fn spawn_lens_rider(app: AppHandle) {
                 if let Some(finder) = app.get_webview_window(FINDER_LABEL) {
                     if finder_wanted {
                         let src = engine.source();
-                        if finder_rect != Some(src) {
-                            let _ = finder.set_position(PhysicalPosition::new(src.x, src.y));
-                            let _ = finder.set_size(PhysicalSize::new(src.w, src.h));
-                            finder_rect = Some(src);
+                        let (rect, layout) = finder_placement(
+                            if following { engine.frame() } else { None },
+                            src,
+                            engine.is_covered(),
+                        );
+                        if finder_rect != Some(rect) {
+                            let _ = finder.set_position(PhysicalPosition::new(rect.x, rect.y));
+                            let _ = finder.set_size(PhysicalSize::new(rect.w, rect.h));
+                            finder_rect = Some(rect);
+                        }
+                        if finder_layout != Some(layout) {
+                            let _ = app.emit_to(FINDER_LABEL, FINDER_LAYOUT_EVENT, layout);
+                            finder_layout = Some(layout);
                         }
                     }
                     if finder_wanted != finder_shown {
@@ -420,6 +432,61 @@ pub fn spawn_lens_rider(app: AppHandle) {
             }
         })
         .expect("rider thread");
+}
+
+/// Event to the finder page: what to draw in its window.
+pub const FINDER_LAYOUT_EVENT: &str = "finder:layout";
+
+/// What the finder draws: the box (the glass's source rectangle) at an offset inside
+/// the finder's window, and whether the window is a locked frame around it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct FinderLayout {
+    /// The window is a pane locked by a click (adr.rg.026), drawn as the frame.
+    pub framed: bool,
+    /// A window of another application covers the box: the glass is holding.
+    pub covered: bool,
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+}
+
+/// Where the finder goes and what it draws. Without a frame the window is the box, as
+/// adr.rg.017 had it; with one the window is the pane and the box sits inside it.
+fn finder_placement(
+    frame: Option<crate::capture::PaneFrame>,
+    src: crate::capture::SourceRect,
+    covered: bool,
+) -> (crate::capture::SourceRect, FinderLayout) {
+    match frame {
+        Some(f) => (
+            crate::capture::SourceRect {
+                x: f.left,
+                y: f.top,
+                w: f.width().max(1) as u32,
+                h: f.height().max(1) as u32,
+            },
+            FinderLayout {
+                framed: true,
+                covered,
+                x: src.x - f.left,
+                y: src.y - f.top,
+                w: src.w,
+                h: src.h,
+            },
+        ),
+        None => (
+            src,
+            FinderLayout {
+                framed: false,
+                covered: false,
+                x: 0,
+                y: 0,
+                w: src.w,
+                h: src.h,
+            },
+        ),
+    }
 }
 
 /// The halo and the finder must never land in the picture, and must never take a
@@ -812,4 +879,46 @@ pub fn glass_frame(app: AppHandle, engine: State<Engine>, since: u64) -> Result<
         }
     }
     Ok(Response::new(out))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::capture::{PaneFrame, SourceRect};
+
+    #[test]
+    fn the_finder_is_the_box_alone_or_the_frame_with_the_box_inside() {
+        let src = SourceRect {
+            x: 1068,
+            y: 540,
+            w: 264,
+            h: 120,
+        };
+        let (rect, layout) = finder_placement(None, src, false);
+        assert_eq!(rect, src);
+        assert!(!layout.framed);
+        assert_eq!((layout.x, layout.y), (0, 0));
+
+        let f = PaneFrame {
+            left: 936,
+            top: 175,
+            right: 1465,
+            bottom: 1305,
+        };
+        let (rect, layout) = finder_placement(Some(f), src, true);
+        assert_eq!(
+            rect,
+            SourceRect {
+                x: 936,
+                y: 175,
+                w: 529,
+                h: 1130
+            }
+        );
+        assert!(layout.framed && layout.covered);
+        assert_eq!(
+            (layout.x, layout.y, layout.w, layout.h),
+            (132, 365, 264, 120)
+        );
+    }
 }

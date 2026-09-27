@@ -17,7 +17,9 @@
 //! A read happens only when the cursor leaves the pane it was last found in (or its
 //! window changes), plus a re-check every few seconds; between reads the loop costs a
 //! cursor query and a rectangle test. Never in Lens or Still, never while the glass is
-//! hidden, never with the switch off.
+//! hidden, never with the switch off — and not while a click has locked the glass to a
+//! pane (adr.rg.026): then the locked pane's session is the choice (`announce`), and
+//! the cursor wandering over another pane changes nothing.
 
 use std::thread;
 use std::time::{Duration, Instant};
@@ -191,7 +193,7 @@ impl Known {
 }
 
 #[cfg(windows)]
-mod uia {
+pub(crate) mod uia {
     use std::collections::HashMap;
 
     use parking_lot::Mutex;
@@ -241,7 +243,7 @@ mod uia {
             }
         }
 
-        fn at(&self, x: i32, y: i32) -> Option<IUIAutomationElement> {
+        pub fn at(&self, x: i32, y: i32) -> Option<IUIAutomationElement> {
             // SAFETY: a read-only query of the element at a screen point.
             unsafe { self.uia.ElementFromPoint(POINT { x, y }).ok() }
         }
@@ -283,6 +285,14 @@ mod uia {
             if r <= l || b <= t {
                 return None;
             }
+            self.header_title((l, t, r, b))
+                .map(|title| ((l, t, r, b), title))
+        }
+
+        /// The session title on a pane's header row: the names of elements at a few
+        /// points on it, until one is "<title>, rename session". Nothing below the
+        /// header row is asked.
+        pub fn header_title(&self, (l, t, r, b): (i32, i32, i32, i32)) -> Option<String> {
             for (px, py) in header_points(l, t, r, b) {
                 let Some(e) = self.at(px, py) else {
                     continue;
@@ -292,11 +302,69 @@ mod uia {
                     continue;
                 };
                 if let Some(title) = title_from_name(&name.to_string()) {
-                    return Some(((l, t, r, b), title.to_string()));
+                    return Some(title.to_string());
                 }
             }
             None
         }
+
+        /// What a click at (x, y) locks the glass to (adr.rg.026): the Code pane there,
+        /// or the page of a session in a window of its own — the element itself, so its
+        /// rectangle can be read again as the window moves, with its rectangle now and
+        /// the session's title when one is found. `None` anywhere else in the app (the
+        /// sidebar, a resize handle between panes, the main window's page).
+        pub fn lock_at(&self, x: i32, y: i32) -> Option<Locked> {
+            let mut el = self.at(x, y)?;
+            for _ in 0..MAX_DEPTH {
+                // SAFETY: read-only properties of an element this thread holds.
+                let class = unsafe { el.CurrentClassName() }.ok()?.to_string();
+                if is_pane_class(&class) {
+                    let rect = rect_of(&el)?;
+                    let title = self.header_title(rect);
+                    return Some(Locked {
+                        element: el,
+                        rect,
+                        title,
+                        own_window: false,
+                    });
+                }
+                // SAFETY: as above.
+                if unsafe { el.CurrentControlType() }.ok() == Some(UIA_DocumentControlTypeId) {
+                    let name = unsafe { el.CurrentName() }.ok()?.to_string();
+                    let title = title_from_page(&name)?.to_string();
+                    let rect = rect_of(&el)?;
+                    return Some(Locked {
+                        element: el,
+                        rect,
+                        title: Some(title),
+                        own_window: true,
+                    });
+                }
+                el = unsafe { self.walker.GetParentElement(&el) }.ok()?;
+                if el.as_raw().is_null() {
+                    return None;
+                }
+            }
+            None
+        }
+    }
+
+    /// A pane (or a session's own page) the glass is locked to.
+    pub struct Locked {
+        pub element: IUIAutomationElement,
+        /// (left, top, right, bottom) when read.
+        pub rect: (i32, i32, i32, i32),
+        pub title: Option<String>,
+        /// A session in a window of its own: the page is the frame.
+        pub own_window: bool,
+    }
+
+    /// An element's rectangle now; `None` when it is gone or has no area (a pane
+    /// closed, a window minimised).
+    pub fn rect_of(el: &IUIAutomationElement) -> Option<(i32, i32, i32, i32)> {
+        // SAFETY: a read-only property of an element this thread holds.
+        let r = unsafe { el.CurrentBoundingRectangle() }.ok()?;
+        (r.right > r.left && r.bottom > r.top).then_some((r.left, r.top, r.right, r.bottom))
     }
 
     impl Reader {
@@ -334,6 +402,7 @@ mod uia {
     #[derive(Clone, Copy, Debug)]
     pub struct Root {
         pub hwnd: isize,
+        pub pid: u32,
         /// One of ReviewGlass's own windows (the glass, the dock).
         pub own: bool,
         /// A window of the desktop app's process: the only windows ever read.
@@ -342,7 +411,7 @@ mod uia {
 
     /// Whether a process is the desktop app, by its image's file name; remembered per
     /// process id, so a window check costs one query per process.
-    fn is_claude_pid(pid: u32) -> bool {
+    pub fn is_claude_pid(pid: u32) -> bool {
         static SEEN: Mutex<Option<HashMap<u32, bool>>> = Mutex::new(None);
         let mut seen = SEEN.lock();
         let map = seen.get_or_insert_with(HashMap::new);
@@ -388,6 +457,7 @@ mod uia {
         let own = pid == std::process::id();
         Root {
             hwnd,
+            pid,
             own,
             claude: !own && pid != 0 && is_claude_pid(pid),
         }
@@ -425,6 +495,14 @@ fn run(app: AppHandle) {
         }
         if !active {
             // Follow stopped: the next start chooses afresh, from the pane under it.
+            known = None;
+            missed = None;
+            told = None;
+            continue;
+        }
+        if engine.frame().is_some() {
+            // A click locked the glass to a pane: that pane's session is the choice
+            // (crate::frame announces it), wherever the cursor wanders.
             known = None;
             missed = None;
             told = None;
@@ -499,6 +577,23 @@ fn run(app: AppHandle) {
             told = Some(saw);
         }
     }
+}
+
+/// A pane locked by a click names its session (adr.rg.026): matched to the Sessions
+/// table and sent to the dock as Follow's choice, as a sighting of Follow's own is.
+pub fn announce(app: &AppHandle, title: String) {
+    if !app.state::<Store>().get().glass.follow_session {
+        return;
+    }
+    let sessions = app.state::<PanelState>().session_names();
+    let matched = match_title(&title, &sessions);
+    let saw = FollowSaw {
+        title,
+        session_id: matched.as_ref().map(|(id, _)| id.clone()),
+        name: matched.map(|(_, n)| n),
+    };
+    app.state::<FollowSessionState>().inner.lock().saw = Some(saw.clone());
+    let _ = app.emit_to(crate::dock::DOCK_LABEL, EVENT, saw);
 }
 
 // ---- commands -------------------------------------------------------------

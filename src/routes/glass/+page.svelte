@@ -21,6 +21,11 @@
   // from pixels. Locked, Follow tracks the cursor vertically only; Fit lets this
   // window's width follow the column at the current zoom, capped at the monitor. The
   // finder window frames the source rectangle on screen so a wrong guess is visible.
+  //
+  // The frame (adr.rg.026): inside the Claude app a click on a Code pane locks the
+  // glass to it. The bar names the locked pane, offers the release, says when another
+  // window covers the box (the glass holds), and over the app with nothing locked says
+  // that a click would lock — the affordance with the mechanism.
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -72,6 +77,22 @@
   let paneLock = $state(true);
   let paneFit = $state(true);
   let paneWidth = $state<number | null>(null);
+  type FrameStatus = {
+    locked: boolean;
+    title: string | null;
+    own_window: boolean;
+    covered_by: string | null;
+    in_app: boolean;
+    note: string | null;
+  };
+  let frame = $state<FrameStatus>({
+    locked: false,
+    title: null,
+    own_window: false,
+    covered_by: null,
+    in_app: false,
+    note: null,
+  });
   let build = $state("");
   let followLog = $state(false);
 
@@ -94,6 +115,10 @@
     void mode;
     void paneLock;
     void paneWidth;
+    void frame.locked;
+    void frame.covered_by;
+    void frame.in_app;
+    void frame.note;
     if (ready) void relayout();
   });
 
@@ -473,6 +498,8 @@
           void relayout();
         }),
       );
+      frame = await invoke<FrameStatus>("frame_state");
+      unlisten.push(await listen<FrameStatus>("frame:status", (ev) => (frame = ev.payload)));
       unlisten.push(
         await listen<{ width: number | null }>("glass:pane", (ev) => {
           paneWidth = ev.payload.width;
@@ -620,9 +647,34 @@
         onpointerdown={(e) => control(e, () => setPaneFit(!paneFit))}>Fit</button
       >
       {#if paneLock && mode === "follow"}
-        <span class="value pane" aria-live="polite" title={paneWidth ? "Width of the column under the cursor, in screen pixels" : "No column boundaries were found around the cursor; the picture follows the cursor in both directions meanwhile"}>
-          {paneWidth ? `${paneWidth} px` : "no column here"}
-        </span>
+        {#if frame.locked}
+          <!-- Locked to a pane by a click (adr.rg.026). -->
+          <span
+            class="value pane locked"
+            class:covered={frame.covered_by !== null}
+            aria-live="polite"
+            title={frame.covered_by
+              ? `Holding the last picture: ${frame.covered_by} is in front of the locked pane`
+              : `Locked to ${frame.own_window ? "the session window" : "the pane"}${frame.title ? ` "${frame.title}"` : ""}; the picture stays inside it. Click another pane to move the lock`}
+          >
+            {frame.covered_by ? `held — ${frame.covered_by} in front` : `▣ ${frame.title ?? "pane"}`}
+          </span>
+          <button
+            title="Release the lock: the picture follows the cursor again until you click a pane"
+            aria-label="Release the pane lock"
+            onpointerdown={(e) => control(e, () => invoke("frame_release"))}>✕</button
+          >
+        {:else if frame.note}
+          <span class="value pane" aria-live="polite" title={frame.note}>{frame.note}</span>
+        {:else if frame.in_app}
+          <span class="value pane" aria-live="polite" title="Inside the Claude app the glass locks to a pane when you click it">
+            click a pane to lock
+          </span>
+        {:else}
+          <span class="value pane" aria-live="polite" title={paneWidth ? "Width of the column under the cursor, in screen pixels" : "No column boundaries were found around the cursor; the picture follows the cursor in both directions meanwhile"}>
+            {paneWidth ? `${paneWidth} px` : "no column here"}
+          </span>
+        {/if}
       {/if}
 
       <span class="spacer"></span>
@@ -794,7 +846,20 @@
     min-width: 0;
     padding: 0 0.3em;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     opacity: 0.7;
+  }
+  /* Locked to a pane: said in the Follow colour, at full strength. */
+  .value.pane.locked {
+    max-width: 22em;
+    color: #ffc800;
+    opacity: 1;
+  }
+  .value.pane.locked.covered {
+    color: inherit;
+    opacity: 0.85;
+    font-style: italic;
   }
   .sep {
     width: 1px;
