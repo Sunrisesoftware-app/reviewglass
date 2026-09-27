@@ -231,15 +231,16 @@ pub fn dock_set_tab(store: State<Store>, tab: String) {
     let _ = store.update(|c| c.dock.drawer_tab = tab);
 }
 
-/// Exclude the dock from capture and put it in its corner. The glass never shows the
-/// dock, and the dock is where the user left it.
+/// Put the dock in its corner, where the user left it.
+///
+/// The dock is not excluded from capture (adr.rg.025): a screenshot tool sees the strip
+/// and the drawer like any window, so the Diff tab can be shown to someone. Only the
+/// glass, the halo and the finder stay hidden from capture — the glass must never
+/// capture itself — and Follow does not read while the pointer is on the dock.
 pub fn prepare(app: &AppHandle) {
     let Some(w) = app.get_webview_window(DOCK_LABEL) else {
         return;
     };
-    if let Err(e) = glass::exclude_from_capture(&w) {
-        eprintln!("reviewglass: dock {e}");
-    }
     let cfg = app.state::<Store>().get().dock;
     // Every start begins with the strip alone, whatever size the window was declared
     // with.
