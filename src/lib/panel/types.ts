@@ -65,6 +65,10 @@ export type Baseline = "head" | "last-edit" | "whole-file";
 export type DiffView = {
   path: string;
   display_path: string;
+  /** The project and the folder in it ("fysiologia-tutkimus/src"); outside a repository, the last two folders. */
+  place: string;
+  /** An agent's own working file (its temp scratchpad, ~/.claude), not the project's. */
+  aside: boolean;
   repo_root: string | null;
   status: DiffStatus;
   /** Null when there is no diff to show. */
@@ -83,8 +87,19 @@ export type DiffView = {
   reason: string | null;
 };
 
+/** A session the listed edits came from (mirrors diff::DiffSession). */
+export type DiffSession = {
+  /** Null for edits whose hook payload named no session. */
+  id: string | null;
+  /** The Sessions tab's name while it runs, else the title or folder found from its edits. */
+  name: string | null;
+  live: boolean;
+};
+
 export type DiffTab = {
   views: DiffView[];
+  /** Each session with a listed edit, the newest edit's first. */
+  sessions: DiffSession[];
   /** False is a different empty list: the hook collector has never run. */
   hook_installed: boolean;
   unreadable: number;

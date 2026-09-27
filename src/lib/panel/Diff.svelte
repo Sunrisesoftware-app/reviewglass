@@ -16,12 +16,25 @@
   //
   // With no file clicked, the Hunks view follows the newest edit. File and New pin the
   // file they opened, so an edit elsewhere does not take the view away.
+  //
+  // By session (adr.rg.024): the list is grouped by the session that made the edits, as
+  // the desktop app's "Edited N files" card is, each file named first and its project
+  // and folder under it. An agent's own working files — its scratchpad, its memory —
+  // sit in a group of their own at the end, closed until opened.
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { html as diffHtml } from "diff2html";
   import "diff2html/bundles/css/diff2html.min.css";
-  import type { Baseline, DiffTab, DiffView, ExplainOutcome, ExplainPreview, FileView } from "./types";
+  import type {
+    Baseline,
+    DiffSession,
+    DiffTab,
+    DiffView,
+    ExplainOutcome,
+    ExplainPreview,
+    FileView,
+  } from "./types";
   import { selection, choose } from "./selection.svelte";
   import { explain, explainReady, loadExplain } from "./explain.svelte";
 
@@ -44,9 +57,50 @@
       ? tab.views.filter((v) => selection.session === null || v.session_id === selection.session)
       : [],
   );
+  // With nothing picked, the newest project file: an agent's scratch file never takes
+  // the view by itself.
   const current = $derived<DiffView | null>(
-    shown.find((v) => v.path === selected) ?? shown[0] ?? null,
+    shown.find((v) => v.path === selected) ?? shown.find((v) => !v.aside) ?? shown[0] ?? null,
   );
+
+  /** One group of the list: a session's project files, or every agent's own files. */
+  type Group = { key: string; session: DiffSession | null; views: DiffView[] };
+  const ASIDE = "\u0000aside";
+  const groups = $derived.by<Group[]>(() => {
+    if (!tab) return [];
+    const bySession = new Map<string, Group>();
+    for (const s of tab.sessions) bySession.set(s.id ?? "", { key: s.id ?? "", session: s, views: [] });
+    const aside: Group = { key: ASIDE, session: null, views: [] };
+    for (const v of shown) {
+      if (v.aside) aside.views.push(v);
+      else bySession.get(v.session_id ?? "")?.views.push(v);
+    }
+    return [...[...bySession.values()].filter((g) => g.views.length > 0), aside].filter((g) => g.views.length > 0);
+  });
+
+  /** Groups closed by hand; the set-aside group starts closed. Not persisted. */
+  let closed = $state<Record<string, boolean>>({});
+  const isClosed = (key: string) => closed[key] ?? key === ASIDE;
+  function toggle(key: string) {
+    closed[key] = !isClosed(key);
+  }
+
+  function groupName(g: Group) {
+    if (g.key === ASIDE) return "Agents' own files";
+    const s = g.session;
+    if (s?.name) return s.name;
+    return s?.id ? `Session ${s.id.slice(0, 8)}` : "Session not named by the hook";
+  }
+
+  function groupTitle(g: Group) {
+    if (g.key === ASIDE)
+      return "Scratchpads and ~/.claude: files agents write for themselves (notes, memory, helper scripts), not the project's";
+    if (g.session && !g.session.live) return "This session is no longer running";
+    return "The files this session changed, newest first";
+  }
+
+  /** The file's own name: the last part of its path. */
+  const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
   const rendered = $derived(
     current?.unified
       ? diffHtml(current.unified, {
@@ -385,13 +439,14 @@
   </p>
 {:else if tab.views.length === 0}
   <p class="state">
-    No edit since ReviewGlass started. When Claude Code edits a file, its diff appears
-    here within a second — in Desktop and CLI sessions alike.
+    No edit yet. When Claude Code edits a file, its diff appears here within a second — in
+    Desktop and CLI sessions alike. Edits from the hour before ReviewGlass started are
+    picked up too.
   </p>
 {:else if shown.length === 0}
   <p class="state">
-    No edit from <strong>{selection.name}</strong> since ReviewGlass started; the other
-    sessions have {tab.views.length}.
+    No edit from <strong>{selection.name}</strong> in this list; the other sessions have
+    {tab.views.length}.
     <button class="link" onclick={() => choose(null)}>Show all sessions</button>
   </p>
 {:else}
@@ -402,20 +457,42 @@
     </p>
   {/if}
   <div class="diff" class:filtered={selection.session !== null}>
-    <ul class="files" aria-label="Files the agent changed, newest first">
-      {#each shown as v (v.path)}
-        <li>
+    <ul class="files" aria-label="Files the agents changed, by session, newest first">
+      {#each groups as g (g.key)}
+        <li class="group" class:ended={g.session !== null && !g.session.live}>
           <button
-            class:active={current?.path === v.path}
-            onclick={() => pick(v.path)}
-            title={v.path}
+            class="ghead"
+            aria-expanded={!isClosed(g.key)}
+            onclick={() => toggle(g.key)}
+            title={groupTitle(g)}
           >
-            <span class="path">{v.display_path}</span>
-            <span class="meta">
-              <span class="stat" class:muted={!v.unified}>{label(v)}</span>
-              <span class="when">{v.tool ?? "edit"} · {ago(v.at_ms)}</span>
-            </span>
+            <span class="caret" aria-hidden="true">{isClosed(g.key) ? "▸" : "▾"}</span>
+            <span class="gname">{groupName(g)}</span>
+            <span class="gcount">{g.views.length}</span>
           </button>
+          {#if !isClosed(g.key)}
+            <ul>
+              {#each g.views as v (v.path)}
+                <li>
+                  <button
+                    class="file"
+                    class:active={current?.path === v.path}
+                    onclick={() => pick(v.path)}
+                    title={v.path}
+                  >
+                    <span class="fname">{baseName(v.display_path)}</span>
+                    {#if v.place}
+                      <span class="place">{v.place}</span>
+                    {/if}
+                    <span class="meta">
+                      <span class="stat" class:muted={!v.unified}>{label(v)}</span>
+                      <span class="when">{v.tool ?? "edit"} · {ago(v.at_ms)}</span>
+                    </span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
         </li>
       {/each}
     </ul>
@@ -628,21 +705,67 @@
     cursor: pointer;
     text-decoration: underline;
   }
-  .files {
+  .files,
+  .files ul {
     list-style: none;
     margin: 0;
     padding: 0;
+  }
+  .files {
     border-right: 1px solid var(--line);
     overflow: auto;
     min-height: 0;
   }
-  .files button {
+  /* A session's header stays in sight while its files scroll under it. */
+  .ghead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
     display: flex;
-    flex-direction: column;
-    gap: 2px;
+    align-items: baseline;
+    gap: 6px;
     width: 100%;
     text-align: left;
-    padding: 6px 8px;
+    padding: 5px 8px 4px 4px;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--fg);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .ghead:hover {
+    background: var(--raised);
+  }
+  .caret {
+    width: 1em;
+    color: var(--muted);
+  }
+  .gname {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .gcount {
+    color: var(--muted);
+    font-weight: normal;
+    font-variant-numeric: tabular-nums;
+  }
+  .group.ended .gname {
+    color: var(--muted);
+    font-weight: normal;
+  }
+  .files .file {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    width: 100%;
+    text-align: left;
+    padding: 5px 8px;
     border: 0;
     border-left: 3px solid transparent;
     background: transparent;
@@ -650,16 +773,21 @@
     font: inherit;
     cursor: pointer;
   }
-  .files button:hover {
+  .files .file:hover {
     background: var(--raised);
   }
-  .files button.active {
+  .files .file.active {
     border-left-color: var(--accent);
     background: var(--raised);
   }
-  .files .path {
+  .files .fname {
     font-family: ui-monospace, Consolas, monospace;
     font-size: 12px;
+    word-break: break-all;
+  }
+  .files .place {
+    font-size: 11px;
+    color: var(--muted);
     word-break: break-all;
   }
   .meta {

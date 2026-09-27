@@ -30,16 +30,12 @@
 use std::fs;
 use std::io::{self, Read};
 use std::path::Path;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use serde_json::Value;
 
-use reviewglass_lib::spool;
-
-/// Events older than this are pruned on every run. An hour is long past any live use
-/// and short enough that a spool nobody reads stays a handful of files.
-const EVENT_TTL: Duration = Duration::from_secs(60 * 60);
+use reviewglass_lib::spool::{self, EVENT_TTL};
 
 /// What one hook invocation leaves in `spool/events/<ts>-<id>.json`. Every field but
 /// `ts` may be absent: the payload is read leniently (adr.rg.011), field by field, and a

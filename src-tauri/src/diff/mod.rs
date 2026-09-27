@@ -26,13 +26,20 @@
 //!
 //! The loop runs on its own thread (as the usage loop does, adr.rg.016): edits happen
 //! whether or not the panel is open, and the Diff tab shows what accumulated.
+//!
+//! The list is kept by session, as the desktop app keeps its "Edited N files" card
+//! (adr.rg.024): each session's newest edits up to a cap of its own, so a busy session
+//! cannot push a quiet one's work out; the edits of the hour before the app started are
+//! picked up from the spool; and an agent's own working files — its scratchpad, its
+//! memory — are marked as set aside, so the panel can keep them out of the way.
 
 pub mod events;
 pub mod file;
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -41,14 +48,22 @@ use serde::Serialize;
 use similar::{ChangeTag, TextDiff};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::session::transcript;
 use crate::spool;
 use events::ChangeEvent;
 
 /// How often the events directory is read. A tick is also the debounce window: every
 /// event for one path within it becomes a single `git diff`.
 const TICK: Duration = Duration::from_millis(300);
-/// Views kept for the panel, newest first, one per path.
-const KEEP: usize = 30;
+/// Views kept for one session, newest first, one per path — its project files and its
+/// set-aside files each up to this many. A single list of thirty across every session
+/// lost a file nine minutes after its edit, with four sessions writing (27.9.2026).
+const KEEP_PER_SESSION: usize = 100;
+/// Views kept in all, newest first.
+const KEEP_TOTAL: usize = 400;
+/// Remembered working copies in all, in bytes. Past it, the oldest views' copies are
+/// dropped: their next edit is measured as a first sighting again, nothing worse.
+const SNAPSHOT_BUDGET: usize = 64 * 1024 * 1024;
 /// Event sent to the dock (the drawer's host) when the list changed.
 pub const UPDATE_EVENT: &str = "diff:update";
 /// A file larger than this is not shown line by line: neither as a new file's diff
@@ -104,6 +119,13 @@ pub struct DiffView {
     pub path: String,
     /// The path relative to the repository root, or the file name outside one.
     pub display_path: String,
+    /// Where the file lives, for the list: the project's folder and the file's folder
+    /// inside it ("fysiologia-tutkimus/src"), or outside a repository the last two
+    /// folders of its path. A worktree is named by the repository it belongs to.
+    pub place: String,
+    /// An agent's own working file — under its temp scratchpad (`%TEMP%\claude`) or
+    /// under `~/.claude` (memory, plans, settings) — rather than the project's.
+    pub aside: bool,
     pub repo_root: Option<String>,
     pub status: DiffStatus,
     /// What the diff is against; absent when there is no diff.
@@ -134,7 +156,11 @@ pub struct DiffState {
     /// as text within the cap: the baseline where git has none, and the measure of
     /// what the latest edit brought everywhere. Dropped with the view.
     snapshots: Mutex<HashMap<String, String>>,
-    /// Events from before this are stale (the app's start).
+    /// A name for each listed session, found from its first edit (`label_for`): what
+    /// the list shows when the session is no longer among the live ones.
+    labels: Mutex<HashMap<String, String>>,
+    /// Events from before this are stale: the app's start less the hour the hook keeps
+    /// them.
     since_ms: u64,
     unreadable: Mutex<usize>,
 }
@@ -150,7 +176,8 @@ impl DiffState {
         Self {
             views: Mutex::new(Vec::new()),
             snapshots: Mutex::new(HashMap::new()),
-            since_ms: now_ms(),
+            labels: Mutex::new(HashMap::new()),
+            since_ms: now_ms().saturating_sub(spool::EVENT_TTL.as_millis() as u64),
             unreadable: Mutex::new(0),
         }
     }
@@ -185,6 +212,20 @@ impl DiffState {
             }
             latest.insert(p, ev);
         }
+        // A name for each session met for the first time, read before the lists are
+        // locked: it may mean reading a transcript's tail.
+        {
+            let mut labels = self.labels.lock();
+            for ev in latest.values() {
+                if let Some(id) = &ev.session_id {
+                    if !labels.contains_key(id) {
+                        if let Some(l) = label_for(ev) {
+                            labels.insert(id.clone(), l);
+                        }
+                    }
+                }
+            }
+        }
         let mut views = self.views.lock();
         let mut snapshots = self.snapshots.lock();
         for p in order {
@@ -202,13 +243,87 @@ impl DiffState {
             views.retain(|v| v.path != view.path);
             views.insert(0, view);
         }
-        views.truncate(KEEP);
+        trim(&mut views);
         snapshots.retain(|p, _| views.iter().any(|v| &v.path == p));
+        within_budget(&views, &mut snapshots, SNAPSHOT_BUDGET);
+        self.labels
+            .lock()
+            .retain(|id, _| views.iter().any(|v| v.session_id.as_ref() == Some(id)));
     }
 
     pub fn views(&self) -> Vec<DiffView> {
         self.views.lock().clone()
     }
+
+    /// The name found for a session from its edits, if any.
+    fn label(&self, id: &str) -> Option<String> {
+        self.labels.lock().get(id).cloned()
+    }
+}
+
+/// Keep the newest views: for each session up to `KEEP_PER_SESSION` project files and
+/// as many set-aside files, and `KEEP_TOTAL` in all, so a busy session cannot push a
+/// quiet one's edits out of the list, nor an agent's scratch files its own project's.
+fn trim(views: &mut Vec<DiffView>) {
+    let mut per: HashMap<(Option<String>, bool), usize> = HashMap::new();
+    let mut kept = 0;
+    views.retain(|v| {
+        let n = per.entry((v.session_id.clone(), v.aside)).or_default();
+        let keep = *n < KEEP_PER_SESSION && kept < KEEP_TOTAL;
+        if keep {
+            *n += 1;
+            kept += 1;
+        }
+        keep
+    });
+}
+
+/// Hold the remembered working copies to `budget` bytes, the newest views' first.
+fn within_budget(views: &[DiffView], snapshots: &mut HashMap<String, String>, budget: usize) {
+    let mut used = 0usize;
+    for v in views {
+        let Some(len) = snapshots.get(&v.path).map(String::len) else {
+            continue;
+        };
+        if used + len > budget {
+            snapshots.remove(&v.path);
+        } else {
+            used += len;
+        }
+    }
+}
+
+/// A session's name as far as its edit can tell: the title the desktop app shows,
+/// already seen or read from the transcript's tail — the parent's, when the edit was a
+/// subagent's — or else the name of the folder the session works in. Session state
+/// only; the conversation is never read (`transcript::read_facts`).
+fn label_for(ev: &ChangeEvent) -> Option<String> {
+    if let Some(t) = ev.session_id.as_deref().and_then(transcript::known_title) {
+        return Some(t);
+    }
+    if let Some(tp) = ev.transcript_path.as_deref().map(Path::new) {
+        let mut candidates = vec![tp.to_path_buf()];
+        // `<project>/<session>/subagents/agent-….jsonl` → `<project>/<session>.jsonl`.
+        if tp
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|n| n == "subagents")
+        {
+            if let Some(session_dir) = tp.parent().and_then(Path::parent) {
+                candidates.push(session_dir.with_extension("jsonl"));
+            }
+        }
+        for c in candidates {
+            if let Some(t) = transcript::read_facts(&c).and_then(|f| f.title) {
+                return Some(t);
+            }
+        }
+    }
+    ev.cwd
+        .as_deref()
+        .map(Path::new)
+        .and_then(Path::file_name)
+        .map(|n| n.to_string_lossy().into_owned())
 }
 
 /// Start the diff loop. Called once from setup.
@@ -257,6 +372,8 @@ pub fn diff_for_with(
     let mut view = DiffView {
         path: path_s.clone(),
         display_path: file_name.clone(),
+        place: place_outside(path),
+        aside: is_aside(&path_s),
         repo_root: None,
         status: DiffStatus::GitFailed,
         baseline: None,
@@ -280,12 +397,22 @@ pub fn diff_for_with(
         view.reason = Some("the file's directory does not exist".into());
         return (view, None);
     };
-    let root = match git(parent, &["rev-parse", "--show-toplevel"]) {
-        Ok(out) if out.status.success() => PathBuf::from(
-            String::from_utf8_lossy(&out.stdout)
-                .trim()
-                .replace('/', "\\"),
-        ),
+    // One call for both: the working tree's root, and the repository's own git
+    // directory (shared by all its worktrees; relative to `parent` when git says so).
+    let located = git(
+        parent,
+        &["rev-parse", "--show-toplevel", "--git-common-dir"],
+    );
+    let (root, common) = match located {
+        Ok(out) if out.status.success() => {
+            let text = String::from_utf8_lossy(&out.stdout).into_owned();
+            let mut lines = text
+                .lines()
+                .map(|l| PathBuf::from(l.trim().replace('/', "\\")));
+            let root = lines.next().unwrap_or_default();
+            let common = lines.next().map(|c| parent.join(c));
+            (root, common)
+        }
         Ok(_) => {
             view.status = DiffStatus::NotInRepo;
             return no_baseline(view, path, previous);
@@ -299,6 +426,7 @@ pub fn diff_for_with(
     view.repo_root = Some(root.display().to_string());
     let rel = relative(&root, path).unwrap_or_else(|| file_name.clone());
     view.display_path = rel.clone();
+    view.place = place_in_repo(&project_name(&root, common.as_deref()), &rel);
     let rel_git = rel.replace('\\', "/");
 
     let tracked = git(&root, &["ls-files", "--error-unmatch", "--", &rel_git])
@@ -566,6 +694,77 @@ fn glob_match(pattern: &str, name: &str) -> bool {
     go(pattern.as_bytes(), name.as_bytes())
 }
 
+/// The project a repository is, by name: the folder holding its git directory, so every
+/// worktree of one repository answers with the repository's name — a worktree's own
+/// folder is named after its branch. The working tree's folder when git's directory is
+/// not a plain `.git` (a submodule's, a bare layout).
+fn project_name(root: &Path, common: Option<&Path>) -> String {
+    let from_common = common
+        .map(|c| PathBuf::from(canonical(c)))
+        .filter(|c| {
+            c.file_name()
+                .is_some_and(|n| n.eq_ignore_ascii_case(".git"))
+        })
+        .and_then(|c| c.parent().and_then(Path::file_name).map(|n| n.to_owned()));
+    from_common
+        .or_else(|| root.file_name().map(|n| n.to_owned()))
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// Where a file in a repository lives: the project and the folder inside it.
+fn place_in_repo(project: &str, rel: &str) -> String {
+    match rel.replace('\\', "/").rsplit_once('/') {
+        Some((dir, _)) if !project.is_empty() => format!("{project}/{dir}"),
+        Some((dir, _)) => dir.to_string(),
+        None => project.to_string(),
+    }
+}
+
+/// Where a file outside any repository lives: the last two folders of its path.
+fn place_outside(path: &Path) -> String {
+    let folders: Vec<String> = path
+        .parent()
+        .map(|p| {
+            p.components()
+                .filter_map(|c| match c {
+                    Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    folders[folders.len().saturating_sub(2)..].join("/")
+}
+
+/// The folders whose files are an agent's own work rather than the project's: its temp
+/// scratchpad and everything under `~/.claude`. Canonical, lower-case, backslashed.
+fn aside_roots() -> &'static [String] {
+    static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
+    ROOTS.get_or_init(|| {
+        let mut roots = vec![std::env::temp_dir().join("claude")];
+        if let Some(home) = dirs::home_dir() {
+            roots.push(home.join(".claude"));
+        }
+        roots
+            .iter()
+            .map(|r| canonical(r).trim_end_matches('\\').to_lowercase())
+            .collect()
+    })
+}
+
+fn is_aside(path: &str) -> bool {
+    is_aside_under(path, aside_roots())
+}
+
+/// Whether `path` lies under one of `roots` (as `aside_roots` gives them).
+fn is_aside_under(path: &str, roots: &[String]) -> bool {
+    let p = path.replace('/', "\\").to_lowercase();
+    roots
+        .iter()
+        .any(|r| p.len() > r.len() && p.starts_with(r.as_str()) && p.as_bytes()[r.len()] == b'\\')
+}
+
 /// `path` relative to `root`, comparing case-insensitively as Windows does. Both are
 /// canonicalised first where they exist: a path can arrive in 8.3 short form
 /// (`RUNNER~1`) while git answers in the long form, and the two must still meet.
@@ -588,7 +787,12 @@ fn canonical(path: &Path) -> String {
     let s = std::fs::canonicalize(path)
         .map(|c| c.to_string_lossy().into_owned())
         .unwrap_or_else(|_| path.to_string_lossy().into_owned());
-    s.trim_start_matches("\\?\\").replace('/', "\\")
+    // canonicalize answers in the verbatim form (`\\?\C:\…`); a hook reports `C:\…`.
+    let s = match s.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => rest.to_string(),
+        _ => s,
+    };
+    s.replace('/', "\\")
 }
 
 /// Run git in `dir` without a console window: this is a GUI process, and a bare
@@ -607,11 +811,27 @@ fn git(dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
 
 // ---- commands -------------------------------------------------------------
 
-/// What the Diff tab shows: the views, and the two facts that explain an empty list.
+/// One session the listed edits came from, for the list's group header.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DiffSession {
+    /// Absent for edits whose hook payload named no session.
+    pub id: Option<String>,
+    /// Its name: the one the Sessions tab shows while it runs, else the title or folder
+    /// found from its edits; absent when there is neither.
+    pub name: Option<String>,
+    /// Still running, as the Sessions tab counts it.
+    pub live: bool,
+}
+
+/// What the Diff tab shows: the views, the sessions they came from, and the two facts
+/// that explain an empty list.
 #[derive(Debug, Clone, Serialize)]
 pub struct DiffTab {
-    /// Newest first. Empty until an agent edits something after start.
+    /// Newest first. Empty until an agent edits something (in the hour before the start
+    /// or since).
     pub views: Vec<DiffView>,
+    /// Each session with a listed edit once, the one with the newest edit first.
+    pub sessions: Vec<DiffSession>,
     /// True once the hook collector has ever run (its events directory exists). False
     /// is a different empty list: the hook is not installed, and no edit will show.
     pub hook_installed: bool,
@@ -619,10 +839,41 @@ pub struct DiffTab {
     pub unreadable: usize,
 }
 
+/// The sessions of `views`, newest edit first, named from `live` (the running
+/// sessions' ids and names) or else by `label`.
+fn sessions_of(
+    views: &[DiffView],
+    live: &HashMap<String, Option<String>>,
+    label: impl Fn(&str) -> Option<String>,
+) -> Vec<DiffSession> {
+    let mut out: Vec<DiffSession> = Vec::new();
+    for v in views {
+        if out.iter().any(|s| s.id == v.session_id) {
+            continue;
+        }
+        let (name, running) = match v.session_id.as_deref() {
+            Some(id) => match live.get(id) {
+                Some(n) => (n.clone().or_else(|| label(id)), true),
+                None => (label(id), false),
+            },
+            None => (None, false),
+        };
+        out.push(DiffSession {
+            id: v.session_id.clone(),
+            name,
+            live: running,
+        });
+    }
+    out
+}
+
 #[tauri::command]
-pub fn panel_diffs(state: State<DiffState>) -> DiffTab {
+pub fn panel_diffs(state: State<DiffState>, panel: State<crate::panel::PanelState>) -> DiffTab {
+    let views = state.views();
+    let live: HashMap<String, Option<String>> = panel.session_names().into_iter().collect();
     DiffTab {
-        views: state.views(),
+        sessions: sessions_of(&views, &live, |id| state.label(id)),
+        views,
         hook_installed: spool::events_dir().is_some_and(|d| d.is_dir()),
         unreadable: *state.unreadable.lock(),
     }
@@ -981,36 +1232,206 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
     }
 
+    /// A view with only what the list logic reads.
+    fn stub(path: &str, session: Option<&str>, aside: bool) -> DiffView {
+        DiffView {
+            path: path.into(),
+            display_path: path.into(),
+            place: String::new(),
+            aside,
+            repo_root: None,
+            status: DiffStatus::NotInRepo,
+            baseline: None,
+            unified: None,
+            added: None,
+            removed: None,
+            fresh: Vec::new(),
+            fresh_from_previous: false,
+            at_ms: 0,
+            session_id: session.map(str::to_string),
+            tool: None,
+            reason: None,
+        }
+    }
+
     #[test]
-    fn the_state_coalesces_a_burst_into_one_view_per_path() {
+    fn a_busy_session_cannot_push_a_quiet_ones_edits_out() {
+        // Newest first: the quiet session's one edit is the oldest of them all.
+        let mut views: Vec<DiffView> = (0..KEEP_PER_SESSION + 40)
+            .map(|i| stub(&format!("busy{i}"), Some("busy"), false))
+            .collect();
+        // The busy session's scratch files have slots of their own.
+        views.extend((0..10).map(|i| stub(&format!("scratch{i}"), Some("busy"), true)));
+        views.push(stub("lukitus.ts", Some("quiet"), false));
+        trim(&mut views);
+        let count = |sess: &str, aside: bool| {
+            views
+                .iter()
+                .filter(|v| v.session_id.as_deref() == Some(sess) && v.aside == aside)
+                .count()
+        };
+        assert_eq!(count("busy", false), KEEP_PER_SESSION);
+        assert_eq!(count("busy", true), 10);
+        assert_eq!(count("quiet", false), 1, "the quiet session's file stays");
+        // The newest of the busy session's are the ones kept.
+        assert_eq!(views[0].path, "busy0");
+
+        // And a total cap over every session.
+        let mut many: Vec<DiffView> = (0..KEEP_TOTAL + 50)
+            .map(|i| stub(&format!("f{i}"), Some(&format!("s{}", i % 20)), false))
+            .collect();
+        trim(&mut many);
+        assert_eq!(many.len(), KEEP_TOTAL);
+        assert_eq!(many[0].path, "f0");
+    }
+
+    #[test]
+    fn remembered_copies_stay_within_their_budget_newest_first() {
+        let views = vec![
+            stub("a", None, false),
+            stub("b", None, false),
+            stub("c", None, false),
+        ];
+        let mut snaps: HashMap<String, String> = ["a", "b", "c"]
+            .iter()
+            .map(|p| (p.to_string(), "x".repeat(40)))
+            .collect();
+        within_budget(&views, &mut snaps, 100);
+        let mut kept: Vec<&str> = snaps.keys().map(String::as_str).collect();
+        kept.sort();
+        assert_eq!(kept, ["a", "b"], "the oldest view's copy goes");
+    }
+
+    #[test]
+    fn an_agents_own_files_are_set_aside_and_the_projects_are_not() {
+        let roots = [
+            r"c:\users\k\appdata\local\temp\claude".to_string(),
+            r"c:\users\k\.claude".to_string(),
+        ];
+        let aside = |p: &str| is_aside_under(p, &roots);
+        assert!(aside(
+            r"C:\Users\K\AppData\Local\Temp\claude\E--p\1234\scratchpad\g\TULOS.md"
+        ));
+        assert!(aside("C:/Users/K/.claude/projects/p/memory/MEMORY.md"));
+        assert!(!aside(
+            r"E:\projects\sunrisesoftware\fysiologia-tutkimus\src\lukitus.ts"
+        ));
+        // A sibling that only starts with the same letters is not under the root.
+        assert!(!aside(r"C:\Users\K\.claude-backup\x.md"));
+        assert!(!aside(r"C:\Users\K\AppData\Local\Temp\claude"));
+        // The real roots are canonical and lower-case.
+        assert!(aside_roots()
+            .iter()
+            .all(|r| *r == r.to_lowercase() && !r.starts_with(r"\\?\")));
+    }
+
+    #[test]
+    fn a_files_place_names_its_project_and_folder() {
+        assert_eq!(
+            place_in_repo("fysiologia-tutkimus", r"src\lukitus.ts"),
+            "fysiologia-tutkimus/src"
+        );
+        assert_eq!(place_in_repo("reviewglass", "README.md"), "reviewglass");
+        assert_eq!(place_in_repo("", "a/b/c.rs"), "a/b");
+        assert_eq!(
+            place_outside(Path::new(r"C:\Users\K\reviewglass-live\clean.py")),
+            "K/reviewglass-live"
+        );
+        assert_eq!(place_outside(Path::new(r"C:\x.txt")), "");
+    }
+
+    #[test]
+    fn a_worktree_is_named_by_its_repository() {
+        let Some(d) = repo("place") else { return };
+        let wt = d.with_file_name(format!("{}-wt", d.file_name().unwrap().to_string_lossy()));
+        let _ = fs::remove_dir_all(&wt);
+        let wt_s = wt.display().to_string();
+        let added = git(&d, &["worktree", "add", "-q", "-b", "wt-branch", &wt_s]);
+        if !added.map(|o| o.status.success()).unwrap_or(false) {
+            let _ = fs::remove_dir_all(&d);
+            return;
+        }
+        fs::create_dir_all(wt.join("src")).unwrap();
+        let f = wt.join("src").join("new.rs");
+        fs::write(&f, "fn main() {}\n").unwrap();
+        let (v, _) = diff_for_with(&event(&f), &[], None);
+        let repo_name = d.file_name().unwrap().to_string_lossy().into_owned();
+        assert_eq!(v.place, format!("{repo_name}/src"));
+        assert_eq!(v.display_path, r"src\new.rs");
+        // The main working tree names itself the same way.
+        let (v, _) = diff_for_with(&event(&d.join("a.txt")), &[], None);
+        assert_eq!(v.place, repo_name);
+        let _ = git(&d, &["worktree", "remove", "--force", &wt_s]);
+        let _ = fs::remove_dir_all(&wt);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn sessions_are_listed_once_newest_edit_first_named_live_or_by_label() {
+        let views = vec![
+            stub("a", Some("s2"), false),
+            stub("b", Some("s1"), false),
+            stub("c", Some("s2"), true),
+            stub("d", None, false),
+            stub("e", Some("s3"), false),
+        ];
+        let live: HashMap<String, Option<String>> = [
+            ("s1".to_string(), Some("Atlas: huone".to_string())),
+            ("s2".to_string(), None),
+        ]
+        .into_iter()
+        .collect();
+        let label = |id: &str| (id != "s1").then(|| format!("folder-{id}"));
+        let got = sessions_of(&views, &live, label);
+        let session = |id: Option<&str>, name: Option<&str>, live: bool| DiffSession {
+            id: id.map(str::to_string),
+            name: name.map(str::to_string),
+            live,
+        };
+        let want = vec![
+            session(Some("s2"), Some("folder-s2"), true),
+            session(Some("s1"), Some("Atlas: huone"), true),
+            session(None, None, false),
+            session(Some("s3"), Some("folder-s3"), false),
+        ];
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn a_session_is_named_from_its_transcript_or_else_its_folder() {
+        let d = std::env::temp_dir().join(format!("reviewglass-label-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(d.join("sess-9").join("subagents")).unwrap();
+        fs::write(
+            d.join("sess-9.jsonl"),
+            "{\"type\":\"custom-title\",\"customTitle\":\"Diff by session\",\"sessionId\":\"sess-9\"}\n",
+        )
+        .unwrap();
+        let agent = d.join("sess-9").join("subagents").join("agent-1.jsonl");
+        fs::write(&agent, "{\"isSidechain\":true}\n").unwrap();
+        // A subagent's edit: its own transcript has no title, the parent's has.
+        let ev = ChangeEvent {
+            session_id: Some("sess-9-label-test".into()),
+            transcript_path: Some(agent.display().to_string()),
+            cwd: Some(r"E:\projects\x\my-folder".into()),
+            ..ChangeEvent::default()
+        };
+        assert_eq!(label_for(&ev).as_deref(), Some("Diff by session"));
+        // No transcript to read: the folder's name.
+        let ev = ChangeEvent {
+            session_id: Some("sess-unknown-label-test".into()),
+            cwd: Some(r"E:\projects\x\my-folder".into()),
+            ..ChangeEvent::default()
+        };
+        assert_eq!(label_for(&ev).as_deref(), Some("my-folder"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_state_starts_with_the_hour_the_hook_keeps() {
         let s = DiffState::new();
         assert!(s.views().is_empty());
-        // No events dir to read here; the coalescing itself is exercised through
-        // diff_for in the tests above. This pins the empty state and the cap.
-        let mut views = s.views.lock();
-        for i in 0..(KEEP + 5) {
-            views.insert(
-                0,
-                DiffView {
-                    path: format!("p{i}"),
-                    display_path: format!("p{i}"),
-                    repo_root: None,
-                    status: DiffStatus::NotInRepo,
-                    baseline: None,
-                    unified: None,
-                    added: None,
-                    removed: None,
-                    fresh: Vec::new(),
-                    fresh_from_previous: false,
-                    at_ms: i as u64,
-                    session_id: None,
-                    tool: None,
-                    reason: None,
-                },
-            );
-        }
-        views.truncate(KEEP);
-        assert_eq!(views.len(), KEEP);
-        assert_eq!(views[0].path, format!("p{}", KEEP + 4));
+        let hour_ago = now_ms() - spool::EVENT_TTL.as_millis() as u64;
+        assert!(s.since_ms <= hour_ago && s.since_ms + 5_000 > hour_ago);
     }
 }
