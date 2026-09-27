@@ -320,6 +320,8 @@ mod tests {
         let mut v = DiffView {
             path: env.display().to_string(),
             display_path: ".env".into(),
+            place: String::new(),
+            aside: false,
             repo_root: None,
             status: DiffStatus::NotInRepo,
             baseline: None,

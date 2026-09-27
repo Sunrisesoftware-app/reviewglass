@@ -11,6 +11,13 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+/// How long a change event stays in `spool/events` when no app reads it: the hook
+/// prunes anything older on every run, and the app picks up what is younger when it
+/// starts (adr.rg.024), so an edit made in the hour before the start is not lost. An
+/// hour is short enough that a spool nobody reads stays a handful of files.
+pub const EVENT_TTL: Duration = Duration::from_secs(60 * 60);
 
 /// `~/.reviewglass/spool`: under the profile root, beside the collectors' binaries,
 /// and deliberately **not** under AppData.
