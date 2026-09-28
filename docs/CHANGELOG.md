@@ -4,6 +4,26 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 7 (28.9.2026, later): a lock centres the glass at Fit's width — adr.rg.027 amended
+
+The owner's first use of the placement below: the locked pane and the glass beside it
+were right, but the reading area was now about half the locked pane. The logic error was
+ours: two panes of one size hold text of one size, so a glass the neighbour's size shows
+half a pane at 200 % and magnifies nothing more. The build before it, whose reading area
+was the whole pane (Fit: the glass as wide as the pane times the zoom), had been right.
+The owner's call: back to that, with the glass centring on the screen when a pane is
+locked, to be moved by hand.
+
+- A lock from none centres the glass on the screen once Fit has its width (without Fit's
+  waits: a lock is the user's act). A lock that moves between panes, by a click or an
+  arrow, leaves the glass where it is; only Fit's width follows.
+- The placement over the neighbour, its three-quarter height, its re-placing and the
+  hand-move tracking are gone; the glass's size and place are stored as before.
+- Kept: the tab outside the corner, the window cut to the glass and the tab, Ctrl+Alt+←/→
+  and focused ←/→, neighbours from the tree, the header title through the tree.
+
+adr.rg.027 amended in the model (Atlas #399). 148 tests, clippy and svelte-check clean.
+
 ## Session 7 (28.9.2026): the glass's place follows the locked pane — 28.9.2026 (0.1.0)
 
 The owner's hand on the frame: "the pane lock steadied the use and made it controlled —

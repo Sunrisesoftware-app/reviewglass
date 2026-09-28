@@ -27,12 +27,14 @@
   // window covers the box (the glass holds), and over the app with nothing locked says
   // that a click would lock — the affordance with the mechanism.
   //
-  // The glass's place follows the lock (adr.rg.027): the core puts it over the
-  // neighbouring pane, and Fit stands aside while a pane is locked. A tab hangs below
-  // the glass's bottom-right corner, outside it, with a move handle and a hide button,
-  // so the glass is moved or put away without the pointer crossing the picture. The
-  // window is that much taller and the core cuts it to the glass and the tab. The arrow
-  // keys move the lock to the neighbouring pane.
+  // A pane locked from none centres the glass on the screen at Fit's width, so the
+  // reading area is the whole pane, magnified (adr.rg.027 as amended 28.9.2026: a glass
+  // the neighbouring pane's size read half a pane at 200 %, and the lens is the point).
+  // A lock that moves between panes leaves the glass where it is; only Fit's width
+  // follows. A tab hangs below the glass's bottom-right corner, outside it, with a move
+  // handle and a hide button, so the glass is moved or put away without the pointer
+  // crossing the picture. The window is that much taller and the core cuts it to the
+  // glass and the tab. The arrow keys move the lock to the neighbouring pane.
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -167,7 +169,7 @@
   let waitDue = false;
   async function fitToPane() {
     if (fitting) return;
-    if (!paneFit || !paneLock || mode !== "follow" || !paneWidth || frame.locked) {
+    if (!paneFit || !paneLock || mode !== "follow" || !paneWidth) {
       mlog(`fit skip fit=${paneFit ? 1 : 0} lock=${paneLock ? 1 : 0} mode=${mode} pane=${paneWidth ?? "none"} zoomBack=${zoomDerived ? 1 : 0}`);
       if (zoomDerived) {
         zoom = userZoom; // no column to fit: the user's own zoom is back
@@ -227,6 +229,41 @@
     } finally {
       fitting = false;
     }
+  }
+
+  // A pane locked from none: centre the glass on the screen once Fit has its width. The
+  // pane's width reaches the glass on the next frame poll (glass:pane); when it was
+  // already the same no event comes, so a timer centres anyway.
+  let centrePending = false;
+  let centreTimer: ReturnType<typeof setTimeout> | undefined;
+  function onFrameStatus(next: FrameStatus) {
+    const was = frame.locked;
+    frame = next;
+    if (!was && next.locked && mode === "follow") {
+      centrePending = true;
+      clearTimeout(centreTimer);
+      centreTimer = setTimeout(() => void centreNow(), 250);
+    }
+  }
+
+  async function centreNow() {
+    if (!centrePending) return;
+    centrePending = false;
+    clearTimeout(centreTimer);
+    // A lock is the user's act: Fit applies at once, without its waits.
+    waitDue = true;
+    try {
+      await fitToPane();
+    } finally {
+      waitDue = false;
+    }
+    const scale = dpr();
+    const s = screen as Screen & { availLeft?: number; availTop?: number };
+    const size = await win.outerSize();
+    const x = Math.round((s.availLeft ?? 0) * scale + (screen.availWidth * scale - size.width) / 2);
+    const y = Math.round((s.availTop ?? 0) * scale + (screen.availHeight * scale - size.height) / 2);
+    mlog(`centre on lock ${x},${y} ${size.width}x${size.height}`);
+    await win.setPosition(new PhysicalPosition(x, y));
   }
 
   // The chrome grows in steps, picked from a menu. The glass exists because things
@@ -521,11 +558,12 @@
         }),
       );
       frame = await invoke<FrameStatus>("frame_state");
-      unlisten.push(await listen<FrameStatus>("frame:status", (ev) => (frame = ev.payload)));
+      unlisten.push(await listen<FrameStatus>("frame:status", (ev) => onFrameStatus(ev.payload)));
       unlisten.push(
         await listen<{ width: number | null }>("glass:pane", (ev) => {
           paneWidth = ev.payload.width;
-          void fitToPane();
+          if (centrePending) void centreNow();
+          else void fitToPane();
         }),
       );
       ready = true;
@@ -661,9 +699,7 @@
         disabled={!paneLock}
         title={!paneLock
           ? "Fit needs the column lock"
-          : frame.locked
-            ? "While a pane is locked the glass takes the neighbouring pane's size; Fit applies again when the lock is released"
-            : paneFit
+          : paneFit
             ? "Fit is on: the window's width follows the column at this zoom; the zoom comes down when a column is too wide for the screen"
             : "Let the window's width follow the column at this zoom"}
         aria-label="Fit width to the column"
@@ -747,7 +783,7 @@
   <div class="tab {mode}" style="--ui: {uiScale}; height: {tabH}px" role="toolbar" aria-label="Move or hide the glass" bind:this={tabEl}>
     <button
       class="move"
-      title="Drag to move the glass. While a pane is locked the glass stays where you put it until the lock moves to another pane"
+      title="Drag to move the glass; it stays where you put it while the lock moves between panes"
       aria-label="Move the glass"
       onpointerdown={(e) => {
         if (e.button !== 0) return;
