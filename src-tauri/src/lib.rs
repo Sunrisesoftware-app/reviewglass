@@ -167,6 +167,8 @@ pub fn run() {
             picture::picture_show,
             frame::frame_state,
             frame::frame_release,
+            frame::frame_step,
+            glass::glass_set_shape,
             diff::file::panel_file_view,
             explain::explain_settings,
             explain::explain_set,

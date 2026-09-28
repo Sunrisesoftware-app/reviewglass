@@ -49,6 +49,11 @@ const MAIN_WINDOW_PAGE: &str = "Claude";
 const CLAUDE_EXE: &str = "claude.exe";
 /// Ancestors walked from the element under the cursor before giving up.
 const MAX_DEPTH: usize = 40;
+/// The header row: the pane's top this many pixels. Its button sat 13–37 px under the
+/// pane's top on 27.9.2026.
+const HEADER_BAND: i32 = 48;
+/// Elements visited looking for the header's button through the tree before giving up.
+const HEADER_WALK_MAX: usize = 200;
 /// A point that is not in a Code pane (the sidebar, another app) is not asked again
 /// until the cursor has moved this far from it, or `MISS_HOLD` has passed: outside the
 /// panes the loop would otherwise read every poll.
@@ -215,13 +220,17 @@ pub(crate) mod uia {
     };
 
     use super::{
-        header_points, is_claude_image, is_pane_class, title_from_name, title_from_page, MAX_DEPTH,
+        header_points, is_claude_image, is_pane_class, title_from_name, title_from_page,
+        HEADER_BAND, HEADER_WALK_MAX, MAX_DEPTH,
     };
 
     /// A UI Automation client, on the thread that made it.
     pub struct Reader {
         uia: IUIAutomation,
         walker: IUIAutomationTreeWalker,
+        /// The raw view: a pane's neighbours are its siblings there (the pane host, and
+        /// the resize handles between panes, appear in it only).
+        raw: IUIAutomationTreeWalker,
     }
 
     impl Reader {
@@ -239,7 +248,10 @@ pub(crate) mod uia {
                 let walker = uia
                     .ControlViewWalker()
                     .map_err(|e| format!("UI Automation has no tree walker: {e}"))?;
-                Ok(Self { uia, walker })
+                let raw = uia
+                    .RawViewWalker()
+                    .map_err(|e| format!("UI Automation has no tree walker: {e}"))?;
+                Ok(Self { uia, walker, raw })
             }
         }
 
@@ -320,7 +332,9 @@ pub(crate) mod uia {
                 let class = unsafe { el.CurrentClassName() }.ok()?.to_string();
                 if is_pane_class(&class) {
                     let rect = rect_of(&el)?;
-                    let title = self.header_title(rect);
+                    let title = self
+                        .header_title(rect)
+                        .or_else(|| self.header_title_in_tree(&el, rect));
                     return Some(Locked {
                         element: el,
                         rect,
@@ -343,6 +357,82 @@ pub(crate) mod uia {
                 el = unsafe { self.walker.GetParentElement(&el) }.ok()?;
                 if el.as_raw().is_null() {
                     return None;
+                }
+            }
+            None
+        }
+    }
+
+    impl Reader {
+        /// The session title on a pane's header row, read through the tree rather than
+        /// by points — for a header that lies under the glass (adr.rg.027). Only
+        /// elements within the header row (the pane's top 48 px) are named; a subtree
+        /// that starts below it is never entered.
+        pub fn header_title_in_tree(
+            &self,
+            pane: &IUIAutomationElement,
+            (_, top, _, _): (i32, i32, i32, i32),
+        ) -> Option<String> {
+            let band = top + HEADER_BAND;
+            let mut queue = std::collections::VecDeque::from([pane.clone()]);
+            let mut visited = 0;
+            while let Some(el) = queue.pop_front() {
+                // SAFETY: tree navigation and read-only properties of elements this
+                // thread holds.
+                let mut child = unsafe { self.raw.GetFirstChildElement(&el) }.ok();
+                while let Some(c) = child.take().filter(|c| !c.as_raw().is_null()) {
+                    visited += 1;
+                    if visited > HEADER_WALK_MAX {
+                        return None;
+                    }
+                    let next = unsafe { self.raw.GetNextSiblingElement(&c) }.ok();
+                    let Some((_, t, _, b)) = rect_of(&c) else {
+                        child = next;
+                        continue;
+                    };
+                    if t < band {
+                        if b <= band {
+                            let name = unsafe { c.CurrentName() }.ok().map(|n| n.to_string());
+                            if let Some(title) = name.as_deref().and_then(title_from_name) {
+                                return Some(title.to_string());
+                            }
+                        }
+                        queue.push_back(c);
+                    }
+                    child = next;
+                }
+            }
+            None
+        }
+
+        /// The Code pane beside `pane`: the next one to the right (`forward`) or to
+        /// the left, found among its siblings in the raw view — the resize handles
+        /// between panes are skipped. Not by a point beside it: the glass may be lying
+        /// there (adr.rg.027). `None` at the end of the row, and for a session's own
+        /// window, which has no neighbours.
+        pub fn neighbour(
+            &self,
+            pane: &IUIAutomationElement,
+            forward: bool,
+        ) -> Option<IUIAutomationElement> {
+            let mut el = pane.clone();
+            for _ in 0..16 {
+                // SAFETY: tree navigation from an element this thread holds.
+                el = unsafe {
+                    if forward {
+                        self.raw.GetNextSiblingElement(&el)
+                    } else {
+                        self.raw.GetPreviousSiblingElement(&el)
+                    }
+                }
+                .ok()?;
+                if el.as_raw().is_null() {
+                    return None;
+                }
+                // SAFETY: a read-only property of an element this thread holds.
+                let class = unsafe { el.CurrentClassName() }.ok()?.to_string();
+                if is_pane_class(&class) {
+                    return Some(el);
                 }
             }
             None
