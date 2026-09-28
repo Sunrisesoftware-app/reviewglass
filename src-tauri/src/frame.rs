@@ -342,8 +342,9 @@ fn covering(root: isize, claude_pid: u32, src: SourceRect) -> Option<String> {
         DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindow, GetWindowLongW, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId,
-        IsIconic, IsWindowVisible, GWL_EXSTYLE, GW_HWNDPREV, WS_EX_TRANSPARENT,
+        GetClassNameW, GetWindow, GetWindowLongW, GetWindowRect, GetWindowTextW,
+        GetWindowThreadProcessId, IsIconic, IsWindowVisible, GWL_EXSTYLE, GW_HWNDPREV,
+        WS_EX_TRANSPARENT,
     };
 
     let own = std::process::id();
@@ -393,17 +394,28 @@ fn covering(root: isize, claude_pid: u32, src: SourceRect) -> Option<String> {
                     let title = String::from_utf16_lossy(&buf[..n.max(0) as usize])
                         .trim()
                         .to_string();
-                    return Some(if title.is_empty() {
-                        "another window".into()
-                    } else {
-                        title
-                    });
+                    if !title.is_empty() {
+                        return Some(title);
+                    }
+                    let mut cls = [0u16; 64];
+                    let n = GetClassNameW(h, &mut cls);
+                    let class = String::from_utf16_lossy(&cls[..n.max(0) as usize]);
+                    return Some(untitled_name(&class).into());
                 }
             }
             h = next;
         }
     }
     None
+}
+
+/// What the bar calls a covering window that has no title: the taskbar by its class
+/// (measured 28.9.2026: `Shell_TrayWnd`, untitled), anything else as a window.
+fn untitled_name(class: &str) -> &'static str {
+    match class {
+        "Shell_TrayWnd" | "Shell_SecondaryTrayWnd" => "the taskbar",
+        _ => "another window",
+    }
 }
 
 // ---- commands -------------------------------------------------------------
@@ -518,6 +530,13 @@ mod tests {
                 println!("   covered: {:?}", covering(root.hwnd, root.pid, src));
             }
         }
+    }
+
+    #[test]
+    fn an_untitled_covering_window_is_named_by_what_it_is() {
+        assert_eq!(untitled_name("Shell_TrayWnd"), "the taskbar");
+        assert_eq!(untitled_name("Shell_SecondaryTrayWnd"), "the taskbar");
+        assert_eq!(untitled_name("Chrome_WidgetWin_1"), "another window");
     }
 
     #[test]
