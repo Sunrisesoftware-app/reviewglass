@@ -4,6 +4,28 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 7 (28.9.2026, later still): a covered box keeps moving; a box is moved onto the screen, never cut — 28.9.2026 (0.1.0)
+
+The owner: the reading area was right and the centring fine, but in Follow the picture
+looked slightly stretched and stuck, and the box in the pane was about 80 % of it. Measured
+with their leave (the release build with a debug port, one click on the pane's bottom
+padding to lock, the cursor moved by the agent, read over CDP and user32):
+
+- The bar said "held — another window in front". The box was where the click had been —
+  x −11, y 1141, 795×286 — reaching over the taskbar (`Shell_TrayWnd`, untitled, y 1392).
+  Covered held the box; the held box never entered the pane; so it stayed covered. The
+  box also hung 11 px off the screen, was cropped, and was drawn stretched over the glass.
+- Fixed: covered stops only the picture (nothing is published); the box keeps following
+  the cursor inside the frame, so the covering test clears as soon as the box leaves the
+  window in front. Every Follow and Lens box is moved onto its monitor rather than cut.
+  An untitled covering window is named: the taskbar by its class.
+
+Measured after the fix, same leave: locked to "SCC2 kehitys jatkuu", not covered, the box
+794×286 inside the 795-px pane at three cursor points exactly as computed (the left and
+bottom edges clamped, the top-left corner clamped); at the pane's left edge the engine's
+frame was 794×286 = the canvas 1588×572 / zoom 2 — no stretch. 150 tests, clippy and
+svelte-check clean.
+
 ## Session 7 (28.9.2026, later): a lock centres the glass at Fit's width — adr.rg.027 amended
 
 The owner's first use of the placement below: the locked pane and the glass beside it

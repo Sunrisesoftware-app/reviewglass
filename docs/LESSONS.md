@@ -5,6 +5,27 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## A hold released by what it holds never releases (2026-09-28)
+
+A window of another application over the box was to hold the glass. The hold kept the
+box where it was, and the covering test looked at the box. On the owner's first lock the
+box still sat where the click had been, on the pane's bottom edge, and reached over the
+taskbar: covered, so held; held, so it never moved into the pane; never moved, so still
+covered. The glass stayed stuck, and a box half off the screen was cropped and drawn
+stretched. Every unit test had passed, because each part was right alone. Lesson: when a
+state stops the thing that would end it, the loop is closed — let the covered state stop
+only the picture, and let the box keep moving; and move a box onto the screen rather than
+cutting it, so a picture is never stretched to fill a glass.
+
+## A proposal has to be checked against what the tool is for (2026-09-28)
+
+The glass was placed over the neighbouring pane at that pane's size. It looked controlled
+and it was built, reviewed and decided — and at 200 % it read half a pane, because two
+panes of one size hold text of one size and a magnifier at the same size magnifies
+nothing more. The owner saw it in a minute. Lesson: before building a layout for the
+glass, compute the reading area it gives: the glass is the pane times the zoom, or it is
+not a magnifier.
+
 ## A reader that deletes what it reads cannot look back (2026-09-27)
 
 The Diff tab was to pick up "the hour before the start" from the spool, where the hook

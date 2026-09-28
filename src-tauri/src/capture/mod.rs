@@ -113,9 +113,12 @@ pub struct FrameData {
 #[derive(Clone, Copy, Debug)]
 struct MonitorGeom {
     handle: isize,
-    /// Top-left of the monitor in virtual-desktop coordinates.
+    /// The monitor's rectangle in virtual-desktop coordinates: `[left, right) × [top,
+    /// bottom)`.
     left: i32,
     top: i32,
+    right: i32,
+    bottom: i32,
 }
 
 /// State shared between the capture thread and the command handlers.
@@ -739,11 +742,12 @@ impl Engine {
         } else {
             None
         };
-        let covered = frame.is_some() && self.shared.covered.load(Ordering::Relaxed);
-        // Follow holds while the pointer is over the glass or the dock, and while a
-        // window of another application covers its box; every mode holds while a menu
-        // is open.
-        let hold = held || (v.mode == Mode::Follow && (v.hovered || over_dock || covered));
+        // Follow holds while the pointer is over the glass or the dock; every mode holds
+        // while a menu is open. A window of another application over the box does not
+        // hold the box, only the picture (nothing is published while covered): a held
+        // box never left the window that covered it, and the glass stayed stuck (the
+        // live check of 28.9.2026, the taskbar under a box held at the click).
+        let hold = held || (v.mode == Mode::Follow && (v.hovered || over_dock));
         // Inside the Claude app the pane comes from the app, never from pixels.
         let in_app = self.shared.in_app.load(Ordering::Relaxed);
         let want_pane =
@@ -792,6 +796,15 @@ impl Engine {
                 h: src_h,
             },
         };
+        let center = (rect.x + (rect.w / 2) as i32, rect.y + (rect.h / 2) as i32);
+        let geom = monitor_at(center).ok_or(CaptureError::NoMonitor)?;
+        // On its monitor, whole: a box hanging off the edge was cropped to what was on
+        // screen, and the smaller picture was drawn stretched over the whole glass.
+        let rect = if v.mode == Mode::Frozen {
+            rect
+        } else {
+            onto_monitor(rect, geom)
+        };
         let prev = std::mem::replace(&mut *self.shared.source.lock(), rect);
         if prev != rect && crate::measure::is_on() {
             let mut at = self.src_logged.lock();
@@ -815,8 +828,6 @@ impl Engine {
             }
         }
 
-        let center = (rect.x + (rect.w / 2) as i32, rect.y + (rect.h / 2) as i32);
-        let geom = monitor_at(center).ok_or(CaptureError::NoMonitor)?;
         let running = self.shared.monitor.lock().map(|m| m.handle);
         if running != Some(geom.handle) {
             self.attach(geom)?;
@@ -885,6 +896,24 @@ impl Engine {
             let _ = c.stop();
         }
         *self.shared.monitor.lock() = None;
+    }
+}
+
+/// A source rectangle moved (not cut) onto its monitor, so every pixel it asks for is
+/// on screen. Larger than the monitor on an axis, it starts at the monitor's edge there.
+fn onto_monitor(r: SourceRect, m: MonitorGeom) -> SourceRect {
+    let axis = |v: i32, len: u32, lo: i32, hi: i32| {
+        if len as i32 >= hi - lo {
+            lo
+        } else {
+            v.clamp(lo, hi - len as i32)
+        }
+    };
+    SourceRect {
+        x: axis(r.x, r.w, m.left, m.right),
+        y: axis(r.y, r.h, m.top, m.bottom),
+        w: r.w,
+        h: r.h,
     }
 }
 
@@ -965,6 +994,8 @@ fn monitor_at((x, y): (i32, i32)) -> Option<MonitorGeom> {
             handle: h.0 as isize,
             left: r.left,
             top: r.top,
+            right: r.right,
+            bottom: r.bottom,
         })
     }
 }
@@ -1016,6 +1047,8 @@ mod tests {
             handle: 1,
             left: 0,
             top: 0,
+            right: 1920,
+            bottom: 1080,
         });
         e.shared.attached_seq.store(0, Ordering::Relaxed);
         e.shared.seq.store(frames_published, Ordering::Relaxed);
@@ -1131,6 +1164,38 @@ mod tests {
         // A box wider than the frame sits centred on it.
         let r = inside(f, (1200, 600), 629, 120);
         assert_eq!(r.x, 936 - 50);
+    }
+
+    #[test]
+    fn a_box_off_the_screen_is_moved_onto_it_not_cut() {
+        let m = MonitorGeom {
+            handle: 0,
+            left: 0,
+            top: 0,
+            right: 2560,
+            bottom: 1440,
+        };
+        let r = |x, y| SourceRect {
+            x,
+            y,
+            w: 795,
+            h: 286,
+        };
+        // The box the live check found: 11 px off the left edge.
+        assert_eq!(onto_monitor(r(-11, 1141), m), r(0, 1141));
+        // Off the bottom and the right.
+        assert_eq!(onto_monitor(r(2000, 1300), m), r(2560 - 795, 1440 - 286));
+        // Inside: untouched.
+        assert_eq!(onto_monitor(r(135, 600), m), r(135, 600));
+        // A second monitor to the left, at negative x.
+        let left = MonitorGeom {
+            handle: 1,
+            left: -1920,
+            top: 0,
+            right: 0,
+            bottom: 1080,
+        };
+        assert_eq!(onto_monitor(r(-400, 100), left), r(-795, 100));
     }
 
     #[test]
