@@ -3,9 +3,21 @@
   // in Follow mode. Its whole purpose is peripheral: with the eyes on the glass, the
   // ring says where on the screen the pointer actually is. The window is click-through
   // and excluded from capture (see lib.rs), so it never lands in the picture.
+  //
+  // It breathes only while shown: a hidden webview kept running the animation at the
+  // display's rate, a steady cost for a window nobody saw (28.9.2026).
+  import { onMount } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
+
+  let shown = $state(false);
+  onMount(() => {
+    let unlisten: (() => void) | undefined;
+    void listen<boolean>("halo:shown", (ev) => (shown = ev.payload)).then((u) => (unlisten = u));
+    return () => unlisten?.();
+  });
 </script>
 
-<div class="stage" aria-hidden="true"><div class="halo"></div></div>
+<div class="stage" aria-hidden="true"><div class="halo" class:live={shown}></div></div>
 
 <style>
   :global(html, body) {
@@ -31,8 +43,10 @@
     box-shadow:
       0 0 10px 3px rgba(255, 140, 0, 0.55),
       inset 0 0 8px 2px rgba(255, 140, 0, 0.35);
-    animation: breathe 1.6s ease-in-out infinite;
     pointer-events: none;
+  }
+  .halo.live {
+    animation: breathe 1.6s ease-in-out infinite;
   }
   @keyframes breathe {
     0%,

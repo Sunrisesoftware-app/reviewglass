@@ -42,6 +42,7 @@
   import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 
   type GlassState = {
+    visible: boolean;
     zoom: number;
     frozen: boolean;
     lens: boolean;
@@ -63,6 +64,7 @@
   const ACTIVE_MS = 1000 / 30;
   const IDLE_MS = 1000 / 5;
   const IDLE_AFTER = 20; // unchanged polls before dropping to the idle rate
+  const HIDDEN_MS = 1000; // the poll while the glass is hidden
   const ZOOM_MIN = 1.5;
   const ZOOM_MAX = 4.0;
   const ZOOM_STEP = 0.25;
@@ -83,6 +85,9 @@
   const zoomDerived = $derived(Math.abs(zoom - userZoom) > 0.001);
   let frozen = $state(false);
   let lens = $state(false);
+  /** The glass is shown. Hidden, it asks for a frame once a second, not thirty times:
+   *  a hidden glass has no picture to show (28.9.2026). */
+  let shown = $state(false);
   let halo = $state(true);
   let uiScale = $state(1);
   let paneLock = $state(true);
@@ -376,8 +381,10 @@
       }
       error = null;
       // While following the cursor the source moves even when the screen does not, so
-      // stay at the active rate; only a frozen static source is truly idle.
+      // stay at the active rate; only a frozen static source is truly idle, and a
+      // hidden glass has nothing to show.
       if (frozen && unchanged >= IDLE_AFTER) delay = IDLE_MS;
+      if (!shown) delay = HIDDEN_MS;
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
       delay = IDLE_MS;
@@ -516,6 +523,7 @@
       error = null;
       zoom = s.zoom;
       userZoom = s.zoom;
+      shown = s.visible;
       frozen = s.frozen;
       lens = s.lens;
       halo = s.halo;
@@ -544,6 +552,7 @@
       );
       unlisten.push(
         await listen<GlassState>("glass:state", (ev) => {
+          shown = ev.payload.visible;
           zoom = ev.payload.zoom;
           if (!zoomDerived) userZoom = zoom;
           frozen = ev.payload.frozen;

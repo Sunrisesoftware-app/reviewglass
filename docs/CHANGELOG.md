@@ -4,6 +4,27 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 7 (28.9.2026, afternoon): a hidden ReviewGlass costs almost nothing — 28.9.2026 (0.1.0)
+
+The owner: with ReviewGlass on for long, typing in the Claude app stalls now and then,
+the fan speeding up with it, and closing ReviewGlass seemed to cure it at once. Measured
+with their leave, read-only apart from one click to lock a pane:
+
+- Freshly started, in every state (glass hidden; shown and locked; shown without UI
+  Automation) the Claude app's UI thread answered WM_NULL in under 6 ms, never over
+  50 ms, and the Claude app's CPU stayed at 1.7–2.7 % of the machine (1.65 % without
+  ReviewGlass). A 90-minute monitor with the glass hidden recorded the owner's stalls at
+  12:22–12:26: the Claude UI thread's worst answer 26.6 ms, ReviewGlass steady; a
+  per-second burst logger then caught the bursts in the sessions' own tools (node at 6 %
+  of the machine, workerd), with ReviewGlass nowhere near the top.
+- But hidden, ReviewGlass was not idle: ~120 ms of CPU a second (12 % of a core) across
+  its tree — the WebView2 GPU process 36 ms/s, the browser process 30, a page 22 — because
+  the halo's page ran its breathing animation in a hidden window, and the hidden glass
+  asked for a frame thirty times a second.
+- Fixed: the halo animates only while shown (`halo:shown`); the hidden glass polls once a
+  second; the frame loop rests while it has nothing to watch. Measured after: ~4.7 ms of
+  CPU a second across the tree (0.5 % of a core), the GPU process at 0.
+
 ## Session 7 (28.9.2026, later still): a covered box keeps moving; a box is moved onto the screen, never cut — 28.9.2026 (0.1.0)
 
 The owner: the reading area was right and the centring fine, but in Follow the picture

@@ -5,6 +5,16 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## A hidden webview is not an idle one (2026-09-28)
+
+The halo's ring breathes with a CSS animation. With the halo switched off its window was
+hidden — and its page went on animating at the display's rate, keeping the WebView2 GPU
+process and the browser process busy for a window nobody could see; the hidden glass
+went on asking for frames thirty times a second. Together about 12 % of a core, all day,
+found only when the owner's stalls sent us measuring (the stalls themselves were the
+sessions' own tools). Lesson: hiding a window stops nothing in its page; every page that
+animates or polls must be told it is hidden and stop.
+
 ## A hold released by what it holds never releases (2026-09-28)
 
 A window of another application over the box was to hold the glass. The hold kept the
