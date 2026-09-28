@@ -96,6 +96,11 @@ collector replaced it in `settings.json` on 11.9.2026.
   that needs its own privacy decision first (spec v0.3, section 7).
 - **P8** (public release) waits on name clearance (adr.rg.008); the repository itself is
   already public.
+- **Session 7 (27–28.9.2026), polish before new phases** by the owner's verdict ("it must
+  feel part of the Claude app"): the Diff tab by session (adr.rg.024), the drawer's own
+  picture (adr.rg.025), the frame — a click locks the glass to a Code pane (adr.rg.026),
+  a lock centres the glass at Fit's width with a move/hide tab and arrow keys (adr.rg.027,
+  amended), the diff window (adr.rg.028). All observed by the owner.
 
 ## Layout
 
@@ -114,7 +119,10 @@ collector replaced it in `settings.json` on 11.9.2026.
 | `src-tauri/src/bin/hook.rs` | `rg.hook-collector` (PostToolUse → `spool/events`) |
 | `src-tauri/src/diff/` | `rg.diff-service` and the events reader: git diff per changed path, the Diff tab's data |
 | `src-tauri/src/explain/` | `rg.explain-service` (provider-agnostic) and `backend/` (`rg.explain-backend`: local, remote, the key in Credential Manager) — the only place a provider is named |
-| `src-tauri/src/follow_session.rs` | Follow chooses the session (adr.rg.022): the Code pane's header title under the cursor, by UI Automation |
+| `src-tauri/src/follow_session.rs` | Follow chooses the session (adr.rg.022): the Code pane's header title under the cursor, by UI Automation; `uia::Reader` also serves the frame (lock_at, neighbour, the header title through the tree) |
+| `src-tauri/src/frame.rs` | the frame (adr.rg.026–027): a click locks the glass to a pane, the windows in front, the arrow steps, the locked pane's neighbour |
+| `src-tauri/src/diffwin.rs` | the diff window (adr.rg.028): created on open, placed, its place remembered |
+| `src-tauri/src/picture.rs` | the drawer's own picture (adr.rg.025): WebView2 CapturePreview → clipboard and Pictures\ReviewGlass |
 | `src-tauri/src/bin/statusline.rs` | `rg.statusline-collector` |
 | `src/routes/glass`, `dock`, `halo`, `finder` | the four windows; `src/lib/panel/` holds the drawer's tabs (Sessions, Diff, Settings) |
 | `scripts/adr-from-model.mjs` | renders `docs/adr/` from the Atlas model |
@@ -140,3 +148,14 @@ Full stories in `docs/LESSONS.md`. The short forms:
   start panicked 5 of 5. A panic is logged to `~/.reviewglass/panic.log`: read it first.
 - **A packaged app's children write to an AppData nobody else can see** (18.9.2026).
   The first live diff passed every agent-side check and showed the owner nothing.
+- **Compute the reading area before building a layout for the glass** (28.9.2026). A glass
+  the neighbouring pane's size read half a pane at 200 %: the glass is the pane times the
+  zoom, or it is not a magnifier.
+- **A hold released by what it holds never releases** (28.9.2026). Covered held the box, so
+  the box never left the window covering it. A state may stop the picture, not the thing
+  that would end the state; a box is moved onto the screen, never cut.
+- **A hidden webview is not an idle one** (28.9.2026). A hidden page kept animating and
+  polling (12 % of a core); every page that animates or polls is told it is hidden.
+- **When the owner reports a slowdown, measure it before fixing it** (28.9.2026): per-process
+  CPU per second, the Claude window's WM_NULL round trips, and the times the owner names.
+  The stalls were the sessions' own builds; the measuring found ReviewGlass's idle cost.

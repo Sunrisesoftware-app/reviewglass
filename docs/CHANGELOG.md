@@ -4,6 +4,22 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 7 closes — 28.9.2026 (0.1.0)
+
+The owner at the close: "everything works". Session 7 was polish, by the owner's verdict
+that ReviewGlass must feel part of the Claude app before anything new: the Diff tab by
+session (adr.rg.024), the drawer's own picture (adr.rg.025), the frame (adr.rg.026), a lock
+that centres the glass at Fit's width with a tab and arrow keys (adr.rg.027, amended after
+its first use), and the diff window (adr.rg.028); on the way, a stuck covered box and a
+stretched picture fixed, and ReviewGlass's hidden idle cost cut about twenty-fold after the
+owner's report of stalls — which, measured, were the sessions' own builds.
+
+One finding is left for session 8: a session that only waits on a timer (a wake-up every
+few hours) is not recognised when its pane is locked — it is not "live" (nothing written
+for longer than the 10-minute TTL), and it has no recent edits to show. BUILD_INFO's first
+next step proposes matching every session's title, and showing the project's uncommitted
+changes from git when there are no recent edits.
+
 ## Session 7 (28.9.2026, afternoon): the diff window — 28.9.2026 (0.1.0)
 
 adr.rg.028 (Atlas #404), the owner's wish of 27.9.2026 with their choices of 28.9.2026:
