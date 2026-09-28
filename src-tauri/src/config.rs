@@ -125,6 +125,8 @@ pub struct Config {
     pub diff: DiffConfig,
     /// Novice mode (P6): off by default, no backend chosen (spec 6.3).
     pub explain: ExplainConfig,
+    /// Where the user last put the diff window (adr.rg.028).
+    pub diff_window: crate::diffwin::DiffWindowConfig,
 }
 
 /// What happened when the file was loaded, for the panel to show once.

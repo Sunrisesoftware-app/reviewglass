@@ -75,6 +75,15 @@ pub struct FrameState {
     release: Mutex<bool>,
     /// A step asked for by a key: to the right (`true`) or to the left.
     step: Mutex<Option<bool>>,
+    /// The locked pane's neighbouring pane (the next, or the previous for the last in
+    /// its row): where the diff window first opens (adr.rg.028). None with no lock.
+    neighbour: Mutex<Option<(i32, i32, i32, i32)>>,
+}
+
+/// The locked pane's neighbour, `(left, top, right, bottom)`, if a pane is locked and has
+/// one.
+pub fn neighbour(app: &AppHandle) -> Option<(i32, i32, i32, i32)> {
+    *app.state::<FrameState>().neighbour.lock()
 }
 
 /// Move the lock to the neighbouring pane (a hotkey or the glass's arrow keys).
@@ -148,6 +157,7 @@ fn run(app: AppHandle) {
             if lock.take().is_some() || engine.frame().is_some() {
                 engine.set_frame(None);
             }
+            *app.state::<FrameState>().neighbour.lock() = None;
             engine.set_in_app(false);
             was_down = false;
             status = FrameStatus::default();
@@ -183,7 +193,7 @@ fn run(app: AppHandle) {
                     Some(pane) => {
                         let same = lock.as_ref().is_some_and(|l| l.pane.rect == pane.rect);
                         if !same {
-                            lock = Some(lock_to(&app, pane, under.hwnd, under.pid, &mut status));
+                            lock = Some(lock_to(&app, r, pane, under.hwnd, under.pid, &mut status));
                             cover_at = Instant::now() - COVER_CHECK;
                         }
                     }
@@ -216,7 +226,7 @@ fn run(app: AppHandle) {
                     match next {
                         Some(pane) => {
                             let (root, pid) = (l.root, l.claude_pid);
-                            lock = Some(lock_to(&app, pane, root, pid, &mut status));
+                            lock = Some(lock_to(&app, r, pane, root, pid, &mut status));
                             cover_at = Instant::now() - COVER_CHECK;
                         }
                         None => {
@@ -250,10 +260,14 @@ fn run(app: AppHandle) {
                             l.pane.rect = rect;
                             engine.set_frame(Some(frame_of(rect)));
                         }
+                        if let Some(r) = reader.as_ref() {
+                            *app.state::<FrameState>().neighbour.lock() = neighbour_of(r, &l.pane);
+                        }
                     }
                     None => {
                         lock = None;
                         engine.set_frame(None);
+                        *app.state::<FrameState>().neighbour.lock() = None;
                         status = FrameStatus {
                             note: Some(
                                 "The locked pane is gone; click a pane to lock the glass again"
@@ -283,6 +297,7 @@ fn run(app: AppHandle) {
 #[cfg(windows)]
 fn lock_to(
     app: &AppHandle,
+    r: &crate::follow_session::uia::Reader,
     pane: crate::follow_session::uia::Locked,
     root: isize,
     claude_pid: u32,
@@ -300,6 +315,7 @@ fn lock_to(
         own_window: pane.own_window,
         ..FrameStatus::default()
     };
+    *app.state::<FrameState>().neighbour.lock() = neighbour_of(r, &pane);
     crate::measure::log(|| format!("frame lock {:?}", pane.rect));
     Lock {
         pane,
@@ -307,6 +323,21 @@ fn lock_to(
         claude_pid,
         read_at: Instant::now(),
     }
+}
+
+/// The neighbour of a locked pane: the next Code pane, or the previous one for the last
+/// in its row; none for a session in a window of its own.
+#[cfg(windows)]
+fn neighbour_of(
+    r: &crate::follow_session::uia::Reader,
+    pane: &crate::follow_session::uia::Locked,
+) -> Option<(i32, i32, i32, i32)> {
+    if pane.own_window {
+        return None;
+    }
+    r.neighbour(&pane.element, true)
+        .or_else(|| r.neighbour(&pane.element, false))
+        .and_then(|e| crate::follow_session::uia::rect_of(&e))
 }
 
 /// A pane the glass is locked to.

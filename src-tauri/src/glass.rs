@@ -263,6 +263,15 @@ pub fn register_hotkeys(app: &AppHandle) -> Result<(), String> {
             eprintln!("reviewglass: Ctrl+Alt+arrow not registered: {e}");
         }
     }
+    // Ctrl+Alt+D opens and closes the diff window (adr.rg.028); alone if taken.
+    let diff = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyD);
+    if let Err(e) = gs.on_shortcut(diff, |app, _, ev| {
+        if ev.state == ShortcutState::Pressed {
+            crate::diffwin::toggle_later(app);
+        }
+    }) {
+        eprintln!("reviewglass: Ctrl+Alt+D not registered: {e}");
+    }
     Ok(())
 }
 

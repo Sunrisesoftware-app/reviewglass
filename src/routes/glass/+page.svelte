@@ -110,6 +110,8 @@
     note: null,
   });
   let build = $state("");
+  /** The diff window (adr.rg.028) is open: its button is lit. */
+  let diffOpen = $state(false);
   let followLog = $state(false);
 
   // The measurement log (Settings, Measurements): Fit's side of the story, so the
@@ -567,6 +569,8 @@
         }),
       );
       frame = await invoke<FrameStatus>("frame_state");
+      diffOpen = await invoke<boolean>("diffwin_is_open");
+      unlisten.push(await listen<boolean>("diffwin:open", (ev) => (diffOpen = ev.payload)));
       unlisten.push(await listen<FrameStatus>("frame:status", (ev) => onFrameStatus(ev.payload)));
       unlisten.push(
         await listen<{ width: number | null }>("glass:pane", (ev) => {
@@ -745,6 +749,16 @@
           </span>
         {/if}
       {/if}
+
+      <button
+        class:on={diffOpen}
+        title={diffOpen
+          ? "Close the diff window (Ctrl+Alt+D)"
+          : "Open the diff window: the locked pane's session's changes, beside the pane (Ctrl+Alt+D)"}
+        aria-label="Diff window"
+        aria-pressed={diffOpen}
+        onpointerdown={(e) => control(e, () => invoke("diffwin_toggle"))}>⧉ Diff</button
+      >
 
       <span class="spacer"></span>
 

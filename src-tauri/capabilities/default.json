@@ -6,7 +6,8 @@
     "glass",
     "halo",
     "finder",
-    "dock"
+    "dock",
+    "diffwin"
   ],
   "permissions": [
     "core:default",
