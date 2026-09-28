@@ -18,6 +18,14 @@
 //! kept, so a moved or resized window moves the frame), and the windows above the app's
 //! are looked at four times a second: a visible window of another application over the
 //! box holds the glass on its last picture, and the bar says whose it is.
+//!
+//! The glass's place follows the lock (adr.rg.027): it lies over the neighbouring pane —
+//! the next to the right, or the one to the left for the last pane in the row — at that
+//! pane's width and three quarters of its height, placed again whenever the lock moves,
+//! and following the neighbour when the window moves, unless the user has moved or
+//! resized the glass by hand since. Ctrl+Alt+arrows (and the arrows while the glass has
+//! focus) move the lock to the neighbouring pane (`step`). Neighbours are the pane's
+//! siblings in the UI Automation tree: a point beside the pane may lie under the glass.
 
 use std::thread;
 use std::time::{Duration, Instant};
@@ -65,6 +73,24 @@ pub struct FrameState {
     status: Mutex<FrameStatus>,
     /// Set by the bar's release button; the loop lets go on its next tick.
     release: Mutex<bool>,
+    /// A step asked for by a key: to the right (`true`) or to the left.
+    step: Mutex<Option<bool>>,
+}
+
+/// Move the lock to the neighbouring pane (a hotkey or the glass's arrow keys).
+pub fn step(app: &AppHandle, forward: bool) {
+    *app.state::<FrameState>().step.lock() = Some(forward);
+}
+
+/// A window's place and size: (x, y, width, height) in physical pixels.
+pub type Geometry = (i32, i32, u32, u32);
+
+/// Two geometries the same within a couple of pixels: the system may round a size.
+fn same_geometry(a: Geometry, b: Geometry) -> bool {
+    (a.0 - b.0).abs() <= 2
+        && (a.1 - b.1).abs() <= 2
+        && (a.2 as i32 - b.2 as i32).abs() <= 2
+        && (a.3 as i32 - b.3 as i32).abs() <= 2
 }
 
 impl FrameState {
@@ -102,13 +128,6 @@ fn run(_app: AppHandle) {}
 #[cfg(windows)]
 fn run(app: AppHandle) {
     use crate::follow_session::uia;
-
-    struct Lock {
-        pane: uia::Locked,
-        root: isize,
-        claude_pid: u32,
-        read_at: Instant,
-    }
 
     let mut reader: Option<uia::Reader> = None;
     let mut lock: Option<Lock> = None;
@@ -171,24 +190,11 @@ fn run(app: AppHandle) {
                 });
                 match found {
                     Some(pane) => {
-                        engine.set_frame(Some(frame_of(pane.rect)));
-                        engine.set_covered(false);
-                        if let Some(t) = pane.title.clone() {
-                            crate::follow_session::announce(&app, t);
+                        let same = lock.as_ref().is_some_and(|l| l.pane.rect == pane.rect);
+                        if !same {
+                            lock = Some(lock_to(&app, r, pane, under.hwnd, under.pid, &mut status));
+                            cover_at = Instant::now() - COVER_CHECK;
                         }
-                        status = FrameStatus {
-                            locked: true,
-                            title: pane.title.clone(),
-                            own_window: pane.own_window,
-                            ..FrameStatus::default()
-                        };
-                        lock = Some(Lock {
-                            pane,
-                            root: under.hwnd,
-                            claude_pid: under.pid,
-                            read_at: Instant::now(),
-                        });
-                        cover_at = Instant::now() - COVER_CHECK;
                     }
                     None if lock.is_none() => {
                         status.note = Some("No Code pane at the click: click inside a pane to lock the glass to it".into());
@@ -202,6 +208,47 @@ fn run(app: AppHandle) {
         }
         was_down = down;
 
+        // A step to the neighbouring pane, by a key.
+        if let Some(forward) = std::mem::take(&mut *app.state::<FrameState>().step.lock()) {
+            match (lock.as_ref(), reader.as_ref()) {
+                (Some(l), Some(r)) => {
+                    let next = r.neighbour(&l.pane.element, forward).and_then(|el| {
+                        let rect = uia::rect_of(&el)?;
+                        let title = r.header_title_in_tree(&el, rect);
+                        Some(uia::Locked {
+                            element: el,
+                            rect,
+                            title,
+                            own_window: false,
+                        })
+                    });
+                    match next {
+                        Some(pane) => {
+                            let (root, pid) = (l.root, l.claude_pid);
+                            lock = Some(lock_to(&app, r, pane, root, pid, &mut status));
+                            cover_at = Instant::now() - COVER_CHECK;
+                        }
+                        None => {
+                            status.note = Some(
+                                if forward {
+                                    "No pane further right"
+                                } else {
+                                    "No pane further left"
+                                }
+                                .into(),
+                            );
+                            note_at = Instant::now();
+                        }
+                    }
+                }
+                _ => {
+                    status.note =
+                        Some("Click a pane first: the arrows move the lock from there".into());
+                    note_at = Instant::now();
+                }
+            }
+        }
+
         if let Some(l) = lock.as_mut() {
             // The pane again: the window may have moved, the pane changed width.
             if l.read_at.elapsed() >= REREAD {
@@ -211,6 +258,29 @@ fn run(app: AppHandle) {
                         if rect != l.pane.rect {
                             l.pane.rect = rect;
                             engine.set_frame(Some(frame_of(rect)));
+                        }
+                        // Where the glass is now: the first read after a placement is
+                        // where it settled; a later difference is the user's hand.
+                        let now = crate::glass::geometry(&app);
+                        match (l.settled, now) {
+                            (None, Some(g)) => l.settled = Some(g),
+                            (Some(s), Some(g)) if !l.by_hand && !same_geometry(s, g) => {
+                                l.by_hand = true;
+                                crate::measure::log(|| format!("frame glass by hand {g:?}"));
+                            }
+                            _ => {}
+                        }
+                        if !l.by_hand {
+                            if let Some(r) = reader.as_ref() {
+                                let nb = neighbour_of(r, &l.pane);
+                                if nb.is_some() && nb != l.neighbour {
+                                    l.neighbour = nb;
+                                    if let Some(n) = nb {
+                                        crate::glass::place_over(&app, n);
+                                    }
+                                    l.settled = None;
+                                }
+                            }
                         }
                     }
                     None => {
@@ -239,6 +309,77 @@ fn run(app: AppHandle) {
         }
         tell(&status, &mut told);
     }
+}
+
+/// Lock to `pane`: the engine's frame, the session's choice, the bar's status, and the
+/// glass placed over its neighbour (adr.rg.027).
+#[cfg(windows)]
+fn lock_to(
+    app: &AppHandle,
+    r: &crate::follow_session::uia::Reader,
+    pane: crate::follow_session::uia::Locked,
+    root: isize,
+    claude_pid: u32,
+    status: &mut FrameStatus,
+) -> Lock {
+    let engine = app.state::<Engine>();
+    engine.set_frame(Some(frame_of(pane.rect)));
+    engine.set_covered(false);
+    if let Some(t) = pane.title.clone() {
+        crate::follow_session::announce(app, t);
+    }
+    *status = FrameStatus {
+        locked: true,
+        title: pane.title.clone(),
+        own_window: pane.own_window,
+        ..FrameStatus::default()
+    };
+    let neighbour = neighbour_of(r, &pane);
+    if let Some(n) = neighbour {
+        crate::glass::place_over(app, n);
+    }
+    crate::measure::log(|| format!("frame lock {:?} beside {neighbour:?}", pane.rect));
+    Lock {
+        pane,
+        root,
+        claude_pid,
+        read_at: Instant::now(),
+        neighbour,
+        settled: None,
+        by_hand: false,
+    }
+}
+
+/// A pane the glass is locked to, and where the glass was put beside it.
+#[cfg(windows)]
+struct Lock {
+    pane: crate::follow_session::uia::Locked,
+    root: isize,
+    claude_pid: u32,
+    read_at: Instant,
+    /// The neighbour the glass was placed over, and where the glass settled after it
+    /// (read on the next re-read, so a size the system rounded is not a hand's).
+    neighbour: Option<(i32, i32, i32, i32)>,
+    settled: Option<Geometry>,
+    /// The user moved or resized the glass since it was placed: it stays until the lock
+    /// moves to another pane.
+    by_hand: bool,
+}
+
+/// The neighbour to lie over: the next pane, or the previous one for the last in the
+/// row; none for a session in a window of its own.
+#[cfg(windows)]
+fn neighbour_of(
+    r: &crate::follow_session::uia::Reader,
+    pane: &crate::follow_session::uia::Locked,
+) -> Option<(i32, i32, i32, i32)> {
+    use crate::follow_session::uia::rect_of;
+    if pane.own_window {
+        return None;
+    }
+    r.neighbour(&pane.element, true)
+        .or_else(|| r.neighbour(&pane.element, false))
+        .and_then(|e| rect_of(&e))
 }
 
 /// The primary mouse button is down (the physical right button when the user has
@@ -347,6 +488,12 @@ pub fn frame_release(state: State<FrameState>) {
     *state.release.lock() = true;
 }
 
+/// Move the lock to the neighbouring pane: the glass's own arrow keys.
+#[tauri::command]
+pub fn frame_step(app: AppHandle, forward: bool) {
+    step(&app, forward);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -401,10 +548,29 @@ mod tests {
             });
             let ms = t0.elapsed().as_secs_f64() * 1000.0;
             match found {
-                Some(l) => println!(
-                    "({x},{y}) claude={} locks {:?} title={:?} own_window={} in {ms:.1} ms",
-                    root.claude, l.rect, l.title, l.own_window
-                ),
+                Some(l) => {
+                    println!(
+                        "({x},{y}) claude={} locks {:?} title={:?} own_window={} in {ms:.1} ms",
+                        root.claude, l.rect, l.title, l.own_window
+                    );
+                    let t1 = Instant::now();
+                    let right = r.neighbour(&l.element, true).and_then(|e| uia::rect_of(&e));
+                    let left = r
+                        .neighbour(&l.element, false)
+                        .and_then(|e| uia::rect_of(&e));
+                    println!(
+                        "   neighbours: left={left:?} right={right:?} in {:.1} ms",
+                        t1.elapsed().as_secs_f64() * 1000.0
+                    );
+                    if !l.own_window {
+                        let t2 = Instant::now();
+                        let title = r.header_title_in_tree(&l.element, l.rect);
+                        println!(
+                            "   title through the tree: {title:?} in {:.1} ms",
+                            t2.elapsed().as_secs_f64() * 1000.0
+                        );
+                    }
+                }
                 None => println!(
                     "({x},{y}) claude={} locks nothing ({ms:.1} ms)",
                     root.claude

@@ -26,6 +26,13 @@
   // glass to it. The bar names the locked pane, offers the release, says when another
   // window covers the box (the glass holds), and over the app with nothing locked says
   // that a click would lock — the affordance with the mechanism.
+  //
+  // The glass's place follows the lock (adr.rg.027): the core puts it over the
+  // neighbouring pane, and Fit stands aside while a pane is locked. A tab hangs below
+  // the glass's bottom-right corner, outside it, with a move handle and a hide button,
+  // so the glass is moved or put away without the pointer crossing the picture. The
+  // window is that much taller and the core cuts it to the glass and the tab. The arrow
+  // keys move the lock to the neighbouring pane.
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -65,8 +72,10 @@
   const FIT_WIDE_COLUMN = 0.5; // a column wider than this share of the screen is suspect (a toolbar band read as one column) …
   const FIT_WIDEN_WAIT = 3000; // … and widening to it waits this long: longer than the lock holds a lost column (2 s), so a reading that only persisted through a hold never widens the glass
   const BORDER_CSS = 3; // the glass's border, per side, in CSS px
+  const TAB_CSS = 26; // the tab below the glass's corner, CSS px at bar size 100 %
 
   let canvas: HTMLCanvasElement;
+  let tabEl = $state<HTMLElement | null>(null);
   let zoom = $state(2); // in effect
   let userZoom = $state(2); // the setting; the fit may show less, never more
   const zoomDerived = $derived(Math.abs(zoom - userZoom) > 0.001);
@@ -107,6 +116,8 @@
   let hovering = $state(false);
   type ModeName = "follow" | "lens" | "still";
   const mode = $derived<ModeName>(lens ? "lens" : frozen ? "still" : "follow");
+  /** The tab's height in CSS px: none in the lens, which rides the cursor. */
+  const tabH = $derived(lens ? 0 : Math.round(TAB_CSS * uiScale));
   // The bar reflows when the mode or the column value changes: keep the picture area's
   // reported size in step. Not before the saved state is in: a report sent earlier
   // would write the defaults over the settings.
@@ -156,7 +167,7 @@
   let waitDue = false;
   async function fitToPane() {
     if (fitting) return;
-    if (!paneFit || !paneLock || mode !== "follow" || !paneWidth) {
+    if (!paneFit || !paneLock || mode !== "follow" || !paneWidth || frame.locked) {
       mlog(`fit skip fit=${paneFit ? 1 : 0} lock=${paneLock ? 1 : 0} mode=${mode} pane=${paneWidth ?? "none"} zoomBack=${zoomDerived ? 1 : 0}`);
       if (zoomDerived) {
         zoom = userZoom; // no column to fit: the user's own zoom is back
@@ -278,6 +289,13 @@
       zoom,
       derived: zoomDerived,
     });
+    // The tab's size, for the window's shape and the next placement beside a pane.
+    await tick();
+    const t = tabEl?.getBoundingClientRect();
+    void invoke("glass_set_shape", {
+      tabW: t ? Math.round(t.width * dpr()) : 0,
+      tabH: t ? Math.round(t.height * dpr()) : 0,
+    });
   }
 
   /** The last frame, scaled onto the canvas. A still is redrawn from here whenever the
@@ -397,6 +415,10 @@
     else if (e.key === "Escape") void invoke("glass_hide");
     else if (e.key === "+" || e.key === "=") void setZoom(zoom + ZOOM_STEP);
     else if (e.key === "-" || e.key === "_") void setZoom(zoom - ZOOM_STEP);
+    else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && mode === "follow") {
+      e.preventDefault();
+      void invoke("frame_step", { forward: e.key === "ArrowRight" });
+    }
   }
 
   // A control must not also drag or freeze the window, so each swallows its own event.
@@ -522,7 +544,7 @@
 <div
   class="glass {mode}"
   class:dimmed={hovering && mode === "follow"}
-  style="--ui: {uiScale}"
+  style="--ui: {uiScale}; --tab: {tabH}px"
   onpointerenter={() => setHover(true)}
   onpointerleave={() => setHover(false)}
   role="presentation"
@@ -639,7 +661,9 @@
         disabled={!paneLock}
         title={!paneLock
           ? "Fit needs the column lock"
-          : paneFit
+          : frame.locked
+            ? "While a pane is locked the glass takes the neighbouring pane's size; Fit applies again when the lock is released"
+            : paneFit
             ? "Fit is on: the window's width follows the column at this zoom; the zoom comes down when a column is too wide for the screen"
             : "Let the window's width follow the column at this zoom"}
         aria-label="Fit width to the column"
@@ -655,7 +679,7 @@
             aria-live="polite"
             title={frame.covered_by
               ? `Holding the last picture: ${frame.covered_by} is in front of the locked pane`
-              : `Locked to ${frame.own_window ? "the session window" : "the pane"}${frame.title ? ` "${frame.title}"` : ""}; the picture stays inside it. Click another pane to move the lock`}
+              : `Locked to ${frame.own_window ? "the session window" : "the pane"}${frame.title ? ` "${frame.title}"` : ""}; the picture stays inside it. Click another pane, or press ← → (Ctrl+Alt+← → from anywhere), to move the lock`}
           >
             {frame.covered_by ? `held — ${frame.covered_by} in front` : `▣ ${frame.title ?? "pane"}`}
           </span>
@@ -717,6 +741,28 @@
   {/each}
 </div>
 
+{#if !lens}
+  <!-- Outside the glass, below its bottom-right corner (adr.rg.027): reaching for these
+       never crosses the picture, so nothing dims or holds on the way. -->
+  <div class="tab {mode}" style="--ui: {uiScale}; height: {tabH}px" role="toolbar" aria-label="Move or hide the glass" bind:this={tabEl}>
+    <button
+      class="move"
+      title="Drag to move the glass. While a pane is locked the glass stays where you put it until the lock moves to another pane"
+      aria-label="Move the glass"
+      onpointerdown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        void win.startDragging();
+      }}>✥</button
+    >
+    <button
+      title="Hide the glass — the dock brings it back"
+      aria-label="Hide the glass"
+      onpointerdown={(e) => control(e, () => invoke("glass_hide"))}>▁</button
+    >
+  </div>
+{/if}
+
 <style>
   :global(html, body) {
     margin: 0;
@@ -734,7 +780,7 @@
     display: flex;
     flex-direction: column;
     width: 100vw;
-    height: 100vh;
+    height: calc(100vh - var(--tab, 0px));
     border: 3px solid var(--mode);
     border-radius: 6px;
     overflow: hidden;
@@ -927,6 +973,43 @@
 
   .grip {
     position: absolute;
+  }
+  /* The tab: hangs from the glass's bottom-right corner, outside it, in the mode's
+     colour. The window around it is cut away, so it is all there is below the glass. */
+  .tab {
+    --mode: #ffc800;
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    box-sizing: border-box;
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    padding: 0 3px 3px;
+    border: 3px solid var(--mode);
+    border-top: 0;
+    border-radius: 0 0 6px 6px;
+    background: #161616;
+    font: calc(12px * var(--ui)) system-ui, sans-serif;
+    user-select: none;
+  }
+  .tab.still {
+    --mode: #5ab4ff;
+  }
+  .tab button {
+    min-width: 2.2em;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: #eee;
+    font: inherit;
+    cursor: pointer;
+  }
+  .tab button:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+  .tab button.move {
+    cursor: move;
   }
   /* The top edge and corners are thin strips on the border itself, so they never sit
      on a title-bar button; the bottom corners can afford to be generous. */

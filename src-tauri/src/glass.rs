@@ -2,7 +2,7 @@
 //! calls, the global hotkeys, self-exclusion from capture, and persistence of
 //! geometry, zoom and freeze state through the config store.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -10,7 +10,7 @@ use serde::Serialize;
 use tauri::ipc::Response;
 use tauri::menu::{CheckMenuItem, ContextMenu, Menu, MenuItem, PredefinedMenuItem};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE};
 
@@ -126,6 +126,90 @@ pub fn exclude_from_capture(window: &WebviewWindow) -> Result<(), String> {
     }
 }
 
+/// The share of the neighbouring pane's height the glass takes (adr.rg.027): the rest,
+/// with that pane's message box, stays visible below it.
+const PANE_HEIGHT_SHARE: f64 = 0.75;
+/// The tab below the glass's bottom-right corner, in physical pixels, as the glass page
+/// last reported it: the window is this much taller than the glass, and cut to the
+/// glass and the tab (`shape`). Zero in the lens, which has no tab.
+static TAB_W: AtomicU32 = AtomicU32::new(0);
+static TAB_H: AtomicU32 = AtomicU32::new(0);
+
+/// Put the glass over a pane (adr.rg.027): at its left and top, as wide as it and three
+/// quarters of its height, plus the tab below. `(left, top, right, bottom)`, physical.
+pub fn place_over(app: &AppHandle, (l, t, r, b): (i32, i32, i32, i32)) {
+    let Some(w) = app.get_webview_window(GLASS_LABEL) else {
+        return;
+    };
+    let (width, height) = placed_size((l, t, r, b), TAB_H.load(Ordering::Relaxed));
+    let _ = w.set_size(PhysicalSize::new(width, height));
+    let _ = w.set_position(PhysicalPosition::new(l, t));
+}
+
+/// The glass's window size over a pane: the pane's width, three quarters of its height,
+/// and the tab's height below.
+fn placed_size((l, t, r, b): (i32, i32, i32, i32), tab_h: u32) -> (u32, u32) {
+    let width = (r - l).max(1) as u32;
+    let height = ((b - t).max(1) as f64 * PANE_HEIGHT_SHARE).round() as u32 + tab_h;
+    (width, height)
+}
+
+/// Where the glass's window is and how big: (x, y, width, height), physical.
+pub fn geometry(app: &AppHandle) -> Option<crate::frame::Geometry> {
+    let w = app.get_webview_window(GLASS_LABEL)?;
+    let p = w.outer_position().ok()?;
+    let s = w.outer_size().ok()?;
+    Some((p.x, p.y, s.width, s.height))
+}
+
+/// Cut the glass's window to the glass and the tab below its bottom-right corner, so
+/// the strip beside the tab takes no click and shows nothing: the tab is outside the
+/// glass, the rest of the strip is not there. No tab (the lens): the whole window.
+#[cfg(windows)]
+fn shape(window: &WebviewWindow, tab_w: u32, tab_h: u32) -> Result<(), String> {
+    use windows::Win32::Graphics::Gdi::{
+        CombineRgn, CreateRectRgn, DeleteObject, SetWindowRgn, RGN_OR,
+    };
+    let hwnd = window.hwnd().map_err(|e| e.to_string())?;
+    let size = window.outer_size().map_err(|e| e.to_string())?;
+    let (w, h) = (size.width as i32, size.height as i32);
+    let (tw, th) = (tab_w as i32, tab_h as i32);
+    // SAFETY: GDI regions created here; the combined one is handed to the system by
+    // SetWindowRgn (which owns it afterwards), the tab's own is deleted.
+    unsafe {
+        if th <= 0 || tw <= 0 || th >= h {
+            SetWindowRgn(HWND(hwnd.0), None, true);
+            return Ok(());
+        }
+        let body = CreateRectRgn(0, 0, w, h - th);
+        let tab = CreateRectRgn((w - tw).max(0), h - th, w, h);
+        CombineRgn(Some(body), Some(body), Some(tab), RGN_OR);
+        let _ = DeleteObject(tab.into());
+        SetWindowRgn(HWND(hwnd.0), Some(body), true);
+    }
+    Ok(())
+}
+
+/// The glass page's tab, in physical pixels, after every layout: remembered for the
+/// next placement and cut into the window's shape.
+#[tauri::command]
+pub fn glass_set_shape(app: AppHandle, tab_w: u32, tab_h: u32) {
+    TAB_W.store(tab_w, Ordering::Relaxed);
+    TAB_H.store(tab_h, Ordering::Relaxed);
+    #[cfg(windows)]
+    if let Some(w) = app.get_webview_window(GLASS_LABEL) {
+        if let Err(e) = shape(&w, tab_w, tab_h) {
+            eprintln!("reviewglass: glass shape: {e}");
+        }
+    }
+}
+
+/// While a pane is locked the glass's place and size are the pane's (adr.rg.027), not
+/// settings: nothing of them is stored.
+fn placed_by_pane(engine: &Engine) -> bool {
+    engine.mode() == Mode::Follow && engine.frame().is_some()
+}
+
 /// Restore geometry and mode from the config store at startup. The glass itself
 /// starts hidden: the dock is what shows it (adr.rg.018).
 pub fn restore(app: &AppHandle) {
@@ -209,7 +293,21 @@ pub fn register_hotkeys(app: &AppHandle) -> Result<(), String> {
             set_lens_inner(app, &engine, lens);
         }
     })
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    // Ctrl+Alt+Left/Right move the lock to the neighbouring pane (adr.rg.027). Taken by
+    // another application, they fail alone: the glass's own arrow keys still work.
+    for (code, forward) in [(Code::ArrowLeft, false), (Code::ArrowRight, true)] {
+        let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), code);
+        let registered = gs.on_shortcut(shortcut, move |app, _, ev| {
+            if ev.state == ShortcutState::Pressed {
+                crate::frame::step(app, forward);
+            }
+        });
+        if let Err(e) = registered {
+            eprintln!("reviewglass: Ctrl+Alt+arrow not registered: {e}");
+        }
+    }
+    Ok(())
 }
 
 fn toggle_visible(app: &AppHandle) {
@@ -689,6 +787,9 @@ pub fn glass_set_view(
 /// (a derived value must never be written back as the setting it came from).
 #[tauri::command]
 pub fn glass_save_size(engine: State<Engine>, store: State<Store>, width: u32, height: u32) {
+    if placed_by_pane(&engine) {
+        return;
+    }
     let mode = engine.mode();
     let _ = store.update(|c| {
         if mode == Mode::Lens {
@@ -817,7 +918,10 @@ pub fn app_quit(app: AppHandle) {
 }
 
 #[tauri::command]
-pub fn glass_save_position(store: State<Store>, x: i32, y: i32) {
+pub fn glass_save_position(engine: State<Engine>, store: State<Store>, x: i32, y: i32) {
+    if placed_by_pane(&engine) {
+        return;
+    }
     let _ = store.update(|c| {
         c.glass.x = Some(x);
         c.glass.y = Some(y);
@@ -885,6 +989,13 @@ pub fn glass_frame(app: AppHandle, engine: State<Engine>, since: u64) -> Result<
 mod tests {
     use super::*;
     use crate::capture::{PaneFrame, SourceRect};
+
+    #[test]
+    fn over_a_pane_the_glass_is_its_width_and_three_quarters_of_its_height() {
+        // A 704 x 1130 pane and a 28 px tab: 704 x (848 + 28).
+        assert_eq!(placed_size((1112, 175, 1816, 1305), 28), (704, 876));
+        assert_eq!(placed_size((0, 0, 400, 1000), 0), (400, 750));
+    }
 
     #[test]
     fn the_finder_is_the_box_alone_or_the_frame_with_the_box_inside() {
