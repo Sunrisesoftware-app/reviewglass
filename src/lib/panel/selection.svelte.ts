@@ -7,6 +7,8 @@
 // Follow can make the choice too (adr.rg.022): while the glass follows, the Code pane
 // under the cursor names its session and that session is chosen. `by` says who chose,
 // so the tabs can say so; a choice by hand stands until Follow's pane changes.
+import { emit } from "@tauri-apps/api/event";
+
 export const selection = $state<{
   session: string | null;
   name: string | null;
@@ -17,11 +19,14 @@ export const selection = $state<{
   by: "hand",
 });
 
-/** Choose one session by id (with its label), or `null` for all. */
+/** Choose one session by id (with its label), or `null` for all. A choice made by hand
+ *  is sent to the other windows too: the diff window (adr.rg.028) shows it while no pane
+ *  is locked. */
 export function choose(session: string | null, name: string | null = null, by: "hand" | "follow" = "hand") {
   selection.session = session;
   selection.name = session === null ? null : name;
   selection.by = by;
+  if (by === "hand") void emit("selection:changed", { session, name: selection.name });
 }
 
 /** What Follow last saw on a Code pane's header (mirrors follow_session.rs). */

@@ -6,6 +6,7 @@
 mod capture;
 mod config;
 mod diff;
+mod diffwin;
 mod dock;
 mod explain;
 mod follow_session;
@@ -168,6 +169,9 @@ pub fn run() {
             frame::frame_state,
             frame::frame_release,
             frame::frame_step,
+            diffwin::diffwin_toggle,
+            diffwin::diffwin_is_open,
+            diffwin::diffwin_save,
             glass::glass_set_shape,
             diff::file::panel_file_view,
             explain::explain_settings,

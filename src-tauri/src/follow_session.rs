@@ -663,7 +663,7 @@ fn run(app: AppHandle) {
         };
         if told.as_ref() != Some(&saw) {
             state.inner.lock().saw = Some(saw.clone());
-            let _ = app.emit_to(crate::dock::DOCK_LABEL, EVENT, saw.clone());
+            let _ = app.emit(EVENT, saw.clone());
             told = Some(saw);
         }
     }
@@ -683,7 +683,8 @@ pub fn announce(app: &AppHandle, title: String) {
         name: matched.map(|(_, n)| n),
     };
     app.state::<FollowSessionState>().inner.lock().saw = Some(saw.clone());
-    let _ = app.emit_to(crate::dock::DOCK_LABEL, EVENT, saw);
+    // Every window: the dock's tabs and the diff window (adr.rg.028) follow it.
+    let _ = app.emit(EVENT, saw);
 }
 
 // ---- commands -------------------------------------------------------------

@@ -4,6 +4,28 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 7 (28.9.2026, afternoon): the diff window — 28.9.2026 (0.1.0)
+
+adr.rg.028 (Atlas #404), the owner's wish of 27.9.2026 with their choices of 28.9.2026:
+the locked pane's session's diff in a frameless window of its own.
+
+- **Opened and closed** from the glass's bar (⧉ Diff, lit while open) and by Ctrl+Alt+D
+  (registered on its own: taken by another app, it fails alone). The window is created
+  when opened and destroyed when closed: a fifth webview only while it is there.
+- **What it shows**: the Diff tab's view of one session — the locked pane's, following
+  the lock (Follow's sighting is now sent to every window, not only the dock); with no
+  lock, the drawer's choice made by hand (`selection:changed`).
+- **Where**: the first time over the locked pane's neighbouring pane at its size (at
+  least 560×400; the frame loop keeps the neighbour, read as the pane's tree sibling);
+  with no neighbour, the middle of the screen; once the user has moved or resized it,
+  where they left it, across restarts — only a drag or a resize started on the window
+  itself is stored. Always on top like the glass, the last clicked above; capturable.
+- **The window**: a dark title row naming the session, draggable, with a close ✕; edges
+  resize; the drawer's theme and the Diff tab's component inside.
+
+152 tests (placement: over the neighbour, widened to the minimum, the user's place wins,
+the middle without a neighbour), clippy and svelte-check clean.
+
 ## Session 7 (28.9.2026, afternoon): a hidden ReviewGlass costs almost nothing — 28.9.2026 (0.1.0)
 
 The owner: with ReviewGlass on for long, typing in the Claude app stalls now and then,
