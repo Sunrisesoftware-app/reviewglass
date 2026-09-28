@@ -4,6 +4,34 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 7 (28.9.2026): the glass's place follows the locked pane — 28.9.2026 (0.1.0)
+
+The owner's hand on the frame: "the pane lock steadied the use and made it controlled —
+a good change in the right direction". The glass itself was not controlled: it opened
+where it had last been, on top of whatever lay there, and reaching for its controls
+crossed the picture, which dimmed and flickered. Asked the same morning, the owner chose
+the details below; adr.rg.027 (Atlas #397, worker fbec0077) records them.
+
+- **Beside the pane.** With a pane locked, the glass lies over the neighbouring pane —
+  the next to the right, or the previous for the last in the row — at its width and
+  three quarters of its height, so that pane's message box stays visible and clickable.
+  It is placed again when the lock moves, follows the window when it moves, and a glass
+  moved or resized by hand stays until the lock moves to another pane. Its locked size
+  and place are never stored as the user's own; Fit applies to the unlocked Follow only.
+- **Neighbours from the tree.** The first measurement found two points "locking nothing":
+  the owner's glass was lying on them. A pane's neighbours are therefore its siblings in
+  the UI Automation raw view (0.4–2 ms), and a header under the glass is read through the
+  tree, pruned to the pane's top 48 px (6–7 ms, the same title as by points).
+- **The tab.** A small tab hangs below the glass's bottom-right corner, outside it, with a
+  move handle and a hide button; the window is cut to the glass and the tab, so the strip
+  beside the tab takes no click.
+- **The arrows.** Ctrl+Alt+← / → from anywhere, and ← / → while the glass has the focus,
+  move the lock to the neighbouring pane (registered on their own: taken by another app,
+  they fail alone). A click inside the already locked pane no longer re-locks it.
+
+149 tests, clippy and svelte-check clean; read-only live diagnostic as above. Not yet
+seen by the owner's hand.
+
 ## Session 7 (continued): the frame — a click locks the glass to a pane — 27.9.2026 (0.1.0)
 
 adr.rg.026 (Atlas #395, worker 5fb9a1c3), in the owner's words confirmed the same day:
