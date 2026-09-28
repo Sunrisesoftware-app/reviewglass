@@ -39,6 +39,8 @@ use crate::config::Store;
 pub const EVENT: &str = "frame:status";
 /// How often the button is looked at: a click lasts 50–150 ms.
 const TICK: Duration = Duration::from_millis(20);
+/// The extra rest per tick while the frame has nothing to watch.
+const IDLE: Duration = Duration::from_millis(180);
 /// How often a locked pane's rectangle is read again.
 const REREAD: Duration = Duration::from_millis(500);
 /// How often the windows in front are looked at.
@@ -150,6 +152,8 @@ fn run(app: AppHandle) {
             was_down = false;
             status = FrameStatus::default();
             tell(&status, &mut told);
+            // Nothing to watch: the glass is hidden, or not in Follow with the lock on.
+            thread::sleep(IDLE);
             continue;
         }
 

@@ -424,6 +424,11 @@ pub fn spawn_lens_rider(app: AppHandle) {
                         } else {
                             halo.hide()
                         };
+                        // The ring breathes only while it is shown: a hidden webview
+                        // still ran its animation at the display's rate (measured
+                        // 28.9.2026: ~70 ms of CPU a second across the halo's page, the
+                        // GPU process and the browser process, with the glass hidden).
+                        let _ = app.emit_to(HALO_LABEL, HALO_SHOWN_EVENT, halo_wanted);
                         halo_shown = halo_wanted;
                     }
                 }
@@ -487,6 +492,9 @@ pub fn spawn_lens_rider(app: AppHandle) {
         })
         .expect("rider thread");
 }
+
+/// Event to the halo page: whether it is shown (it animates only then).
+pub const HALO_SHOWN_EVENT: &str = "halo:shown";
 
 /// Event to the finder page: what to draw in its window.
 pub const FINDER_LAYOUT_EVENT: &str = "finder:layout";
