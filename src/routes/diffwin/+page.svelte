@@ -87,7 +87,7 @@
 <div class="diffwin">
   <header role="toolbar" aria-label="Diff window" tabindex="-1" onpointerdown={startMove}>
     <span class="title" title="Drag to move the window">
-      Diff{#if selection.name} — <b>{selection.name}</b>{:else} — every session{/if}
+      Diff{" — "}{#if selection.name}<b>{selection.name}</b>{:else}every session{/if}
     </span>
     <button
       class="close"
