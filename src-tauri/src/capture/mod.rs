@@ -355,11 +355,11 @@ impl GraphicsCaptureApiHandler for Handler {
         let w = buffer.width();
         let h = buffer.height();
         let bytes = buffer.as_nopadding_buffer(&mut self.scratch);
-        crate::stall::crop(t0.elapsed(), "box", w, h);
 
-        // Skip the publish when nothing changed. A sampled FNV over the crop is far
-        // cheaper than a full compare and good enough to keep a static source idle.
-        let hash = sampled_hash(bytes);
+        // Skip the publish when nothing changed: a hash of every byte of the crop. The
+        // stall log counts it in with the crop.
+        let hash = crop_hash(bytes);
+        crate::stall::crop(t0.elapsed(), "box", w, h);
         if !moved && hash == self.shared.last_hash.load(Ordering::Relaxed) {
             return Ok(());
         }
@@ -404,12 +404,31 @@ fn since_made(made: i64) -> Option<Duration> {
     (ahead >= 0).then(|| Duration::from_nanos(ahead as u64 * 100))
 }
 
-fn sampled_hash(bytes: &[u8]) -> u64 {
+/// A hash of every byte of a crop, eight at a time. Each step is a bijection of the
+/// state (xor, multiply by an odd constant, rotate), so a crop that differs from the
+/// last in one place always hashes differently.
+///
+/// It used to sample 4096 bytes of the crop, one byte in 250 for a crop of a megabyte.
+/// A typed character changes only its inked pixels, a hundred-odd bytes, and those
+/// often held no sampled byte: in an 8x16 cell a quarter inked, about two samples fall
+/// in the cell and each lands on ink one time in four, so about half the characters
+/// went unseen. The frame that showed such a character was never published, and the
+/// glass caught up only when a later change touched a sampled byte. That was the
+/// owner's report of 29.9.2026: text typed into Claude's input appears in the glass in
+/// bursts while the input shows it at once; the stall log had every stage fast and
+/// `published` far below `arrived`. A whole pass over a crop of a megabyte is a
+/// fraction of a millisecond.
+fn crop_hash(bytes: &[u8]) -> u64 {
+    const K: u64 = 0x0100_0000_01b3;
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    let step = (bytes.len() / 4096).max(1);
-    for b in bytes.iter().step_by(step) {
-        h ^= *b as u64;
-        h = h.wrapping_mul(0x0100_0000_01b3);
+    let mut words = bytes.chunks_exact(8);
+    for c in &mut words {
+        let mut a = [0u8; 8];
+        a.copy_from_slice(c);
+        h = (h ^ u64::from_le_bytes(a)).wrapping_mul(K).rotate_left(29);
+    }
+    for b in words.remainder() {
+        h = (h ^ *b as u64).wrapping_mul(K).rotate_left(29);
     }
     h ^ bytes.len() as u64
 }
@@ -1146,10 +1165,49 @@ mod tests {
     }
 
     #[test]
-    fn sampled_hash_distinguishes_length_and_content() {
-        assert_ne!(sampled_hash(&[0; 16]), sampled_hash(&[0; 32]));
-        assert_ne!(sampled_hash(&[0; 16]), sampled_hash(&[1; 16]));
-        assert_eq!(sampled_hash(&[7; 100]), sampled_hash(&[7; 100]));
+    fn crop_hash_distinguishes_length_and_content() {
+        assert_ne!(crop_hash(&[0; 16]), crop_hash(&[0; 32]));
+        assert_ne!(crop_hash(&[0; 16]), crop_hash(&[1; 16]));
+        assert_eq!(crop_hash(&[7; 100]), crop_hash(&[7; 100]));
+        assert_ne!(
+            crop_hash(&[0; 13]),
+            crop_hash(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1])
+        );
+    }
+
+    /// The owner's report of 29.9.2026, as a test: a character typed anywhere in a
+    /// crop the size of a pane's box changes the hash, down to one changed pixel. The
+    /// sampled hash it replaced read one byte in 250 and missed 78 of these 79.
+    #[test]
+    fn a_typed_character_anywhere_changes_the_hash() {
+        let (w, h) = (640usize, 400usize);
+        let blank = vec![0x20u8; w * h * 4];
+        let before = crop_hash(&blank);
+        for x0 in (0..w - 8).step_by(8) {
+            let mut typed = blank.clone();
+            // An 8x16 glyph's worth of pixels, one bright dot in its middle.
+            let (x, y) = (x0 + 3, 200 + 7);
+            typed[(y * w + x) * 4] = 0xe0;
+            assert_ne!(
+                crop_hash(&typed),
+                before,
+                "a character at x={x0} went unseen"
+            );
+        }
+    }
+
+    #[test]
+    fn hashing_a_megabyte_crop_is_cheap() {
+        let crop: Vec<u8> = (0..1_048_576u32).map(|i| (i % 251) as u8).collect();
+        let t0 = Instant::now();
+        let mut acc = 0u64;
+        for _ in 0..10 {
+            acc ^= crop_hash(std::hint::black_box(&crop));
+        }
+        let per = t0.elapsed() / 10;
+        std::hint::black_box(acc);
+        // Generous for a debug build on a busy machine; the release build is ~10x faster.
+        assert!(per < Duration::from_millis(20), "{per:?} per megabyte");
     }
 
     #[test]
