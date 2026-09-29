@@ -301,6 +301,21 @@
   let stopped = false;
   let offscreen: OffscreenCanvas | null = null;
 
+  // The stall log (src-tauri/src/stall.rs): the page's side of a stutter. A frame
+  // poll's round trip (the core's main thread serves it), a poll timer that fired late
+  // (this page was busy), a slow draw, and a minute's summary — only while the glass is
+  // shown, since a hidden page's timers are throttled on purpose. Timings and sizes
+  // only.
+  const STALL_RTT_MS = 100;
+  const STALL_LATE_MS = 100;
+  const STALL_DRAW_MS = 30;
+  const STALL_LONGTASK_MS = 100;
+  let pollDue = 0;
+  let minute = { polls: 0, frames: 0, bytes: 0, rttMax: 0, lateMax: 0, drawMax: 0 };
+  function stallNote(kind: string, fields: string) {
+    invoke("stall_note", { kind, fields }).catch(() => {});
+  }
+
   function dpr() {
     return window.devicePixelRatio || 1;
   }
@@ -366,8 +381,22 @@
   async function poll() {
     if (stopped) return;
     let delay = ACTIVE_MS;
+    const watching = shown;
+    const started = performance.now();
+    if (watching && pollDue > 0) {
+      const late = started - pollDue;
+      minute.lateMax = Math.max(minute.lateMax, late);
+      if (late >= STALL_LATE_MS) stallNote("js-late", `ms=${Math.round(late)}`);
+    }
     try {
       const buf = asArrayBuffer(await invoke("glass_frame", { since: seq }));
+      const rtt = performance.now() - started;
+      if (watching) {
+        minute.polls++;
+        minute.bytes += buf.byteLength;
+        minute.rttMax = Math.max(minute.rttMax, rtt);
+        if (rtt >= STALL_RTT_MS) stallNote("js-rtt", `ms=${Math.round(rtt)} bytes=${buf.byteLength}`);
+      }
       if (buf.byteLength >= HEADER) {
         const view = new DataView(buf);
         const newSeq = Number(view.getBigUint64(0, true));
@@ -376,7 +405,14 @@
         if (w > 0 && h > 0 && buf.byteLength >= HEADER + w * h * 4) {
           seq = newSeq;
           unchanged = 0;
+          const d0 = performance.now();
           draw(w, h, new Uint8ClampedArray(buf, HEADER, w * h * 4));
+          const drew = performance.now() - d0;
+          if (watching) {
+            minute.frames++;
+            minute.drawMax = Math.max(minute.drawMax, drew);
+            if (drew >= STALL_DRAW_MS) stallNote("js-draw", `ms=${Math.round(drew)} size=${w}x${h}`);
+          }
         } else {
           unchanged++;
         }
@@ -391,6 +427,7 @@
       error = e instanceof Error ? e.message : String(e);
       delay = IDLE_MS;
     }
+    pollDue = performance.now() + delay;
     setTimeout(poll, delay);
   }
 
@@ -583,8 +620,38 @@
       void poll();
     })();
 
+    // Long tasks on this page (a garbage collection shows here as one), and the
+    // minute's summary with the heap, while the glass is shown.
+    let longtasks: PerformanceObserver | null = null;
+    try {
+      longtasks = new PerformanceObserver((list) => {
+        if (!shown) return;
+        for (const e of list.getEntries()) {
+          if (e.duration >= STALL_LONGTASK_MS) stallNote("js-longtask", `ms=${Math.round(e.duration)}`);
+        }
+      });
+      longtasks.observe({ type: "longtask", buffered: false });
+    } catch {
+      longtasks = null; // not offered by this engine: the other figures still come
+    }
+    const minuteTimer = setInterval(() => {
+      if (minute.polls > 0) {
+        const heap = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
+        const mb = (n: number) => (n / 1048576).toFixed(1);
+        stallNote(
+          "js-minute",
+          `polls=${minute.polls} frames=${minute.frames} mb=${mb(minute.bytes)} rtt_max=${Math.round(minute.rttMax)} ` +
+            `late_max=${Math.round(minute.lateMax)} draw_max=${Math.round(minute.drawMax)}` +
+            (heap ? ` heap_mb=${mb(heap.usedJSHeapSize)}` : ""),
+        );
+      }
+      minute = { polls: 0, frames: 0, bytes: 0, rttMax: 0, lateMax: 0, drawMax: 0 };
+    }, 60_000);
+
     return () => {
       stopped = true;
+      longtasks?.disconnect();
+      clearInterval(minuteTimer);
       unlisten.forEach((u) => u());
     };
   });

@@ -224,11 +224,17 @@ pub fn panel_file_view(
     store: State<crate::config::Store>,
     path: String,
 ) -> FileView {
-    let denylist = store.get().diff.denylist;
-    match state.views().into_iter().find(|v| v.path == path) {
-        Some(v) => file_view(&v, &denylist),
-        None => not_offered(&path),
-    }
+    crate::stall::command(
+        "panel_file_view",
+        || {
+            let denylist = store.get().diff.denylist;
+            match state.views().into_iter().find(|v| v.path == path) {
+                Some(v) => file_view(&v, &denylist),
+                None => not_offered(&path),
+            }
+        },
+        |f| format!("text_bytes={}", f.text.as_ref().map_or(0, String::len)),
+    )
 }
 
 #[cfg(test)]

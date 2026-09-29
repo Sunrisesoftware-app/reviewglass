@@ -131,6 +131,8 @@ fn run(app: AppHandle) {
     let mut lock: Option<Lock> = None;
     let mut was_down = false;
     let mut cover_at = Instant::now();
+    // Since when a window has covered the box, for the stall log.
+    let mut covered_since: Option<Instant> = None;
     let mut told = FrameStatus::default();
     let mut note_at = Instant::now();
 
@@ -168,7 +170,7 @@ fn run(app: AppHandle) {
         }
 
         let (x, y) = cursor_pos();
-        let under = uia::root_at(x, y);
+        let under = crate::stall::uia("root_at", || uia::root_at(x, y));
         engine.set_in_app(lock.is_none() && under.claude);
         status.in_app = lock.is_none() && under.claude;
 
@@ -254,14 +256,15 @@ fn run(app: AppHandle) {
             // The pane again: the window may have moved, the pane changed width.
             if l.read_at.elapsed() >= REREAD {
                 l.read_at = Instant::now();
-                match uia::rect_of(&l.pane.element) {
+                match crate::stall::uia("rect_of", || uia::rect_of(&l.pane.element)) {
                     Some(rect) => {
                         if rect != l.pane.rect {
                             l.pane.rect = rect;
                             engine.set_frame(Some(frame_of(rect)));
                         }
                         if let Some(r) = reader.as_ref() {
-                            *app.state::<FrameState>().neighbour.lock() = neighbour_of(r, &l.pane);
+                            let n = crate::stall::uia("neighbour", || neighbour_of(r, &l.pane));
+                            *app.state::<FrameState>().neighbour.lock() = n;
                         }
                     }
                     None => {
@@ -284,7 +287,23 @@ fn run(app: AppHandle) {
             // The windows in front.
             if cover_at.elapsed() >= COVER_CHECK {
                 cover_at = Instant::now();
-                let by = covering(l.root, l.claude_pid, engine.source());
+                let by = crate::stall::uia("covering", || {
+                    covering(l.root, l.claude_pid, engine.source())
+                });
+                match (&by, covered_since) {
+                    (Some(name), None) => {
+                        covered_since = Some(Instant::now());
+                        crate::stall::note("covered", format!("on by={name:?}"));
+                    }
+                    (None, Some(t)) => {
+                        covered_since = None;
+                        crate::stall::note(
+                            "covered",
+                            format!("off after_ms={}", t.elapsed().as_millis()),
+                        );
+                    }
+                    _ => {}
+                }
                 engine.set_covered(by.is_some());
                 status.covered_by = by;
             }

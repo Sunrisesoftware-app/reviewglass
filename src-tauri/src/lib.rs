@@ -18,6 +18,7 @@ mod panel;
 mod picture;
 pub mod session;
 pub mod spool;
+mod stall;
 mod tray;
 pub mod usage;
 
@@ -126,6 +127,7 @@ pub fn run() {
             diff::spawn_diff_loop(app.handle().clone());
             follow_session::spawn(app.handle().clone());
             frame::spawn(app.handle().clone());
+            stall::spawn(app.handle().clone());
             Ok(())
         })
         .on_menu_event(|app, event| glass::on_menu(app, event.id().as_ref()))
@@ -182,6 +184,9 @@ pub fn run() {
             explain::explain_check_local,
             explain::explain_run,
             explain::explain_cancel,
+            stall::stall_note,
+            stall::stall_log_state,
+            stall::stall_log_show,
         ])
         .build(context)
         .expect("error while building ReviewGlass")

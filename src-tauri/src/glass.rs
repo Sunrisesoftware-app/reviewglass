@@ -906,6 +906,20 @@ pub fn glass_menu(app: AppHandle, engine: State<Engine>) -> Result<(), String> {
 
 #[tauri::command]
 pub fn glass_frame(app: AppHandle, engine: State<Engine>, since: u64) -> Result<Response, String> {
+    crate::stall::command(
+        "glass_frame",
+        || frame_for(&app, &engine, since),
+        |r| match r {
+            Ok(b) => format!("bytes={}", b.len()),
+            Err(_) => "error".into(),
+        },
+    )
+    .map(Response::new)
+}
+
+/// The frame poll's body, on the main thread like every synchronous command: the
+/// response bytes as `glass_frame` documents them.
+fn frame_for(app: &AppHandle, engine: &Engine, since: u64) -> Result<Vec<u8>, String> {
     engine.tick().map_err(|e| e.to_string())?;
     // The pane is read on the frame poll, which is where the glass already listens;
     // one event per change, not one per frame.
@@ -931,7 +945,7 @@ pub fn glass_frame(app: AppHandle, engine: State<Engine>, since: u64) -> Result<
         idle.extend_from_slice(&since.to_le_bytes());
         idle.extend_from_slice(&0u32.to_le_bytes());
         idle.extend_from_slice(&0u32.to_le_bytes());
-        return Ok(Response::new(idle));
+        return Ok(idle);
     }
     let mut out = Vec::with_capacity(16);
     match engine.frame_since(since) {
@@ -949,7 +963,7 @@ pub fn glass_frame(app: AppHandle, engine: State<Engine>, since: u64) -> Result<
             out.extend_from_slice(&0u32.to_le_bytes());
         }
     }
-    Ok(Response::new(out))
+    Ok(out)
 }
 
 #[cfg(test)]

@@ -872,14 +872,27 @@ fn sessions_of(
 
 #[tauri::command]
 pub fn panel_diffs(state: State<DiffState>, panel: State<crate::panel::PanelState>) -> DiffTab {
-    let views = state.views();
-    let live: HashMap<String, Option<String>> = panel.session_names().into_iter().collect();
-    DiffTab {
-        sessions: sessions_of(&views, &live, |id| state.label(id)),
-        views,
-        hook_installed: spool::events_dir().is_some_and(|d| d.is_dir()),
-        unreadable: *state.unreadable.lock(),
-    }
+    crate::stall::command(
+        "panel_diffs",
+        || {
+            let views = state.views();
+            let live: HashMap<String, Option<String>> = panel.session_names().into_iter().collect();
+            DiffTab {
+                sessions: sessions_of(&views, &live, |id| state.label(id)),
+                views,
+                hook_installed: spool::events_dir().is_some_and(|d| d.is_dir()),
+                unreadable: *state.unreadable.lock(),
+            }
+        },
+        |t| {
+            let bytes: usize = t
+                .views
+                .iter()
+                .map(|v| v.unified.as_ref().map_or(0, String::len))
+                .sum();
+            format!("views={} diff_bytes={bytes}", t.views.len())
+        },
+    )
 }
 
 /// Test helpers shared by this module's and `file`'s tests.

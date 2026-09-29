@@ -226,6 +226,7 @@ impl Handler {
         if y1 - y0 < 8 {
             return;
         }
+        let t0 = Instant::now();
         let found = frame
             .buffer_crop(0, y0 as u32, fw as u32, y1 as u32)
             .ok()
@@ -233,6 +234,7 @@ impl Handler {
                 let w = b.width() as usize;
                 let h = b.height() as usize;
                 let bytes = b.as_nopadding_buffer(&mut self.band);
+                crate::stall::crop(t0.elapsed(), "band", w as u32, h as u32);
                 pane::detect(bytes, w, h, lx, ly - y0)
             })
             .map(|p| Pane {
@@ -289,6 +291,7 @@ impl GraphicsCaptureApiHandler for Handler {
         frame: &mut Frame,
         _control: InternalCaptureControl,
     ) -> Result<(), Self::Error> {
+        crate::stall::frame_arrived(frame.timestamp().ok().and_then(|t| since_made(t.Duration)));
         if self.shared.still.load(Ordering::Relaxed)
             || self.shared.held.load(Ordering::Relaxed)
             || self.shared.covered.load(Ordering::Relaxed)
@@ -345,12 +348,14 @@ impl GraphicsCaptureApiHandler for Handler {
             }
         }
 
+        let t0 = Instant::now();
         let buffer = frame
             .buffer_crop(x0 as u32, y0 as u32, x1 as u32, y1 as u32)
             .map_err(|_| CaptureError::Frame)?;
         let w = buffer.width();
         let h = buffer.height();
         let bytes = buffer.as_nopadding_buffer(&mut self.scratch);
+        crate::stall::crop(t0.elapsed(), "box", w, h);
 
         // Skip the publish when nothing changed. A sampled FNV over the crop is far
         // cheaper than a full compare and good enough to keep a static source idle.
@@ -375,8 +380,28 @@ impl GraphicsCaptureApiHandler for Handler {
         latest.height = h;
         latest.rgba.clear();
         latest.rgba.extend_from_slice(bytes);
+        crate::stall::frame_published();
         Ok(())
     }
+}
+
+/// How long ago the compositor made a frame whose `SystemRelativeTime` is `made`
+/// (100 ns units on the performance counter's clock); none when the clock cannot be read
+/// or the timestamp is ahead of it.
+fn since_made(made: i64) -> Option<Duration> {
+    use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
+    let (mut now, mut freq) = (0i64, 0i64);
+    // SAFETY: both fill a plain integer and have no other preconditions.
+    unsafe {
+        QueryPerformanceCounter(&mut now).ok()?;
+        QueryPerformanceFrequency(&mut freq).ok()?;
+    }
+    if freq <= 0 {
+        return None;
+    }
+    let now_100ns = (now as i128 * 10_000_000 / freq as i128) as i64;
+    let ahead = now_100ns.checked_sub(made)?;
+    (ahead >= 0).then(|| Duration::from_nanos(ahead as u64 * 100))
 }
 
 fn sampled_hash(bytes: &[u8]) -> u64 {
@@ -1228,6 +1253,29 @@ mod tests {
         e.set_pane_lock(false);
         assert_eq!(e.pane(), None);
         assert_ne!(e.pane_seq(), seq);
+    }
+
+    #[test]
+    fn a_frames_lateness_is_read_on_the_performance_counters_clock() {
+        use windows::Win32::System::Performance::{
+            QueryPerformanceCounter, QueryPerformanceFrequency,
+        };
+        let (mut now, mut freq) = (0i64, 0i64);
+        // SAFETY: both fill a plain integer.
+        unsafe {
+            QueryPerformanceCounter(&mut now).unwrap();
+            QueryPerformanceFrequency(&mut freq).unwrap();
+        }
+        let now_100ns = (now as i128 * 10_000_000 / freq as i128) as i64;
+        let fresh = since_made(now_100ns).unwrap();
+        assert!(fresh < Duration::from_millis(50), "{fresh:?}");
+        let old = since_made(now_100ns - 10_000_000).unwrap();
+        assert!(
+            old >= Duration::from_secs(1) && old < Duration::from_millis(1050),
+            "{old:?}"
+        );
+        // A timestamp ahead of the clock is no reading, not a negative lateness.
+        assert_eq!(since_made(now_100ns + 100_000_000), None);
     }
 
     #[test]

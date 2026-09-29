@@ -26,6 +26,24 @@
   };
   let rec = $state<LogState>({ follow_log: false, follow_log_path: null, follow_log_since: null, follow_log_lines: 0 });
   let recError = $state<string | null>(null);
+  // The stall log (always on): where it is and how many lines this run has written.
+  let stall = $state<{ path: string | null; notes: number } | null>(null);
+  let stallError = $state<string | null>(null);
+  async function loadStall() {
+    try {
+      stall = await invoke<{ path: string | null; notes: number }>("stall_log_state");
+    } catch {
+      stall = null;
+    }
+  }
+  async function showStall() {
+    stallError = null;
+    try {
+      await invoke("stall_log_show");
+    } catch (e) {
+      stallError = e instanceof Error ? e.message : String(e);
+    }
+  }
   let now = $state(Math.floor(Date.now() / 1000));
   const elapsed = $derived(rec.follow_log && rec.follow_log_since ? Math.max(0, now - rec.follow_log_since) : 0);
 
@@ -39,6 +57,7 @@
     hotkey = s.hotkey_toggle;
     hotkeyDraft = hotkey;
     rec = s;
+    await loadStall();
   }
 
   async function setRecording(on: boolean) {
@@ -385,6 +404,30 @@
 
   <section>
     <h2>Measurements</h2>
+    <h3>Stall log</h3>
+    <p class="help">
+      Always on. When the glass's picture waits — the screen's frame arrives late, the copy
+      from the GPU is slow, the core is busy, a window covers the box, or the glass's own
+      page is busy — one line says which, with the local time, so a stutter you noticed
+      can be found by its clock. Timings and sizes only — never pixels, never text. The
+      file stays under 2 MB; an older part is kept as <code>stall.log.1</code>.
+    </p>
+    {#if stall?.path}
+      <p class="help">
+        <code>{stall.path}</code> · {stall.notes} {stall.notes === 1 ? "line" : "lines"} since
+        ReviewGlass started
+      </p>
+      <div class="test plain">
+        <button onclick={() => void showStall()}>Show in folder</button>
+        <button onclick={() => void loadStall()}>Refresh</button>
+      </div>
+    {:else}
+      <p class="help">No home folder to write the log to; the stall log is off.</p>
+    {/if}
+    {#if stallError}
+      <p class="bad">{stallError}</p>
+    {/if}
+    <h3>Follow recording</h3>
     <p class="help">
       A recording of what the column detector reads and what Fit does with it, for tuning
       the two together: the cursor, the column's edges, the source rectangle, the glass's
@@ -435,6 +478,16 @@
   h2 {
     margin: 0 0 4px;
     font-size: 14px;
+    font-weight: 600;
+  }
+  .test.plain {
+    padding-top: 0;
+    border-top: none;
+    margin-bottom: 12px;
+  }
+  h3 {
+    margin: 12px 0 4px;
+    font-size: 13px;
     font-weight: 600;
   }
   .help {
