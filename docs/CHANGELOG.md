@@ -4,6 +4,62 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 8 (29.9.2026): the stall log, and a README for visitors
+
+**The owner's report.** A full day's use: "excellent when the panes are not too wide".
+The stutter they had reported on 28.9.2026 was located by their own eye: the text in the
+glass stutters and lags while the same text appears in the Claude app's input without
+delay, and after a moment it eases. So the wait is in ReviewGlass's path from the screen
+to the canvas, not in the machine or in Claude. The measurement of 28.9.2026 had found
+the Claude UI thread never over 41 ms; it had not measured the glass while shown.
+
+**Measured before fixed (LESSONS, 28.9.2026): the stall log.** `src-tauri/src/stall.rs`,
+`~/.reviewglass/stall.log`, always on and bounded at 2 MB (then `stall.log.1`). A line
+only when a stage is slow, with the local time so "it stuttered at 14:32" finds it:
+
+- `late`: the compositor's frame reached the capture thread late (its
+  `SystemRelativeTime` against the performance counter), 100 ms or more;
+- `crop`: the GPU-to-CPU copy of the box or the pane band, 40 ms or more;
+- `main`: the core's main thread answered a 10 Hz probe 100 ms late or more. Every
+  synchronous Tauri command runs on the main thread, and that includes the glass's
+  frame poll, the Diff tab's `panel_diffs` and `panel_file_view` and the dock's
+  commands, so a busy main thread is a glass with no new picture. This is the first
+  suspect from reading the code;
+- `cmd`: `glass_frame`, `panel_diffs` and `panel_file_view`, by name, when a body takes
+  30 ms or more;
+- `uia`: the frame thread's UI Automation reads (`root_at` on every tick, `rect_of`,
+  the neighbour, the covering check), 50 ms or more;
+- `covered`: a window over the box held the picture (on, by whom; off, after how long);
+- the page's side over `stall_note` (`js-*` kinds only, 300 characters at most):
+  `js-rtt` (a frame poll's round trip), `js-late` (the poll timer fired late: the page
+  was busy), `js-draw`, and `js-longtask` (a garbage collection shows here);
+- `minute`: one summary a minute from each side while the glass is shown. The core
+  reports frames arrived and published and the worst times; the page reports polls,
+  frames, MB received, the worst times and the JS heap.
+
+Timings, sizes and command names only. The probe sleeps while the glass is hidden. It is
+shown in Settings > Measurements with its path, line count and a Show in folder button.
+The first line of the first launch was already a finding of sorts: the first
+`glass_frame` took 107 ms (the capture attaching). It was served before `setup` had
+written its `start` line, as the lesson of 23.9.2026 says commands can be.
+
+**README for visitors.** The repository has been public since 17.9.2026, and its README
+still said P4b was next. It now covers:
+
+- the app as it is: the click-lock to a pane, the diff window and explain;
+- setting it up, because there is no installer: the two collectors in
+  `~/.claude/settings.json`, and that the status line becomes ReviewGlass's;
+- the keys, each with its mouse equivalent;
+- a note that the project is independent of Anthropic.
+
+The privacy section had said that screen pixels are never written to disk. The drawer's
+picture (adr.rg.025) is saved when the user asks for it, and it is not the screen; the
+section now says so and names the local diagnostic logs.
+
+Verified: `cargo fmt`, `clippy -D warnings`, `cargo test` (148 passed, a new one for the
+lateness clock) and `pnpm check` are clean. The shortcut's exe was rebuilt from main
+ffa59f0 and launched through Explorer; the log was written.
+
 ## Session 7 closes — 28.9.2026 (0.1.0)
 
 The owner at the close: "everything works". Session 7 was polish, by the owner's verdict
