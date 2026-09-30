@@ -4,6 +4,44 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 8, continued (29-30.9.2026): the stutter found, and a placed glass stays placed
+
+**The stutter was a skip, not a wait.** The owner narrowed it down: it comes only
+while typing into Claude's input with the glass showing it, one to four changes a
+second, and the fan speeds up then. The stall log answered it. Every stage was fast:
+crop at most 2 ms, the main thread at most 4 ms, the page's round trip at most 15 ms,
+no draw over 1 ms. Meanwhile `published` stayed far below `arrived`, for example
+259 of 1609 in one minute of typing. The frames were never late; they were never
+published. The publish skip compared a hash of 4096 sampled bytes, one byte in 250
+for a megabyte crop. A typed character changes a hundred-odd bytes, and about half
+the time none of them was sampled. `crop_hash` now reads every byte, eight at a time,
+and each step is a bijection, so one changed pixel always changes the hash. The old
+hash missed 78 of the 79 one-pixel changes the new test makes. Main b2b9641. The
+owner the next morning: no stutter at all; typing through the glass is effortless.
+The first minute after the fix read `arrived=1734 published=1616`. The fan was not
+measured: the sampler's run failed, and the owner did not report it again. The
+glass-visible cost stays on the list.
+
+**A placed glass stays placed (adr.rg.029).** After moving the glass, a click on
+another pane now and then sent it back to the middle of the screen. The owner could
+not say when, and the reason was the "now and then". adr.rg.027 centres on a lock
+from none, and a lock is lost and found again in several cases: when the glass is
+hidden or in Still, when the lock is released, and when Claude redraws the pane and
+its UI Automation element goes stale. The centring also saved the middle as the
+position, so a restart lost the place.
+
+The fix:
+
+- `glass.placed` is set by a drag the user starts that moves the window.
+- A move by code never sets it, and a press whose first move comes later than a
+  second is not a drag.
+- While it is set, a lock applies Fit's width only.
+- The glass menu's **Centre on the screen** centres the glass and clears the flag.
+
+Tests: an old config without the flag centres as before, and the flag and the
+position survive a reopen. Atlas #413, worker af031274, ADR-0029 rendered. Main
+ae7bb15, rebuilt and launched through Explorer.
+
 ## Session 8 (29.9.2026): the stall log, and a README for visitors
 
 **The owner's report.** A full day's use: "excellent when the panes are not too wide".
