@@ -31,9 +31,9 @@
   // reading area is the whole pane, magnified (adr.rg.027 as amended 28.9.2026: a glass
   // the neighbouring pane's size read half a pane at 200 %, and the lens is the point).
   // A lock that moves between panes leaves the glass where it is; only Fit's width
-  // follows. "Lock here" on the bar (adr.rg.030) keeps the glass exactly where and as
-  // large as it is - no centring, no Fit width, no drag or resize - until the open
-  // lock beside it is pressed, and across restarts: a lock is lost and found again
+  // follows. "Lock here" on the bar (adr.rg.030) keeps the glass where it is - no
+  // centring, no drag or resize; Fit's width grows and shrinks around the centre it
+  // was locked at - until the open lock beside it is pressed, and across restarts: a lock is lost and found again
   // whenever the glass is hidden, in Still, or Claude redraws the pane, so the
   // centring came at what looked like random moments, and the owner asked for a
   // control of their own rather than a rule.
@@ -184,21 +184,7 @@
   let waitDue = false;
   async function fitToPane() {
     if (fitting) return;
-    if (pinned && paneFit && paneLock && mode === "follow" && paneWidth) {
-      // Locked here: the window keeps its size, and the zoom makes the pane fill its
-      // width instead - the reading area and the frame's box stay inside the pane
-      // (the owner, 30.9.2026: a glass locked wide read into the neighbouring panes).
-      // Rounded up to a zoom step, so the box is never wider than the pane.
-      const w = Math.max(2, Math.round(canvas.clientWidth * dpr()));
-      const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.ceil(w / paneWidth / ZOOM_STEP - 1e-6) * ZOOM_STEP));
-      mlog(`fit locked-here pane=${paneWidth} canvas=${w} z=${z}`);
-      if (Math.abs(z - zoom) > 0.001) {
-        zoom = z;
-        await reportView();
-      }
-      return;
-    }
-    if (pinned || !paneFit || !paneLock || mode !== "follow" || !paneWidth) {
+    if (!paneFit || !paneLock || mode !== "follow" || !paneWidth) {
       mlog(`fit skip pinned=${pinned ? 1 : 0} fit=${paneFit ? 1 : 0} lock=${paneLock ? 1 : 0} mode=${mode} pane=${paneWidth ?? "none"} zoomBack=${zoomDerived ? 1 : 0}`);
       if (zoomDerived) {
         zoom = userZoom; // no column to fit: the user's own zoom is back
@@ -220,11 +206,17 @@
       want = Math.max(FIT_MIN_WIDTH, Math.min(maxW, want));
       const size = await win.innerSize();
       const zoomChanged = Math.abs(z - zoom) > 0.001;
-      const facts = `fit pane=${paneWidth} z=${z} want=${want} size=${size.width} max=${maxW}`;
-      const narrower = want < size.width - FIT_SLACK;
+      // A pane locked by a click is read from the app, exact to the pixel: the glass
+      // follows it at once and to the pixel, so the reading area is the pane's width
+      // edge to edge (the owner, 30.9.2026: a box short of the pane's edges is broken).
+      // The waits and the slack are for the pixel detector's readings.
+      const exact = frame.locked;
+      const slack = exact ? 1 : FIT_SLACK;
+      const facts = `fit pane=${paneWidth} z=${z} want=${want} size=${size.width} max=${maxW} exact=${exact ? 1 : 0}`;
+      const narrower = want < size.width - slack;
       const wideColumn =
-        want > size.width + FIT_SLACK && paneWidth > Math.round(screen.availWidth * scale) * FIT_WIDE_COLUMN;
-      if ((narrower || wideColumn) && !waitDue) {
+        want > size.width + slack && paneWidth > Math.round(screen.availWidth * scale) * FIT_WIDE_COLUMN;
+      if ((narrower || wideColumn) && !waitDue && !exact) {
         // Wait and see whether it holds.
         const wait = narrower ? FIT_SHRINK_AFTER : FIT_WIDEN_WAIT;
         mlog(`${facts} -> ${narrower ? "shrink-wait" : "widen-wait"} ${wait}ms`);
@@ -238,9 +230,9 @@
       clearTimeout(waitTimer);
       zoom = z;
       mlog(
-        `${facts} -> ${Math.abs(want - size.width) > FIT_SLACK ? (want > size.width ? "widen" : "shrink") : "none"}${waitDue ? " after-wait" : ""}${zoomChanged ? " zoom-changed" : ""}`,
+        `${facts} -> ${Math.abs(want - size.width) > slack ? (want > size.width ? "widen" : "shrink") : "none"}${waitDue ? " after-wait" : ""}${zoomChanged ? " zoom-changed" : ""}`,
       );
-      if (Math.abs(want - size.width) > FIT_SLACK) {
+      if (Math.abs(want - size.width) > slack) {
         // Keep the window on its monitor: a glass that grew past the right edge would
         // show its picture off screen.
         const pos = await win.outerPosition();
@@ -249,7 +241,11 @@
         const availLeft = (screen as Screen & { availLeft?: number }).availLeft ?? 0;
         const left = Math.round(availLeft * scale);
         const right = left + Math.round(screen.availWidth * scale);
-        const x = Math.max(left, Math.min(pos.x, right - want - Math.round(FIT_MARGIN / 2)));
+        // Locked here, the glass widens and narrows around the centre it was locked at
+        // and does not otherwise move (adr.rg.030 as amended); unlocked, its left edge
+        // stays.
+        const from = pinned && pinCentre !== null ? Math.round(pinCentre - want / 2) : pos.x;
+        const x = Math.max(left, Math.min(from, right - want - Math.round(FIT_MARGIN / 2)));
         if (x !== pos.x) await win.setPosition(new PhysicalPosition(x, pos.y));
         await win.setSize(new PhysicalSize(want, size.height)); // onResized reports the view
       } else if (zoomChanged) {
@@ -266,9 +262,9 @@
   let centrePending = false;
   /** Locked here (adr.rg.030): the glass keeps its place and size until unlocked. */
   let pinned = $state(false);
-  /** Locked here with Fit on and a pane to fit (adr.rg.030 as amended): the zoom, not
-   *  the window, fits the pane, so the zoom buttons are Fit's, not the user's. */
-  const zoomFitted = $derived(pinned && paneFit && paneLock && mode === "follow" && !!paneWidth);
+  /** The horizontal centre the glass was locked at, physical px: Fit's width grows and
+   *  shrinks around it, so a pane change never moves a glass locked here. */
+  let pinCentre: number | null = null;
   /** A drag, unless the glass is locked here; then the bar says why nothing moves. */
   function dragWindow() {
     if (pinned) {
@@ -288,9 +284,9 @@
     pinned = next;
     const p = await win.outerPosition();
     const s = await win.innerSize();
+    pinCentre = next ? p.x + s.width / 2 : null;
     mlog(`pinned ${next ? 1 : 0} ${p.x},${p.y} ${s.width}x${s.height}`);
     await invoke("glass_set_pinned", { pinned: next, x: p.x, y: p.y, width: s.width, height: s.height });
-    // Locked, Fit fits the pane by the zoom; unlocked, by the window's width again.
     await fitToPane();
   }
   let centreTimer: ReturnType<typeof setTimeout> | undefined;
@@ -641,6 +637,13 @@
         setTimeout(() => (notice = null), 8000);
       }
       await reportView();
+      if (pinned) {
+        // Locked here before the restart: the centre it was locked at, from the place
+        // and size stored with the lock.
+        const p = await win.outerPosition();
+        const sz = await win.innerSize();
+        pinCentre = p.x + sz.width / 2;
+      }
       unlisten.push(await win.onMoved(savePosition));
       unlisten.push(
         // The menu's "Centre on the screen" (offered only while not locked here).
@@ -808,29 +811,23 @@
       <span class="sep"></span>
 
       <button
-        title={zoomFitted ? "Fit sets the zoom while the glass is locked here; turn Fit off to zoom by hand" : "Zoom out (− or wheel down)"}
+        title="Zoom out (− or wheel down)"
         aria-label="Zoom out"
-        disabled={frozen || zoom <= ZOOM_MIN || zoomFitted}
+        disabled={frozen || zoom <= ZOOM_MIN}
         onpointerdown={(e) => control(e, () => setZoom(zoom - ZOOM_STEP))}>−</button
       >
       <span
         class="value"
         class:derived={zoomDerived}
         aria-live="polite"
-        title={zoomFitted
-          ? "Fit: the zoom at which the locked pane fills the glass locked here"
-          : zoomDerived
-            ? `Lowered from ${Math.round(userZoom * 100)}% so the whole column fits the screen (Fit)`
-            : "Zoom"}>{Math.round(zoom * 100)}%{zoomFitted ? "⇔" : zoomDerived ? "↓" : ""}</span
+        title={zoomDerived
+          ? `Lowered from ${Math.round(userZoom * 100)}% so the whole column fits the screen (Fit)`
+          : "Zoom"}>{Math.round(zoom * 100)}%{zoomDerived ? "↓" : ""}</span
       >
       <button
-        title={zoomFitted
-          ? "Fit sets the zoom while the glass is locked here; turn Fit off to zoom by hand"
-          : zoomDerived
-            ? "The column would not fit the screen at a higher zoom (Fit is on)"
-            : "Zoom in (+ or wheel up)"}
+        title={zoomDerived ? "The column would not fit the screen at a higher zoom (Fit is on)" : "Zoom in (+ or wheel up)"}
         aria-label="Zoom in"
-        disabled={frozen || zoom >= ZOOM_MAX || zoomDerived || zoomFitted}
+        disabled={frozen || zoom >= ZOOM_MAX || zoomDerived}
         onpointerdown={(e) => control(e, () => setZoom(zoom + ZOOM_STEP))}>+</button
       >
 
@@ -881,8 +878,8 @@
         disabled={!paneLock}
         title={pinned
           ? paneFit
-            ? "Fit is on: the glass is locked here, so the zoom makes the locked pane fill its width"
-            : "Let the zoom make the locked pane fill the glass locked here"
+            ? "Fit is on: locked here, the glass widens and narrows around its centre to the locked pane's width at this zoom, and does not move"
+            : "Let the glass locked here widen and narrow around its centre to the locked pane's width"
           : !paneLock
             ? "Fit needs the column lock"
             : paneFit
