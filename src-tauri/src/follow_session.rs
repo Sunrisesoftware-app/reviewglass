@@ -45,6 +45,10 @@ const RENAME_SUFFIX: &str = ", rename session";
 const PANE_CLASS: &str = "dframe-pane";
 /// The page name of the desktop app's main window, which holds panes, not one session.
 const MAIN_WINDOW_PAGE: &str = "Claude";
+/// The main window's page name since the app named its active session there (read
+/// 30.9.2026: "<session title> - Claude Code"). A session in a window of its own is
+/// named by its title alone.
+const MAIN_WINDOW_PAGE_SUFFIX: &str = " - Claude Code";
 /// The desktop app's executable.
 const CLAUDE_EXE: &str = "claude.exe";
 /// Ancestors walked from the element under the cursor before giving up.
@@ -104,10 +108,13 @@ pub fn title_from_name(name: &str) -> Option<&str> {
 }
 
 /// The session title a page's name gives, for a session in a window of its own: the
-/// name itself, unless it is empty or the main window's "Claude".
+/// name itself, unless it is empty or the main window's - "Claude", or the active
+/// session's title with " - Claude Code" after it. Taking the main window's page for a
+/// session's own window locked the glass to the whole window at a click in the sidebar
+/// (the owner's report of 30.9.2026: the glass spread over the whole screen).
 pub fn title_from_page(name: &str) -> Option<&str> {
     let t = name.trim();
-    (!t.is_empty() && t != MAIN_WINDOW_PAGE).then_some(t)
+    (!t.is_empty() && t != MAIN_WINDOW_PAGE && !t.ends_with(MAIN_WINDOW_PAGE_SUFFIX)).then_some(t)
 }
 
 /// Whether a process image is the desktop app's: its file name is claude.exe.
@@ -741,6 +748,15 @@ mod tests {
         );
         assert_eq!(title_from_page("Claude"), None);
         assert_eq!(title_from_page("  "), None);
+        // The main window's page as the app names it since late September 2026.
+        assert_eq!(
+            title_from_page("Arki-sovelluksen kehitys ja tietosuoja - Claude Code"),
+            None
+        );
+        assert_eq!(
+            title_from_page("Review Glass performance ja dokumentaatio"),
+            Some("Review Glass performance ja dokumentaatio")
+        );
     }
 
     #[test]

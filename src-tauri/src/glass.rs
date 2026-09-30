@@ -27,7 +27,7 @@ pub const STATE_EVENT: &str = "glass:state";
 /// Event asking the glass to step its zoom (the webview owns the zoom value, since it
 /// is tied to the canvas size it reports).
 pub const ZOOM_EVENT: &str = "glass:zoom";
-/// Event to the glass: centre on the screen now and forget the user's place.
+/// Event to the glass: centre on the screen now (the menu's "Centre on the screen").
 pub const CENTRE_EVENT: &str = "glass:centre";
 /// Event sent to the glass when the pane under the cursor changed (adr.rg.017).
 pub const PANE_EVENT: &str = "glass:pane";
@@ -49,8 +49,8 @@ pub struct GlassState {
     pub ui_scale: f32,
     pub pane_lock: bool,
     pub pane_fit: bool,
-    /// The user has placed the glass: a lock no longer centres it.
-    pub placed: bool,
+    /// Locked here (adr.rg.030): the glass keeps its place and size.
+    pub pinned: bool,
     /// Width of the pane under the cursor in source pixels; absent when none is found
     /// or the lock is off.
     pub pane_width: Option<u32>,
@@ -93,7 +93,7 @@ fn state_of(engine: &Engine, store: &Store) -> GlassState {
         ui_scale: g.ui_scale,
         pane_lock: g.pane_lock,
         pane_fit: g.pane_fit,
-        placed: g.placed,
+        pinned: g.pinned,
         pane_width: engine.pane().map(|p| p.width()),
         build: build_stamp(),
         hotkey_toggle: store.get().hotkeys.toggle_glass.clone(),
@@ -648,8 +648,12 @@ pub fn popup_menu(app: &AppHandle, engine: &Engine) -> tauri::Result<()> {
             &MenuItem::with_id(
                 app,
                 M_CENTRE,
-                "Centre on the screen",
-                mode != Mode::Lens,
+                if app.state::<Store>().get().glass.pinned {
+                    "Centre on the screen (unlock first)"
+                } else {
+                    "Centre on the screen"
+                },
+                mode != Mode::Lens && !app.state::<Store>().get().glass.pinned,
                 None::<&str>,
             )?,
             &MenuItem::with_id(
@@ -903,10 +907,27 @@ pub fn app_quit(app: AppHandle) {
     crate::tray::quit_app(&app);
 }
 
-/// The user placed the glass (a drag), or asked it centred again (the menu).
+/// "Lock here" and its unlock (adr.rg.030). Locking stores the place and the size the
+/// glass has at that moment as the user's own, Fit's width included: locking is the
+/// user adopting it, so a restart opens the glass exactly as it was locked.
 #[tauri::command]
-pub fn glass_set_placed(store: State<Store>, placed: bool) {
-    let _ = store.update(|c| c.glass.placed = placed);
+pub fn glass_set_pinned(
+    store: State<Store>,
+    pinned: bool,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+) {
+    let _ = store.update(|c| {
+        c.glass.pinned = pinned;
+        if pinned {
+            c.glass.x = Some(x);
+            c.glass.y = Some(y);
+            c.glass.width = width;
+            c.glass.height = height;
+        }
+    });
 }
 
 #[tauri::command]

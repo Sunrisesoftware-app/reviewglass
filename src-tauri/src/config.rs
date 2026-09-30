@@ -71,11 +71,11 @@ pub struct GlassConfig {
     /// Follow chooses the session (adr.rg.022): the Code pane under the cursor, by the
     /// title on its header, becomes the session the Diff tab shows.
     pub follow_session: bool,
-    /// The user has put the glass somewhere themself, by dragging it: a lock from none
-    /// no longer centres it (adr.rg.029; adr.rg.027's centring is for a glass nobody
-    /// has placed). Kept across restarts with `x` and `y`, so the glass is found where
-    /// it was left. The glass's menu "Centre on the screen" centres it and clears this.
-    pub placed: bool,
+    /// Locked here (adr.rg.030): the user pressed "Lock here" on the glass's bar, and
+    /// the glass keeps its place and its size until they unlock it - no centring on a
+    /// pane lock, no Fit width, no drag. Kept across restarts with `x`, `y`, `width` and
+    /// `height`, so the glass opens where it was locked.
+    pub pinned: bool,
 }
 
 impl Default for GlassConfig {
@@ -98,7 +98,7 @@ impl Default for GlassConfig {
             pane_lock: true,
             pane_fit: true,
             follow_session: true,
-            placed: false,
+            pinned: false,
         }
     }
 }
@@ -256,23 +256,23 @@ mod tests {
         assert_eq!(s.get().glass.zoom, 2.5);
         assert_eq!(s.get().glass.width, 900);
         assert_eq!(s.get().hotkeys, Hotkeys::default());
-        // A config from before the user's place was kept: the lock centres, as it did.
-        assert!(!s.get().glass.placed);
+        // A config from before "Lock here": the glass is not locked in place.
+        assert!(!s.get().glass.pinned);
     }
 
     #[test]
-    fn the_users_place_survives_a_restart() {
-        let d = tmpdir("placed");
+    fn a_glass_locked_here_stays_locked_across_a_restart() {
+        let d = tmpdir("pinned");
         let s = Store::open(&d);
         s.update(|c| {
-            c.glass.placed = true;
+            c.glass.pinned = true;
             c.glass.x = Some(-1200);
             c.glass.y = Some(300);
         })
         .unwrap();
         let again = Store::open(&d);
         let g = again.get().glass;
-        assert!(g.placed);
+        assert!(g.pinned);
         assert_eq!((g.x, g.y), (Some(-1200), Some(300)));
     }
 }

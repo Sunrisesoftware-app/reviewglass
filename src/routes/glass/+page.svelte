@@ -31,10 +31,12 @@
   // reading area is the whole pane, magnified (adr.rg.027 as amended 28.9.2026: a glass
   // the neighbouring pane's size read half a pane at 200 %, and the lens is the point).
   // A lock that moves between panes leaves the glass where it is; only Fit's width
-  // follows. Once the user has dragged the glass somewhere, no lock centres it again,
-  // not even after a restart (adr.rg.029: a lock is lost and found again whenever the
-  // glass is hidden, in Still, or Claude redraws the pane, so "from none" came at what
-  // looked like random moments); the menu's "Centre on the screen" undoes it.
+  // follows. "Lock here" on the bar (adr.rg.030) keeps the glass exactly where and as
+  // large as it is - no centring, no Fit width, no drag or resize - until the open
+  // lock beside it is pressed, and across restarts: a lock is lost and found again
+  // whenever the glass is hidden, in Still, or Claude redraws the pane, so the
+  // centring came at what looked like random moments, and the owner asked for a
+  // control of their own rather than a rule.
   //
   // A tab hangs below the glass's bottom-right corner, outside it, with a move
   // handle and a hide button, so the glass is moved or put away without the pointer
@@ -55,7 +57,7 @@
     ui_scale: number;
     pane_lock: boolean;
     pane_fit: boolean;
-    placed: boolean;
+    pinned: boolean;
     pane_width: number | null;
     build: string;
     follow_log: boolean;
@@ -182,8 +184,8 @@
   let waitDue = false;
   async function fitToPane() {
     if (fitting) return;
-    if (!paneFit || !paneLock || mode !== "follow" || !paneWidth) {
-      mlog(`fit skip fit=${paneFit ? 1 : 0} lock=${paneLock ? 1 : 0} mode=${mode} pane=${paneWidth ?? "none"} zoomBack=${zoomDerived ? 1 : 0}`);
+    if (pinned || !paneFit || !paneLock || mode !== "follow" || !paneWidth) {
+      mlog(`fit skip pinned=${pinned ? 1 : 0} fit=${paneFit ? 1 : 0} lock=${paneLock ? 1 : 0} mode=${mode} pane=${paneWidth ?? "none"} zoomBack=${zoomDerived ? 1 : 0}`);
       if (zoomDerived) {
         zoom = userZoom; // no column to fit: the user's own zoom is back
         await reportView();
@@ -234,10 +236,7 @@
         const left = Math.round(availLeft * scale);
         const right = left + Math.round(screen.availWidth * scale);
         const x = Math.max(left, Math.min(pos.x, right - want - Math.round(FIT_MARGIN / 2)));
-        if (x !== pos.x) {
-          dragFrom = null; // a move by code is not the user's placing
-          await win.setPosition(new PhysicalPosition(x, pos.y));
-        }
+        if (x !== pos.x) await win.setPosition(new PhysicalPosition(x, pos.y));
         await win.setSize(new PhysicalSize(want, size.height)); // onResized reports the view
       } else if (zoomChanged) {
         await reportView();
@@ -251,29 +250,31 @@
   // pane's width reaches the glass on the next frame poll (glass:pane); when it was
   // already the same no event comes, so a timer centres anyway.
   let centrePending = false;
-  /** The user has dragged the glass somewhere: a lock no longer centres it. */
-  let placed = false;
-  /** Where the window was when the user started a drag; a drag that moved it places it. */
-  let dragFrom: { x: number; y: number } | null = null;
-  /** The window's position as the last move reported it (read synchronously at a drag's
-   *  start: asking the core then would wait behind the drag's own modal loop). */
-  let lastPos: { x: number; y: number } | null = null;
-  /** When the drag started, and whether it has moved the window yet: a press on the bar
-   *  that never moved it must not claim a later move by code. */
-  let dragAt = 0;
-  let dragMoved = false;
-  const DRAG_FIRST_MOVE_MS = 1000;
+  /** Locked here (adr.rg.030): the glass keeps its place and size until unlocked. */
+  let pinned = $state(false);
+  /** A drag, unless the glass is locked here; then the bar says why nothing moves. */
   function dragWindow() {
-    dragFrom = lastPos;
-    dragAt = performance.now();
-    dragMoved = false;
+    if (pinned) {
+      pinnedNotice();
+      return;
+    }
     void win.startDragging();
   }
-  function setPlaced(next: boolean) {
-    if (placed === next) return;
-    placed = next;
-    mlog(`placed ${next ? 1 : 0}`);
-    void invoke("glass_set_placed", { placed: next });
+  let pinnedNoticeTimer: ReturnType<typeof setTimeout> | undefined;
+  function pinnedNotice() {
+    notice = "Locked here — press the open lock on the bar to move or resize the glass";
+    clearTimeout(pinnedNoticeTimer);
+    pinnedNoticeTimer = setTimeout(() => (notice = null), 3000);
+  }
+  async function setPinned(next: boolean) {
+    if (pinned === next) return;
+    pinned = next;
+    const p = await win.outerPosition();
+    const s = await win.innerSize();
+    mlog(`pinned ${next ? 1 : 0} ${p.x},${p.y} ${s.width}x${s.height}`);
+    await invoke("glass_set_pinned", { pinned: next, x: p.x, y: p.y, width: s.width, height: s.height });
+    // Unlocked: Fit takes the width back if it is on.
+    if (!next) await fitToPane();
   }
   let centreTimer: ReturnType<typeof setTimeout> | undefined;
   function onFrameStatus(next: FrameStatus) {
@@ -297,8 +298,8 @@
     } finally {
       waitDue = false;
     }
-    if (placed) {
-      mlog("centre skipped: placed by the user");
+    if (pinned) {
+      mlog("centre skipped: locked here");
       return;
     }
     const scale = dpr();
@@ -307,7 +308,6 @@
     const x = Math.round((s.availLeft ?? 0) * scale + (screen.availWidth * scale - size.width) / 2);
     const y = Math.round((s.availTop ?? 0) * scale + (screen.availHeight * scale - size.height) / 2);
     mlog(`centre on lock ${x},${y} ${size.width}x${size.height}`);
-    dragFrom = null; // a move by code is not the user's placing
     await win.setPosition(new PhysicalPosition(x, y));
   }
 
@@ -501,6 +501,10 @@
   }
 
   async function resizeBy(factor: number) {
+    if (pinned) {
+      pinnedNotice();
+      return;
+    }
     const s = await win.innerSize();
     const w = Math.round(Math.min(4000, Math.max(160, s.width * factor)));
     const h = Math.round(Math.min(2000, Math.max(60, s.height * factor)));
@@ -564,27 +568,21 @@
   function startResize(e: PointerEvent, dir: (typeof GRIPS)[number][1]) {
     if (e.button !== 0) return;
     e.stopPropagation();
+    if (pinned) {
+      pinnedNotice();
+      return;
+    }
     void win.startResizeDragging(dir);
   }
 
   onMount(() => {
     const unlisten: (() => void)[] = [];
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
-    const savePosition = (ev: { payload: { x: number; y: number } }) => {
-      lastPos = { x: ev.payload.x, y: ev.payload.y };
-      if (dragFrom && !dragMoved) {
-        // A drag moves the window at once; a first move long after the press is not it.
-        if (performance.now() - dragAt > DRAG_FIRST_MOVE_MS) dragFrom = null;
-        else dragMoved = true;
-      }
+    const savePosition = () => {
       if (lens) return; // the lens moves every few ms; its position is not a setting
       clearTimeout(saveTimer);
       saveTimer = setTimeout(async () => {
         const p = await win.outerPosition();
-        lastPos = { x: p.x, y: p.y };
-        // A drag the user started that moved the window: the glass is theirs to place.
-        if (dragFrom && (p.x !== dragFrom.x || p.y !== dragFrom.y)) setPlaced(true);
-        dragFrom = null;
         await invoke("glass_save_position", { x: p.x, y: p.y });
       }, 400);
     };
@@ -617,7 +615,7 @@
       uiScale = s.ui_scale;
       paneLock = s.pane_lock;
       paneFit = s.pane_fit;
-      placed = s.placed;
+      pinned = s.pinned;
       paneWidth = s.pane_width;
       build = s.build;
       followLog = s.follow_log;
@@ -626,17 +624,11 @@
         setTimeout(() => (notice = null), 8000);
       }
       await reportView();
-      try {
-        const p = await win.outerPosition();
-        lastPos = { x: p.x, y: p.y };
-      } catch {
-        lastPos = null; // the first move reports it
-      }
       unlisten.push(await win.onMoved(savePosition));
       unlisten.push(
-        // The menu's "Centre on the screen": centre now, and let locks centre again.
+        // The menu's "Centre on the screen" (offered only while not locked here).
         await listen("glass:centre", () => {
-          setPlaced(false);
+          if (pinned) return;
           centrePending = true;
           void centreNow();
         }),
@@ -733,8 +725,10 @@
   <header class="titlebar" {onpointerdown} {oncontextmenu} role="toolbar" tabindex="-1" aria-label="ReviewGlass">
     <button
       class="grab"
-      title="Drag to move the glass; it stays where you put it (right-click, Centre on the screen, to undo)"
+      class:held={pinned}
+      title={pinned ? "Locked here — press the open lock to move the glass" : "Drag to move the glass"}
       aria-label="Move the glass"
+      aria-disabled={pinned}
       onpointerdown={(e) => {
         if (e.button !== 0) return;
         e.stopPropagation();
@@ -744,6 +738,26 @@
     <span class="name" title={build ? `Build ${build} — version, commit; a + means uncommitted changes` : ""}
       >ReviewGlass{#if build}<span class="build">{build}</span>{/if}</span
     >
+    {#if mode !== "lens"}
+      <!-- Lock here (adr.rg.030): the glass keeps this place and size until the open
+           lock beside it is pressed; nothing the panes do moves it. -->
+      {#if pinned}
+        <span class="pinned" title="Locked here: this place and size stay, whichever pane is locked, and after a restart"
+          >🔒 Locked here</span
+        >
+        <button
+          title="Unlock: the glass can be moved and resized again, and a pane lock may centre and widen it"
+          aria-label="Unlock the glass's place"
+          onpointerdown={(e) => control(e, () => setPinned(false))}>🔓</button
+        >
+      {:else}
+        <button
+          title="Keep the glass exactly here and at this size: no centring, no widening, no moving, until you unlock it"
+          aria-label="Lock the glass here"
+          onpointerdown={(e) => control(e, () => setPinned(true))}>🔒 Lock here</button
+        >
+      {/if}
+    {/if}
 
     {#if mode === "lens"}
       <span class="hint">
@@ -802,11 +816,13 @@
       <button
         title="Smaller window"
         aria-label="Smaller window"
+        disabled={pinned}
         onpointerdown={(e) => control(e, () => resizeBy(1 / SIZE_STEP))}>▭−</button
       >
       <button
         title="Larger window"
         aria-label="Larger window"
+        disabled={pinned}
         onpointerdown={(e) => control(e, () => resizeBy(SIZE_STEP))}>▭+</button
       >
 
@@ -838,15 +854,17 @@
         onpointerdown={(e) => control(e, () => setPaneLock(!paneLock))}>Column</button
       >
       <button
-        class:on={paneFit && paneLock}
-        disabled={!paneLock}
-        title={!paneLock
-          ? "Fit needs the column lock"
-          : paneFit
-            ? "Fit is on: the window's width follows the column at this zoom; the zoom comes down when a column is too wide for the screen"
-            : "Let the window's width follow the column at this zoom"}
+        class:on={paneFit && paneLock && !pinned}
+        disabled={!paneLock || pinned}
+        title={pinned
+          ? "Fit waits while the glass is locked here: its width stays yours"
+          : !paneLock
+            ? "Fit needs the column lock"
+            : paneFit
+              ? "Fit is on: the window's width follows the column at this zoom; the zoom comes down when a column is too wide for the screen"
+              : "Let the window's width follow the column at this zoom"}
         aria-label="Fit width to the column"
-        aria-pressed={paneFit && paneLock}
+        aria-pressed={paneFit && paneLock && !pinned}
         onpointerdown={(e) => control(e, () => setPaneFit(!paneFit))}>Fit</button
       >
       {#if paneLock && mode === "follow"}
@@ -936,8 +954,10 @@
   <div class="tab {mode}" style="--ui: {uiScale}; height: {tabH}px" role="toolbar" aria-label="Move or hide the glass" bind:this={tabEl}>
     <button
       class="move"
-      title="Drag to move the glass; it stays where you put it, across panes and restarts (right-click, Centre on the screen, to undo)"
+      class:held={pinned}
+      title={pinned ? "Locked here — press the open lock on the bar to move the glass" : "Drag to move the glass"}
       aria-label="Move the glass"
+      aria-disabled={pinned}
       onpointerdown={(e) => {
         if (e.button !== 0) return;
         e.preventDefault();
@@ -975,7 +995,7 @@
     overflow: hidden;
     background: #161616;
     box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.7);
-    font: calc(12px * var(--ui)) system-ui, sans-serif;
+    font: calc(13px * var(--ui)) system-ui, sans-serif;
     color: #eee;
     user-select: none;
   }
@@ -991,7 +1011,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.17em;
-    min-height: calc(28px * var(--ui));
+    min-height: calc(30px * var(--ui));
     padding: 0 0.5em 0 0.35em;
     background: #202020;
     border-bottom: 1px solid rgba(255, 255, 255, 0.12);
@@ -1179,7 +1199,7 @@
     border-top: 0;
     border-radius: 0 0 6px 6px;
     background: #161616;
-    font: calc(12px * var(--ui)) system-ui, sans-serif;
+    font: calc(13px * var(--ui)) system-ui, sans-serif;
     user-select: none;
   }
   .tab.still {
@@ -1199,6 +1219,19 @@
   }
   .tab button.move {
     cursor: move;
+  }
+  /* Locked here: the handles say they will not move the glass. */
+  .titlebar button.grab.held,
+  .tab button.move.held {
+    cursor: not-allowed;
+    opacity: 0.35;
+  }
+  .pinned {
+    padding: 0.1em 0.5em;
+    border-radius: 4px;
+    background: rgba(255, 140, 0, 0.35);
+    font-weight: 600;
+    white-space: nowrap;
   }
   /* The top edge and corners are thin strips on the border itself, so they never sit
      on a title-bar button; the bottom corners can afford to be generous. */

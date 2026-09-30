@@ -145,7 +145,7 @@ pub fn run() {
             glass::glass_set_hovered,
             glass::glass_scroll,
             glass::glass_save_position,
-            glass::glass_set_placed,
+            glass::glass_set_pinned,
             glass::glass_hide,
             glass::app_quit,
             glass::glass_frame,

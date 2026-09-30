@@ -188,6 +188,15 @@ fn run(app: AppHandle) {
                     thread::sleep(RETRY_AFTER);
                     r.lock_at(x, y)
                 });
+                // A page in the window that holds the locked pane is that window's own
+                // page (its sidebar, its title bar), never a session's window of its
+                // own: the lock stays on the pane.
+                let found = found.filter(|p| {
+                    !(p.own_window
+                        && lock
+                            .as_ref()
+                            .is_some_and(|l| l.root == under.hwnd && !l.pane.own_window))
+                });
                 crate::measure::log(|| {
                     format!("frame click {x},{y} found={}", found.is_some() as u8)
                 });
