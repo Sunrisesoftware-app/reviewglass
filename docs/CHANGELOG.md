@@ -4,6 +4,23 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 8, 30.9.2026, later still: locked here, Fit widens around the locked centre (adr.rg.030 amended again)
+
+**What the owner saw:** the box stayed in the pane but fell short of its edges. The
+zoom was rounded up to a step (275 %), which left 654 of 680 px. The owner asked
+for the box to run along the pane's edges, and allowed the locked glass to widen
+sideways but not to move.
+
+**The fix:** Fit sets the window's width again, at the user's zoom. A locked glass
+widens and narrows around the horizontal centre it was locked at, and moves only as
+far as it must to stay on its monitor. For a pane locked by a click, whose width
+comes from the app and is exact, Fit applies at once and to the pixel: a 1 px slack
+and no waits. The waits and the 16 px slack stay for the pixel detector's readings.
+The zoom buttons belong to the user again.
+
+Atlas #418, worker fd96822f. Main 37d4a8d, rebuilt and running; not yet seen by the
+owner.
+
 ## Session 8, 30.9.2026, later: locked here, Fit fits the pane by the zoom (adr.rg.030 amended)
 
 **The owner's first use of Lock here:** the pane lock seemed gone. The picture moved
