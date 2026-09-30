@@ -27,6 +27,8 @@ pub const STATE_EVENT: &str = "glass:state";
 /// Event asking the glass to step its zoom (the webview owns the zoom value, since it
 /// is tied to the canvas size it reports).
 pub const ZOOM_EVENT: &str = "glass:zoom";
+/// Event to the glass: centre on the screen now and forget the user's place.
+pub const CENTRE_EVENT: &str = "glass:centre";
 /// Event sent to the glass when the pane under the cursor changed (adr.rg.017).
 pub const PANE_EVENT: &str = "glass:pane";
 /// The last pane sequence the glass was told about; see `glass_frame`.
@@ -47,6 +49,8 @@ pub struct GlassState {
     pub ui_scale: f32,
     pub pane_lock: bool,
     pub pane_fit: bool,
+    /// The user has placed the glass: a lock no longer centres it.
+    pub placed: bool,
     /// Width of the pane under the cursor in source pixels; absent when none is found
     /// or the lock is off.
     pub pane_width: Option<u32>,
@@ -89,6 +93,7 @@ fn state_of(engine: &Engine, store: &Store) -> GlassState {
         ui_scale: g.ui_scale,
         pane_lock: g.pane_lock,
         pane_fit: g.pane_fit,
+        placed: g.placed,
         pane_width: engine.pane().map(|p| p.width()),
         build: build_stamp(),
         hotkey_toggle: store.get().hotkeys.toggle_glass.clone(),
@@ -580,6 +585,7 @@ const M_LENS: &str = "glass-lens";
 const M_ZOOM_IN: &str = "glass-zoom-in";
 const M_ZOOM_OUT: &str = "glass-zoom-out";
 const M_HIDE: &str = "glass-hide";
+const M_CENTRE: &str = "glass-centre";
 pub const M_PANEL: &str = "glass-panel";
 pub const M_QUIT: &str = "glass-quit";
 /// Bar-size menu items carry their scale after this prefix ("glass-ui-1.25").
@@ -639,6 +645,13 @@ pub fn popup_menu(app: &AppHandle, engine: &Engine) -> tauri::Result<()> {
                 None::<&str>,
             )?,
             &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(
+                app,
+                M_CENTRE,
+                "Centre on the screen",
+                mode != Mode::Lens,
+                None::<&str>,
+            )?,
             &MenuItem::with_id(
                 app,
                 M_PANEL,
@@ -709,6 +722,9 @@ pub fn on_menu(app: &AppHandle, id: &str) {
             let _ = app.emit_to(GLASS_LABEL, ZOOM_EVENT, step);
         }
         M_HIDE => glass_hide(app.clone()),
+        M_CENTRE => {
+            let _ = app.emit_to(GLASS_LABEL, CENTRE_EVENT, ());
+        }
         M_PANEL => crate::dock::open_drawer(app),
         M_QUIT => crate::tray::quit_app(app),
         _ => {}
@@ -885,6 +901,12 @@ pub fn glass_hide(app: AppHandle) {
 #[tauri::command]
 pub fn app_quit(app: AppHandle) {
     crate::tray::quit_app(&app);
+}
+
+/// The user placed the glass (a drag), or asked it centred again (the menu).
+#[tauri::command]
+pub fn glass_set_placed(store: State<Store>, placed: bool) {
+    let _ = store.update(|c| c.glass.placed = placed);
 }
 
 #[tauri::command]
