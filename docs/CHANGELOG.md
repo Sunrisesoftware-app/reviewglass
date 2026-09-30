@@ -4,6 +4,23 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 8, 30.9.2026, later: locked here, Fit fits the pane by the zoom (adr.rg.030 amended)
+
+**The owner's first use of Lock here:** the pane lock seemed gone. The picture moved
+while the mouse was elsewhere, and the yellow box left the pane. The windows'
+rectangles showed that the lock was there: the finder framed the middle pane, 680 px
+wide. The glass, however, had been locked 1806 px wide, the width the sidebar case
+had given it. At 200 % the reading area was 903 px, so the reading area and the box
+spilled into the neighbouring panes.
+
+**The fix:** while the glass is locked here with Fit on, Fit sets the zoom instead of
+the window's width. The zoom is the canvas width over the pane's width, rounded up
+to a zoom step so the box is never wider than the pane, within 150–400 %. The zoom
+readout shows ⇔, and the zoom buttons stand aside with a tooltip that says why.
+
+**Observed by the owner:** "now it works, the yellow box stays in the pane". Atlas
+#417, worker d44421ad. Main b2b23ef, rebuilt and running.
+
 ## Session 8, 30.9.2026: "Lock here" (adr.rg.030, supersedes adr.rg.029)
 
 **The owner the same morning:** the glass still jumped. A change of pane moved it,
