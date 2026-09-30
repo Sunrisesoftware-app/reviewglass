@@ -1,6 +1,6 @@
 # ADR-0029: A glass the user has placed stays placed: a lock centres it only until the first drag, and the place survives a restart
 
-**Status:** Accepted
+**Status:** Superseded
 **Atlas id:** `adr.rg.029`
 **Links:** `rg.glass-window` (Glass window), `rg.config-store` (Config store), `reviewglass`
 
@@ -19,4 +19,4 @@ The glass's configuration keeps whether the user has placed it (glass.placed). A
 
 ## Consequences
 
-The glass moves only by the user's hand or by Fit's width once the user has put it somewhere; the moments at which a lock begins from none stop mattering. A first run and a config from before this decision still centre on the first lock. The way back to centring is a visible menu item, not a reset of the settings. Tooltips on both move handles say that the glass stays where it is put and how to undo it.
+The glass moves only by the user's hand or by Fit's width once the user has put it somewhere; the moments at which a lock begins from none stop mattering. A first run and a config from before this decision still centre on the first lock. The way back to centring is a visible menu item, not a reset of the settings. Tooltips on both move handles say that the glass stays where it is put and how to undo it. Superseded the next day by adr.rg.030: the owner found the glass still moving and asked for a control of their own - 'Lock here' on the bar - rather than a rule inferred from a drag.
