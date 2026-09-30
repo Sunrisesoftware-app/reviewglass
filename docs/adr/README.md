@@ -39,3 +39,4 @@ here. A hand edit here is lost on the next run.
 - [ADR-0026](0026-inside-the-claude-app-the-glass-takes-its-frame-.md) — Inside the Claude app the glass takes its frame from the app: a click locks it to a pane, the box stays inside the frame, a window in front holds it *(accepted)*
 - [ADR-0027](0027-when-a-pane-is-locked-the-glass-centres-on-the-s.md) — When a pane is locked the glass centres on the screen at Fit's width; a handle outside its corner; the arrow keys move the lock *(accepted)*
 - [ADR-0028](0028-the-diff-window-the-locked-pane-s-session-s-diff.md) — The diff window: the locked pane's session's diff in a frameless window of its own, opened from the glass, first over the neighbouring pane, then where the user put it *(accepted)*
+- [ADR-0029](0029-a-glass-the-user-has-placed-stays-placed-a-lock-.md) — A glass the user has placed stays placed: a lock centres it only until the first drag, and the place survives a restart *(accepted)*
