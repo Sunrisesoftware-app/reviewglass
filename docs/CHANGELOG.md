@@ -4,6 +4,38 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 8, 30.9.2026: "Lock here" (adr.rg.030, supersedes adr.rg.029)
+
+**The owner the same morning:** the glass still jumped. A change of pane moved it,
+a click on the project list in the left sidebar spread it over the whole screen,
+and they asked for a button of their own. Two causes:
+
+- adr.rg.029 stopped only the centring. Fit's width still followed each pane and,
+  when widening, pushed the window back onto its monitor.
+- The app now names its main window's page after the active session. UI Automation
+  read `Arki-sovelluksen kehitys ja tietosuoja - Claude Code` for the main window,
+  while popped-out sessions' pages carry their title alone. A sidebar click
+  therefore climbed to the page and took the main window for a session's own
+  window.
+
+**What changed:**
+
+- **Lock here** on the bar. The glass keeps its place and size: no centring, no Fit
+  width, no drag and no resize. The handles, grips and size buttons say why they do
+  nothing. The bar shows **🔒 Locked here** with an open lock 🔓 beside it that
+  releases it. The place and size at locking are stored as the user's own, so a
+  restart opens the glass as it was locked. The drag-placed rule of adr.rg.029 is
+  removed.
+- A page named `… - Claude Code` is the main window's. A page click in the window
+  that holds the locked pane (its sidebar, its title bar) leaves the pane lock as
+  it is.
+- The bar's base text is 13 px instead of 12, and the bar is 30 px high instead
+  of 28.
+
+Atlas #416, worker 98a409ec, ADR-0030 rendered, ADR-0029 superseded. Main 79bffd4,
+rebuilt and launched through Explorer. Not seen on screen by the agent (the glass
+excludes itself from capture); the owner's look decides.
+
 ## Session 8, continued (29-30.9.2026): the stutter found, and a placed glass stays placed
 
 **The stutter was a skip, not a wait.** The owner narrowed it down: it comes only
