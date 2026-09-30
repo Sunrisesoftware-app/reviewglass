@@ -18,8 +18,8 @@ comes from the app and is exact, Fit applies at once and to the pixel: a 1 px sl
 and no waits. The waits and the 16 px slack stay for the pixel detector's readings.
 The zoom buttons belong to the user again.
 
-Atlas #418, worker fd96822f. Main 37d4a8d, rebuilt and running; not yet seen by the
-owner.
+Atlas #418, worker fd96822f. Main 37d4a8d, rebuilt and running. **Observed by the
+owner:** "now it works, the box runs along the pane's edges; the lock helped a lot".
 
 ## Session 8, 30.9.2026, later: locked here, Fit fits the pane by the zoom (adr.rg.030 amended)
 
