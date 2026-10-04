@@ -4,6 +4,47 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 8, 4.10.2026: the waiting session, spec v0.4, the name, and P9's first step
+
+The owner's batch (4.10.2026): (a) and (b) of the waiting-session decision now, the spec
+and the documentation put right with the name research included, and P9 (the glass in
+other applications) started with its privacy decision and a measurement. The fan
+measurement is not needed: no stutter since the skip-hash fix.
+
+- **A waiting session** (adr.rg.031, Atlas #429). A pane's title that matches no live
+  session is looked for in the last three days' transcripts, through an mtime cache, and
+  a title already answered is not looked for again. A chosen session with no edit in the
+  list shows its project's uncommitted changes from git (`panel_worktree`, off the main
+  thread, at most 40 files, denylist first, no fresh lines, read again every 10 s). The
+  Diff tab and the diff window say what they are showing. 067ca03. Not yet seen by the
+  owner.
+- **Spec v0.4** (repo copy and Atlas artifact REVIEWGLASS-SPEC v4, both 74 394 bytes):
+  - what changed from v0.3, covering adr.rg.023 to 032;
+  - D8 (polish before new phases) and D9 (P9 next);
+  - D4 with the name finding;
+  - 5.5 with the app's renamed main page, and 5.6, the line for other applications;
+  - five windows in 6.1, and the module contracts brought up to date;
+  - P4c done and P9 next in the roadmap;
+  - privacy and risks.
+
+  The model's module acceptance criteria were brought in step in the same Atlas PR
+  (#431).
+- **The name** (docs/NAME-CLEARANCE.md, ADR-0008 still proposed). The registers that
+  could be queried hold no ReviewGlass mark, but two unrelated e-commerce review services
+  trade as ReviewGlass and hold `reviewglass.com` and `reviewglass.app`. Not a legal
+  clearance. The owner chooses: keep, rename before P8, or a professional search first.
+- **P9's first step** (adr.rg.032, Atlas #431). Other applications are read for their
+  structure only, at the user's click: never names, values or text, and never a password
+  manager or a credential dialog. A structure recorder in Settings > Measurements > Other
+  applications writes, per click, the element's and its ancestors' structure to
+  `~/.reviewglass/measurements/apps-<time>.log`. It stops after eight hours or 2000
+  clicks. 9f00546.
+- **Lessons**: a sampled check misses a small change; the application you read changes
+  under you; a control the user can see beats a rule the app infers (LESSONS.md,
+  CLAUDE.md).
+
+163 tests. Atlas: 32 decisions, worker be9f9910.
+
 ## Session 8, 30.9.2026, later still: locked here, Fit widens around the locked centre (adr.rg.030 amended again)
 
 **What the owner saw:** the box stayed in the pane but fell short of its edges. The
