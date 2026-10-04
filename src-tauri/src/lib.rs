@@ -16,6 +16,7 @@ mod measure;
 mod notifier;
 mod panel;
 mod picture;
+mod probe;
 pub mod session;
 pub mod spool;
 mod stall;
@@ -189,6 +190,9 @@ pub fn run() {
             stall::stall_note,
             stall::stall_log_state,
             stall::stall_log_show,
+            probe::probe_state,
+            probe::probe_set,
+            probe::probe_show,
         ])
         .build(context)
         .expect("error while building ReviewGlass")

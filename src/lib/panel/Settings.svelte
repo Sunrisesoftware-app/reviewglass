@@ -36,6 +36,44 @@
       stall = null;
     }
   }
+  // The structure recorder (adr.rg.032): what other applications expose at a click, for
+  // P9. Started and stopped here; it stops by itself after eight hours or 2000 clicks.
+  type ProbeState = { on: boolean; since: number | null; clicks: number; path: string | null };
+  let probe = $state<ProbeState>({ on: false, since: null, clicks: 0, path: null });
+  let probeError = $state<string | null>(null);
+  async function loadProbe() {
+    try {
+      probe = await invoke<ProbeState>("probe_state");
+    } catch {
+      /* the next look asks again */
+    }
+  }
+  async function setProbe(on: boolean) {
+    probeError = null;
+    try {
+      probe = await invoke<ProbeState>("probe_set", { on });
+    } catch (e) {
+      probeError = e instanceof Error ? e.message : String(e);
+    }
+  }
+  async function showProbe() {
+    probeError = null;
+    try {
+      await invoke("probe_show");
+    } catch (e) {
+      probeError = e instanceof Error ? e.message : String(e);
+    }
+  }
+  // While recording, the time and the click count tick once a second.
+  $effect(() => {
+    if (!probe.on) return;
+    const t = setInterval(() => {
+      now = Math.floor(Date.now() / 1000);
+      void loadProbe();
+    }, 1000);
+    return () => clearInterval(t);
+  });
+
   async function showStall() {
     stallError = null;
     try {
@@ -46,6 +84,7 @@
   }
   let now = $state(Math.floor(Date.now() / 1000));
   const elapsed = $derived(rec.follow_log && rec.follow_log_since ? Math.max(0, now - rec.follow_log_since) : 0);
+  const probeElapsed = $derived(probe.on && probe.since ? Math.max(0, now - probe.since) : 0);
 
   function mmss(s: number) {
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -58,6 +97,7 @@
     hotkeyDraft = hotkey;
     rec = s;
     await loadStall();
+    await loadProbe();
   }
 
   async function setRecording(on: boolean) {
@@ -426,6 +466,38 @@
     {/if}
     {#if stallError}
       <p class="bad">{stallError}</p>
+    {/if}
+    <h3>Other applications</h3>
+    <p class="help">
+      For the next phase - the glass in other applications - a recording of what they say
+      about the place you click: the kind of element, its role, its class and its
+      rectangle, and those of the elements around it. Never names, values or text, and
+      never from a password manager. Clicks in ReviewGlass and the Claude app are not
+      recorded. Each recording is its own file under <code>~/.reviewglass/measurements</code>;
+      it stops with Stop, with the app, or by itself after eight hours or 2000 clicks.
+    </p>
+    <div class="record">
+      {#if probe.on}
+        <button class="stop" onclick={() => setProbe(false)} aria-label="Stop recording other applications">
+          <span class="square" aria-hidden="true"></span> Stop
+        </button>
+        <span class="live"><span class="dot" aria-hidden="true"></span> Recording {mmss(probeElapsed)} · {probe.clicks} {probe.clicks === 1 ? "click" : "clicks"}</span>
+      {:else}
+        <button class="rec" onclick={() => setProbe(true)} aria-label="Start recording other applications">
+          <span class="dot" aria-hidden="true"></span> Record
+        </button>
+      {/if}
+    </div>
+    <p class="help">
+      {#if probe.path}
+        {probe.on ? "Writing to" : "Last recording:"} <code>{probe.path}</code>
+        <button class="link" onclick={() => void showProbe()}>Show in folder</button>
+      {:else}
+        No recording yet.
+      {/if}
+    </p>
+    {#if probeError}
+      <p class="bad">{probeError}</p>
     {/if}
     <h3>Follow recording</h3>
     <p class="help">
