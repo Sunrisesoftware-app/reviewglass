@@ -11,7 +11,7 @@
 
 ## Context
 
-'ReviewGlass' has not been checked for conflicting use. Probes on 17.9.2026 (a web search, GitHub and npm) found nothing under the name; crates.io refused the probe, so the registry is unchecked.
+'ReviewGlass' has not been checked for conflicting use. Probes on 17.9.2026 (a web search, GitHub and npm) found nothing under the name; crates.io refused the probe, so the registry is unchecked. A web research pass on 4.10.2026, at the owner's request (the repository's docs/NAME-CLEARANCE.md): the trademark registers it could query (TMview, which carries EUIPO, PRH, USPTO and WIPO data, and Trademarkia) hold no ReviewGlass or Review Glass mark; the Finnish company register has none; the package names are free on npm, crates.io, PyPI and NuGet. But two unrelated e-commerce review services trade as ReviewGlass and hold reviewglass.com (Trustbase LTD, since 2020) and reviewglass.app (BRF Tech Solutions, Georgia US, registered 11.6.2026); neither shows a registered mark. reviewglass.dev, .io and .fi were not registered. Not a legal clearance: phonetic and figurative similarity, common-law rights and the full store listings need a professional search. The choice - keep the name, rename before P8, or a professional search first - is the owner's.
 
 ## Decision
 
