@@ -35,6 +35,7 @@
 
 pub mod events;
 pub mod file;
+pub mod worktree;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
@@ -165,6 +166,9 @@ pub struct DiffState {
     /// The event files already read (they stay in the spool for the hook's hour).
     seen: Mutex<HashSet<String>>,
     unreadable: Mutex<usize>,
+    /// The last project's uncommitted changes shown for a session with no recent edits
+    /// (adr.rg.031): the whole-file view is offered on them too.
+    worktree: Mutex<Vec<DiffView>>,
 }
 
 impl Default for DiffState {
@@ -182,6 +186,7 @@ impl DiffState {
             since_ms: now_ms().saturating_sub(spool::EVENT_TTL.as_millis() as u64),
             seen: Mutex::new(HashSet::new()),
             unreadable: Mutex::new(0),
+            worktree: Mutex::new(Vec::new()),
         }
     }
 
@@ -256,6 +261,22 @@ impl DiffState {
 
     pub fn views(&self) -> Vec<DiffView> {
         self.views.lock().clone()
+    }
+
+    /// Keep the uncommitted changes last shown, replacing the ones before.
+    pub fn keep_worktree(&self, views: Vec<DiffView>) {
+        *self.worktree.lock() = views;
+    }
+
+    /// A view the tab may open as a whole file: an edit's, else one of the uncommitted
+    /// changes last shown.
+    pub fn offered(&self, path: &str) -> Option<DiffView> {
+        self.views
+            .lock()
+            .iter()
+            .chain(self.worktree.lock().iter())
+            .find(|v| v.path == path)
+            .cloned()
     }
 
     /// The name found for a session from its edits, if any.

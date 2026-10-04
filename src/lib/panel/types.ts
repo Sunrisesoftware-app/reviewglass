@@ -96,6 +96,19 @@ export type DiffSession = {
   live: boolean;
 };
 
+/** A session's project's uncommitted changes, for a session with no edits in the last
+ *  hour (adr.rg.031). Mirrors src-tauri/src/diff/worktree.rs. */
+export type WorktreeTab = {
+  session_id: string;
+  cwd: string | null;
+  root: string | null;
+  views: DiffView[];
+  /** Changed files beyond the listed ones. */
+  more: number;
+  /** Why there is nothing to show; absent when the list is the answer. */
+  reason: string | null;
+};
+
 export type DiffTab = {
   views: DiffView[];
   /** Each session with a listed edit, the newest edit's first. */

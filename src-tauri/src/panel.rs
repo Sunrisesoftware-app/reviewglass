@@ -60,6 +60,16 @@ impl PanelState {
             .unwrap_or_default()
     }
 
+    /// A live session's working folder, as the latest view names it.
+    pub fn session_cwd(&self, session_id: &str) -> Option<String> {
+        self.latest.lock().as_ref().and_then(|v| {
+            v.sessions
+                .iter()
+                .find(|s| s.session_id == session_id)
+                .and_then(|s| s.cwd.clone())
+        })
+    }
+
     /// One pass: read both channels, update the model, decide alerts. Returns the
     /// alerts so the caller can deliver them; the state has already recorded them.
     pub fn tick(&self, alerts_cfg: &AlertConfig) -> Vec<Alert> {

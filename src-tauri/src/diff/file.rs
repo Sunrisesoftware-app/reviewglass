@@ -228,7 +228,7 @@ pub fn panel_file_view(
         "panel_file_view",
         || {
             let denylist = store.get().diff.denylist;
-            match state.views().into_iter().find(|v| v.path == path) {
+            match state.offered(&path) {
                 Some(v) => file_view(&v, &denylist),
                 None => not_offered(&path),
             }

@@ -21,6 +21,10 @@
   // the desktop app's "Edited N files" card is, each file named first and its project
   // and folder under it. An agent's own working files — its scratchpad, its memory —
   // sit in a group of their own at the end, closed until opened.
+  //
+  // A chosen session with no edit in the hook's hour - one that waits on a timer, or
+  // whose edits are older - shows its project's uncommitted changes from git instead,
+  // and says so (adr.rg.031). Read again every few seconds while shown.
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -34,6 +38,7 @@
     ExplainOutcome,
     ExplainPreview,
     FileView,
+    WorktreeTab,
   } from "./types";
   import { selection, choose } from "./selection.svelte";
   import { explain, explainReady, loadExplain } from "./explain.svelte";
@@ -51,12 +56,36 @@
   let at = $state(0);
   let viewEl = $state<HTMLElement | null>(null);
 
-  /** The views on show: every session's, or the chosen session's alone. */
-  const shown = $derived<DiffView[]>(
+  /** The edits on show: every session's, or the chosen session's alone. */
+  const edits = $derived<DiffView[]>(
     tab
       ? tab.views.filter((v) => selection.session === null || v.session_id === selection.session)
       : [],
   );
+  /** The chosen session's project's uncommitted changes, when it has no edit listed. */
+  let worktree = $state<WorktreeTab | null>(null);
+  const WORKTREE_EVERY_MS = 10_000;
+  const wantWorktree = $derived(selection.session !== null && tab !== null && edits.length === 0);
+  const useWorktree = $derived(wantWorktree && worktree !== null && worktree.session_id === selection.session);
+  /** The views on show: the edits, or the uncommitted changes in their place. */
+  const shown = $derived<DiffView[]>(useWorktree && worktree ? worktree.views : edits);
+  async function loadWorktree() {
+    const id = selection.session;
+    if (id === null) return;
+    try {
+      const w = await invoke<WorktreeTab>("panel_worktree", { sessionId: id });
+      if (selection.session === id) worktree = w;
+    } catch {
+      worktree = null;
+    }
+  }
+  $effect(() => {
+    if (!wantWorktree) return;
+    void selection.session; // a new choice reads again at once
+    void loadWorktree();
+    const t = setInterval(() => void loadWorktree(), WORKTREE_EVERY_MS);
+    return () => clearInterval(t);
+  });
   // With nothing picked, the newest project file: an agent's scratch file never takes
   // the view by itself.
   const current = $derived<DiffView | null>(
@@ -68,6 +97,10 @@
   const ASIDE = "\u0000aside";
   const groups = $derived.by<Group[]>(() => {
     if (!tab) return [];
+    if (useWorktree) {
+      const id = selection.session ?? "";
+      return [{ key: id, session: { id, name: selection.name, live: false }, views: shown.filter((v) => !v.aside) }];
+    }
     const bySession = new Map<string, Group>();
     for (const s of tab.sessions) bySession.set(s.id ?? "", { key: s.id ?? "", session: s, views: [] });
     const aside: Group = { key: ASIDE, session: null, views: [] };
@@ -437,7 +470,20 @@
     configured as a <code>PostToolUse</code> hook in <code>~/.claude/settings.json</code>;
     until then no edit reaches this tab.
   </p>
-{:else if tab.views.length === 0}
+{:else if wantWorktree && !useWorktree}
+  <p class="state">
+    No edit from <strong>{selection.name}</strong> in the last hour; reading its project's
+    uncommitted changes…
+  </p>
+{:else if useWorktree && worktree && shown.length === 0}
+  <p class="state">
+    No edit from <strong>{selection.name}</strong> in the last hour{worktree.reason
+      ? `, and ${worktree.reason}.`
+      : ", and its project has no uncommitted changes."}
+    {#if worktree.root}<br /><code>{worktree.root}</code>{/if}
+    <button class="link" onclick={() => choose(null)}>Show all sessions</button>
+  </p>
+{:else if tab.views.length === 0 && !useWorktree}
   <p class="state">
     No edit yet. When Claude Code edits a file, its diff appears here within a second — in
     Desktop and CLI sessions alike. Edits from the hour before ReviewGlass started are
@@ -450,7 +496,14 @@
     <button class="link" onclick={() => choose(null)}>Show all sessions</button>
   </p>
 {:else}
-  {#if selection.session !== null}
+  {#if useWorktree && worktree}
+    <p class="filter" title="The session made no edit in the hour the hook keeps; these are its project's changes since the last commit, not its latest edit's">
+      No edit from <strong>{selection.name}</strong> in the last hour — its project's uncommitted
+      changes ({shown.length}{worktree.more ? ` of ${shown.length + worktree.more}` : ""}){#if worktree.root}
+        in <code>{worktree.root}</code>{/if}
+      <button class="link" onclick={() => choose(null)}>show all sessions</button>
+    </p>
+  {:else if selection.session !== null}
     <p class="filter">
       Only <strong>{selection.name}</strong>{selection.by === "follow" ? ", chosen by Follow," : ""} ({shown.length} of {tab.views.length})
       <button class="link" onclick={() => choose(null)}>show all sessions</button>

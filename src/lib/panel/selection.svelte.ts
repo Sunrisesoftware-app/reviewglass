@@ -30,7 +30,13 @@ export function choose(session: string | null, name: string | null = null, by: "
 }
 
 /** What Follow last saw on a Code pane's header (mirrors follow_session.rs). */
-export type FollowSaw = { title: string; session_id: string | null; name: string | null };
+export type FollowSaw = {
+  title: string;
+  session_id: string | null;
+  name: string | null;
+  /** In the live table; a session found by its title in the transcripts is not (adr.rg.031). */
+  live: boolean;
+};
 
 /** The switch and the latest sighting (mirrors follow_session.rs's Status). */
 export type FollowStatus = {

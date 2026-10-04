@@ -177,6 +177,7 @@ pub fn run() {
             diffwin::diffwin_save,
             glass::glass_set_shape,
             diff::file::panel_file_view,
+            diff::worktree::panel_worktree,
             explain::explain_settings,
             explain::explain_set,
             explain::explain_key_set,

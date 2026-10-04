@@ -9,7 +9,7 @@
 //! is frequently half-written, so a line that does not parse is skipped rather than
 //! treated as the end of the data.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -252,6 +252,114 @@ fn recent_in(root: &Path, cutoff: u64, lookback: u64) -> Vec<TranscriptFacts> {
     out
 }
 
+/// How far back a session that is not live is still looked for by its title or its id
+/// (adr.rg.031): a session that only waits on a timer writes nothing for hours (the
+/// owner's Somnus wakes every few), and its pane is still on the screen.
+pub const DORMANT_LOOKBACK: Duration = Duration::from_secs(3 * 24 * 60 * 60);
+
+/// Transcripts read for the dormant lookups, by path, with the mtime they were read at:
+/// a file that has not changed is not read again.
+fn dormant_cache() -> &'static Mutex<HashMap<PathBuf, (u64, TranscriptFacts)>> {
+    static C: OnceLock<Mutex<HashMap<PathBuf, (u64, TranscriptFacts)>>> = OnceLock::new();
+    C.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Every session written within `DORMANT_LOOKBACK`, live or not, newest first; read
+/// through the cache.
+fn dormant_in(root: &Path, cutoff: u64) -> Vec<TranscriptFacts> {
+    let mut out = Vec::new();
+    let Ok(projects) = fs::read_dir(root) else {
+        return out;
+    };
+    let mut cache = dormant_cache().lock();
+    let mut keep = HashSet::new();
+    for project in projects.flatten() {
+        let Ok(entries) = fs::read_dir(project.path()) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let Some(mtime) = entry.metadata().ok().as_ref().and_then(modified_ms) else {
+                continue;
+            };
+            if mtime < cutoff {
+                continue;
+            }
+            keep.insert(path.clone());
+            let fresh = cache.get(&path).is_some_and(|(m, _)| *m == mtime);
+            if !fresh {
+                match read_facts(&path) {
+                    Some(f) => {
+                        cache.insert(path.clone(), (mtime, f));
+                    }
+                    None => {
+                        cache.remove(&path);
+                        continue;
+                    }
+                }
+            }
+            if let Some((_, f)) = cache.get(&path) {
+                out.push(f.clone());
+            }
+        }
+    }
+    cache.retain(|p, _| keep.contains(p));
+    out.sort_by_key(|f| std::cmp::Reverse(f.modified_ms));
+    out
+}
+
+/// The newest session, live or not, whose title is `title` (exactly, else ignoring
+/// case): what a Code pane's header names when its session waits on a timer and has
+/// left the live table (adr.rg.031). Only titles are compared; nothing else of the
+/// transcript is read beyond the session state `read_facts` reads.
+pub fn find_by_title(title: &str) -> Option<TranscriptFacts> {
+    let root = projects_dir()?;
+    find_by_title_in(&root, title, epoch_ms_before(DORMANT_LOOKBACK))
+}
+
+fn find_by_title_in(root: &Path, title: &str, cutoff: u64) -> Option<TranscriptFacts> {
+    let all = dormant_in(root, cutoff);
+    fn named(f: &TranscriptFacts) -> Option<&str> {
+        f.title.as_deref().map(str::trim)
+    }
+    all.iter()
+        .find(|f| named(f) == Some(title))
+        .or_else(|| {
+            all.iter()
+                .find(|f| named(f).is_some_and(|t| t.eq_ignore_ascii_case(title)))
+        })
+        .cloned()
+}
+
+/// A session's facts by its id, live or not, within `DORMANT_LOOKBACK`: its working
+/// folder for the project's uncommitted changes (adr.rg.031). The transcript is named
+/// by the session's id, so no file is read but its own.
+pub fn find_by_id(session_id: &str) -> Option<TranscriptFacts> {
+    let root = projects_dir()?;
+    find_by_id_in(&root, session_id)
+}
+
+fn find_by_id_in(root: &Path, session_id: &str) -> Option<TranscriptFacts> {
+    // A session id is a UUID; anything else is not looked up as a file name.
+    if session_id.is_empty()
+        || !session_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        return None;
+    }
+    let name = format!("{session_id}.jsonl");
+    fs::read_dir(root)
+        .ok()?
+        .flatten()
+        .map(|p| p.path().join(&name))
+        .find(|p| p.is_file())
+        .and_then(|p| read_facts(&p))
+}
+
 impl TranscriptFacts {
     pub fn into_snapshot(self) -> SessionSnapshot {
         SessionSnapshot {
@@ -299,6 +407,61 @@ mod tests {
             writeln!(f, "{l}").unwrap();
         }
         p
+    }
+
+    /// A projects directory of its own for one test, with sessions written in it.
+    fn projects(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("rg-dormant-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(d.join("E--p")).unwrap();
+        d
+    }
+
+    fn session(root: &Path, id: &str, title: &str) {
+        let mut f = File::create(root.join("E--p").join(format!("{id}.jsonl"))).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","sessionId":"{id}","cwd":"E:/p","entrypoint":"claude-desktop"}}"#
+        )
+        .unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"custom-title","customTitle":"{title}","sessionId":"{id}"}}"#
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_session_waiting_on_a_timer_is_found_by_its_title() {
+        let root = projects("title");
+        session(&root, "aaaa-1", "Somnus herätys");
+        session(&root, "bbbb-2", "Luviamo kehitys");
+        let f = find_by_title_in(&root, "Somnus herätys", 0).unwrap();
+        assert_eq!(f.session_id, "aaaa-1");
+        assert_eq!(f.cwd.as_deref(), Some("E:/p"));
+        // Ignoring case, as the live match does.
+        assert_eq!(
+            find_by_title_in(&root, "luviamo KEHITYS", 0)
+                .unwrap()
+                .session_id,
+            "bbbb-2"
+        );
+        assert!(find_by_title_in(&root, "No such session", 0).is_none());
+        // Older than the lookback: not found.
+        assert!(find_by_title_in(&root, "Somnus herätys", u64::MAX).is_none());
+    }
+
+    #[test]
+    fn a_session_is_found_by_its_id_and_only_a_uuid_is_looked_up() {
+        let root = projects("id");
+        session(&root, "cccc-3", "Tilastosilta");
+        assert_eq!(
+            find_by_id_in(&root, "cccc-3").unwrap().title.as_deref(),
+            Some("Tilastosilta")
+        );
+        assert!(find_by_id_in(&root, "dddd-4").is_none());
+        assert!(find_by_id_in(&root, "../E--p/cccc-3").is_none());
+        assert!(find_by_id_in(&root, "").is_none());
     }
 
     #[test]

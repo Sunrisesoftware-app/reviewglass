@@ -72,6 +72,10 @@ pub struct FollowSaw {
     pub session_id: Option<String>,
     /// The session's name as the table shows it, when matched.
     pub name: Option<String>,
+    /// The matched session is in the live table. A session found only by its title in
+    /// the transcripts of the last days (adr.rg.031) is not: it waits on a timer, or
+    /// has ended, and its pane is still on the screen.
+    pub live: bool,
 }
 
 /// The loop's state, for the page: the last sighting and how the reads went.
@@ -661,18 +665,40 @@ fn run(app: AppHandle) {
             root,
             at: now,
         });
-        let sessions = app.state::<PanelState>().session_names();
-        let matched = match_title(&title, &sessions);
-        let saw = FollowSaw {
-            title,
-            session_id: matched.as_ref().map(|(id, _)| id.clone()),
-            name: matched.map(|(_, n)| n),
-        };
+        let saw = sighting(&app, title, told.as_ref());
         if told.as_ref() != Some(&saw) {
             state.inner.lock().saw = Some(saw.clone());
             let _ = app.emit(EVENT, saw.clone());
             told = Some(saw);
         }
+    }
+}
+
+/// The session a pane's title names: a live one from the Sessions table, else the
+/// newest session of the last days with that title in its transcript. One that only
+/// waits on a timer writes nothing for hours and has left the table, but its pane - and
+/// its title - are still on the screen (the owner's finding of 28.9.2026, adr.rg.031).
+/// The transcripts are looked at only for a title `last` did not already answer, so a
+/// pane read every few hundred milliseconds does not list them each time.
+fn sighting(app: &AppHandle, title: String, last: Option<&FollowSaw>) -> FollowSaw {
+    let sessions = app.state::<PanelState>().session_names();
+    if let Some((id, name)) = match_title(&title, &sessions) {
+        return FollowSaw {
+            title,
+            session_id: Some(id),
+            name: Some(name),
+            live: true,
+        };
+    }
+    if let Some(l) = last.filter(|l| l.title == title && !l.live) {
+        return l.clone();
+    }
+    let found = crate::session::transcript::find_by_title(&title);
+    FollowSaw {
+        session_id: found.as_ref().map(|f| f.session_id.clone()),
+        name: found.and_then(|f| f.title),
+        title,
+        live: false,
     }
 }
 
@@ -682,13 +708,8 @@ pub fn announce(app: &AppHandle, title: String) {
     if !app.state::<Store>().get().glass.follow_session {
         return;
     }
-    let sessions = app.state::<PanelState>().session_names();
-    let matched = match_title(&title, &sessions);
-    let saw = FollowSaw {
-        title,
-        session_id: matched.as_ref().map(|(id, _)| id.clone()),
-        name: matched.map(|(_, n)| n),
-    };
+    let last = app.state::<FollowSessionState>().inner.lock().saw.clone();
+    let saw = sighting(app, title, last.as_ref());
     app.state::<FollowSessionState>().inner.lock().saw = Some(saw.clone());
     // Every window: the dock's tabs and the diff window (adr.rg.028) follow it.
     let _ = app.emit(EVENT, saw);
