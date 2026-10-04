@@ -5,6 +5,45 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## A control the user can see beats a rule the app infers (2026-09-30)
+
+After a lock, the glass centred itself, and the owner, who had put it somewhere, saw it
+jump. The first answer was a rule: a drag the user started marks the glass as placed,
+and a placed glass is not centred (`adr.rg.029`). The next morning it still jumped.
+The rule covered the centring and not Fit's widening, and the owner could not tell when
+the app thought the glass was "placed". What they asked for was a button: put the glass
+where it should be, press Lock here, and it stays until the open lock beside it. It
+was right the first time it shipped, after two amendments to the geometry
+(`adr.rg.030`). Lesson: when the user has to guess what the app inferred, give them the
+switch instead. A rule hidden behind a drag is the keystroke nobody was told about in
+another form.
+
+## The application you read changes under you (2026-09-30)
+
+A click in the Claude app's sidebar spread the glass over the whole screen. The app had
+begun naming its main window's page after the active session ("<title> - Claude
+Code"), where it had always said "Claude". The lock's walk up from the click reached the
+page, took it for a session's window of its own, and locked the glass to the whole
+window. A read-only UI Automation listing of the app's windows showed it in a minute.
+Lesson: what ReviewGlass reads from another application is that application's to
+change, without notice. When the glass misbehaves after an app update, read what the app
+exposes now before reading ReviewGlass's code. Guard every reading with a second check
+that does not depend on the same text: here, a page click in the window that already
+holds the locked pane keeps the lock.
+
+## A sampled check misses a small change (2026-09-29)
+
+The owner's stutter, the text in the glass lagging behind the input, was put down to
+load. The stall log, which times every stage of the picture, showed every stage fast.
+The real number was elsewhere: frames arrived thirty times a second and only a fraction
+were published. The skip-if-unchanged hash read one byte in 250 of the crop. A typed
+character changes about a hundred bytes and about half the time missed every sampled
+one, so the frame was skipped as unchanged until a later change happened to touch a
+sample. Lesson: a check that says "nothing changed" must be able to see the smallest
+change the user cares about, here one character. A sample is a guess about where the
+change will be. And measure the throughput, not only the latency: published against
+arrived said what no timing could.
+
 ## A hidden webview is not an idle one (2026-09-28)
 
 The halo's ring breathes with a CSS animation. With the halo switched off its window was

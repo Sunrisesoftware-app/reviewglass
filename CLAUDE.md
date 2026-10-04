@@ -73,8 +73,9 @@ modules, connections and decisions; the spec is its prose.
 4. **`docs/adr/`** — the decisions, rendered from the Atlas model; `README.md` there is
    the index.
 5. **`docs/LESSONS.md`** — the pitfalls, with the story behind the rules above.
-6. **`docs/REVIEWGLASS-SPEC.md`** — the product and architecture specification (v0.3,
-   23.9.2026; 6.3 carries the module contracts, 7 the roadmap in the owner's order).
+6. **`docs/REVIEWGLASS-SPEC.md`** — the product and architecture specification (v0.4,
+   4.10.2026; 5.6 the line for other applications, 6.3 the module contracts, 7 the
+   roadmap in the owner's order). `docs/NAME-CLEARANCE.md` holds the name research.
 7. Atlas (optional but useful): system `reviewglass` — `atlas_get_workspace` for status
    and thread, `atlas_get_rationale` for the ADRs as the model holds them.
 
@@ -101,6 +102,18 @@ collector replaced it in `settings.json` on 11.9.2026.
   picture (adr.rg.025), the frame — a click locks the glass to a Code pane (adr.rg.026),
   a lock centres the glass at Fit's width with a move/hide tab and arrow keys (adr.rg.027,
   amended), the diff window (adr.rg.028). All observed by the owner.
+- **Session 8 (29.9–4.10.2026)**: the stall log found the stutter (a sampled skip hash);
+  **Lock here** keeps the glass's place, Fit widening around the locked centre
+  (adr.rg.030, supersedes 029); a waiting session found by its pane's title, and its
+  project's uncommitted changes when it has no recent edit (adr.rg.031); spec v0.4.
+  Observed by the owner except adr.rg.031.
+- **P9** (the glass in other applications) is next (spec D9). It starts with the privacy
+  line of adr.rg.032 (structure only, at a click, never names or text, never a password
+  manager) and the structure recorder in Settings > Measurements; the lock is designed
+  from its files.
+- **The name** (D4, adr.rg.008, still proposed): the registers are clear, but two
+  e-commerce review services trade as ReviewGlass (`.com`, `.app`). The owner's choice
+  waits; see `docs/NAME-CLEARANCE.md`.
 
 ## Layout
 
@@ -123,6 +136,9 @@ collector replaced it in `settings.json` on 11.9.2026.
 | `src-tauri/src/frame.rs` | the frame (adr.rg.026–027): a click locks the glass to a pane, the windows in front, the arrow steps, the locked pane's neighbour |
 | `src-tauri/src/diffwin.rs` | the diff window (adr.rg.028): created on open, placed, its place remembered |
 | `src-tauri/src/picture.rs` | the drawer's own picture (adr.rg.025): WebView2 CapturePreview → clipboard and Pictures\ReviewGlass |
+| `src-tauri/src/stall.rs` | the stall log, `~/.reviewglass/stall.log`: a line per slow stage of the glass's picture, a summary a minute |
+| `src-tauri/src/probe.rs` | the structure recorder (adr.rg.032): other applications' structure at a click, to `~/.reviewglass/measurements` |
+| `src-tauri/src/diff/worktree.rs` | a session's project's uncommitted changes, for a chosen session with no recent edit (adr.rg.031) |
 | `src-tauri/src/bin/statusline.rs` | `rg.statusline-collector` |
 | `src/routes/glass`, `dock`, `halo`, `finder` | the four windows; `src/lib/panel/` holds the drawer's tabs (Sessions, Diff, Settings) |
 | `scripts/adr-from-model.mjs` | renders `docs/adr/` from the Atlas model |
@@ -159,3 +175,12 @@ Full stories in `docs/LESSONS.md`. The short forms:
 - **When the owner reports a slowdown, measure it before fixing it** (28.9.2026): per-process
   CPU per second, the Claude window's WM_NULL round trips, and the times the owner names.
   The stalls were the sessions' own builds; the measuring found ReviewGlass's idle cost.
+  The stall log (`~/.reviewglass/stall.log`) is that measurement, always on.
+- **A sampled check misses a small change** (29.9.2026). The skip hash read one byte in
+  250 and lost half the typed characters. A "nothing changed" check sees the smallest
+  change the user cares about; measure published against arrived, not only latency.
+- **The application you read changes under you** (30.9.2026). The Claude app renamed its
+  main page and a sidebar click locked the whole window. Read what the app exposes now
+  before reading ReviewGlass's code; guard a reading with a second check.
+- **A control the user can see beats a rule the app infers** (30.9.2026). The drag-placed
+  rule (adr.rg.029) still let the glass jump; Lock here (adr.rg.030) did not.

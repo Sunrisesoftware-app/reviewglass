@@ -11,9 +11,11 @@ quota, and a live diff of what the agent just changed. Tauri v2, Rust core, Svel
 **Status: pre-alpha.** It is in daily use by its author, and there is no installer
 or release yet. The phases built so far are
 the magnifier (P1), the session panel (P2), threshold alerts (P3), the live diff with a
-whole-file view (P4, P4b) and a provider-agnostic explain feature (P6, off by default).
-The public release (P8) is gated on the name: it has not yet been checked for conflicting
-use (ADR-0008). The source has been public since 17 September 2026. Where the build
+whole-file view (P4, P4b), the glass locked to a pane (P4c) and a provider-agnostic
+explain feature (P6, off by default). Next is the glass in other applications (P9). The
+public release (P8) is gated on the name: the trademark registers are clear, but two
+unrelated services already trade as ReviewGlass ([`docs/NAME-CLEARANCE.md`](docs/NAME-CLEARANCE.md),
+ADR-0008). The source has been public since 17 September 2026. Where the build
 stands: [`docs/BUILD_INFO.json`](docs/BUILD_INFO.json); what shipped and why:
 [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
 
@@ -30,6 +32,10 @@ that keeps moving. ReviewGlass adds four things the Claude desktop app does not 
      at the pane's width times the zoom. The arrow keys step the lock to the
      neighbouring pane, and a window of another application over the pane pauses the
      picture.
+   - **Lock here**: a button on the glass's bar keeps the glass where you put it, across
+     pane changes and restarts, until you press the open lock beside it. The glass then
+     only widens or narrows around its centre, so its reading area runs along the
+     locked pane's edges.
    - **Lens**: the glass rides on the cursor.
    - **Still**: the picture stops, so an instruction you captured survives while you
      work elsewhere.
@@ -41,6 +47,8 @@ that keeps moving. ReviewGlass adds four things the Claude desktop app does not 
      Windows notification before a threshold you set.
    - **Diff**: the agent's edits as a live `git diff` per changed file, grouped by
      session, with the whole file around a hunk and the latest edit's lines highlighted.
+     For a session with no edit in the last hour, such as one waiting on a timer, it
+     shows the project's uncommitted changes instead and says so.
 3. **The diff window**: the locked pane's session's diff in its own frameless window,
    beside the pane. Open it from the glass's bar or with `Ctrl+Alt+D`.
 4. **Explain** (off by default): a plain-language explanation of one selected diff
@@ -137,6 +145,10 @@ in the right-click menu, or, for the arrows, a click on another pane.
   are the spool the two collectors fill and the JSONL transcripts, which are opened
   read-only. The hook records which file an edit touched, never the edit's content.
   Only session state is read from a transcript, never the conversation.
+- **Other applications are read for their structure only** (ADR-0032): the kind of
+  element under your click, its role, its class and its rectangle. Never names, values
+  or text, and never from a password manager. Today this happens only while you run the
+  structure recorder in Settings › Measurements, and the result is a local file.
 - **ReviewGlass never writes into a session, a repository or a transcript.**
 - **Inter-process communication is plain files under your user profile**
   (`~/.reviewglass`). There is no network listener, no localhost port and no IPC socket.
