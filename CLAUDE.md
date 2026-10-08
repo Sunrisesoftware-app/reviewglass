@@ -182,5 +182,9 @@ Full stories in `docs/LESSONS.md`. The short forms:
 - **The application you read changes under you** (30.9.2026). The Claude app renamed its
   main page and a sidebar click locked the whole window. Read what the app exposes now
   before reading ReviewGlass's code; guard a reading with a second check.
+- **A lock held across a window call waits for the main thread forever** (8.10.2026). The
+  rider held the picture's lock while asking the glass for its place; the main thread
+  waited on that lock; the app hung. Copy a value out before any window call from a
+  background thread; a command sharing a lock with one runs `async`.
 - **A control the user can see beats a rule the app infers** (30.9.2026). The drag-placed
   rule (adr.rg.029) still let the glass jump; Lock here (adr.rg.030) did not.

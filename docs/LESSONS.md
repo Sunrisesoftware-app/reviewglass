@@ -5,6 +5,22 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## A lock held across a window call waits for the main thread forever (2026-10-08)
+
+The glass's picture was made click-through from the rider thread. It read the
+picture's rectangle under a lock and, still holding it, asked the glass window for its
+place. A Tauri window's getters wait for the main thread. The main thread, meanwhile,
+was in a synchronous command setting that same rectangle, waiting for the lock. Neither
+moved. On the owner's first afternoon with it, the app hung: the glass froze on a
+Claude pane, the window under it could not be clicked, and Print Screen met a hung
+app. The stall log showed it at once - every main-thread probe timed out, "main
+ms=>10000" - and nothing else did, since a hang leaves no panic. Lessons:
+- Never hold a lock across a call that may wait for another thread, and on Windows
+  every window call from a background thread may. Copy the value out first.
+- A command that takes a lock a background thread also takes runs off the main thread
+  (`async`).
+- In Rust, a guard taken in a `match` scrutinee lives until the end of the match.
+
 ## A control the user can see beats a rule the app infers (2026-09-30)
 
 After a lock, the glass centred itself, and the owner, who had put it somewhere, saw it
