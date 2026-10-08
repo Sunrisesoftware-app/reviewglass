@@ -43,3 +43,4 @@ here. A hand edit here is lost on the next run.
 - [ADR-0030](0030-lock-here-on-the-glass-s-bar-keeps-its-place-and.md) — 'Lock here' on the glass's bar keeps its place and size until the open lock beside it is pressed; the implicit placing of adr.rg.029 is gone *(accepted)*
 - [ADR-0031](0031-a-session-that-waits-on-a-timer-is-still-found-b.md) — A session that waits on a timer is still found by its pane's title, and a chosen session with no recent edits shows its project's uncommitted changes *(accepted)*
 - [ADR-0032](0032-other-applications-are-read-for-their-structure-.md) — Other applications are read for their structure only, and only at the user's click; a recorder measures what they expose before P9 is built *(accepted)*
+- [ADR-0033](0033-the-glass-knows-the-screen-s-order-a-window-that.md) — The glass knows the screen's order: a window that comes to the front over the locked pane releases the lock, and the picture lets the mouse through *(accepted)*
