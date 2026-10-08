@@ -4,6 +4,48 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 9, 8.10.2026: the glass knows the screen's order (adr.rg.033)
+
+**The owner's week of use:** perfect over Code panes, but anything else that came up - a
+console, File Explorer, a browser, the browser Claude opens itself, Excel - meant closing
+ReviewGlass every time. Reading Excel came to nothing, and windows were hard to close and
+move. The owner's words: "very static; it does not answer the way varied PC work should".
+
+**The cause, from the configuration:**
+- All five of ReviewGlass's windows are always on top of the whole desktop, with no
+  taskbar entry.
+- adr.rg.026 made a window in front of the locked pane hold the glass on its last
+  picture.
+
+So the glass stayed over the new window, still showing Claude, and took its clicks.
+
+**The owner's choice (asked 8.10.2026):**
+- When another application comes up over Claude, the pane reading ends, the glass is
+  released, and it reads the window in front.
+- The mouse goes through the picture, which never darkens, so a box can be dragged out
+  from behind the glass.
+- The dock stays on top.
+- A separate "always on top" button is not needed in this model: the glass is on top and
+  follows the window in front.
+
+**Built:**
+- `frame.rs`: a foreground window of another process that overlaps the locked pane, or
+  the Claude app minimised, releases the lock at once. The bar names the window. A
+  covering window that is not in the foreground (the taskbar) still only holds the
+  picture.
+- `glass.rs`: in Follow, the rider makes the picture click-through while the cursor is
+  over it, using the rectangle the page reports. The bar and the tab take the pointer.
+- The glass page: no dimming; the source holds only on the bar or the tab. The wheel's
+  zoom, the double-click's freeze and the right-click menu move to the bar in Follow.
+
+**A shutdown panic fixed:** panic.log, 6.10.2026, build e433ed1: tao aborted with
+"cannot move state from Destroyed" as the app closed. Background threads (the stall
+probe's main-thread request, the rider, the loops' events) now stop on a shutting-down
+flag set by quit and by the run loop's exit events.
+
+Atlas #446, worker 07e548b6. 164 tests. Main 35a9300 and the shutdown fix, rebuilt and
+launched through Explorer. Not yet seen by the owner. The spec takes adr.rg.033 in v0.5.
+
 ## Session 8, 4.10.2026: the waiting session, spec v0.4, the name, and P9's first step
 
 The owner's batch (4.10.2026): (a) and (b) of the waiting-session decision now, the spec
