@@ -4,6 +4,34 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 9, 8.10.2026, later: the hang, and "covers Claude" (adr.rg.033 amended)
+
+**The owner's first afternoon with adr.rg.033:** browsing Claude under the glass was
+good, since the mouse now passes through. But Explorer and Excel did not take over:
+the glass still showed the Claude pane, a click on Explorer did not activate it, and
+the app "crashed" on Print Screen.
+
+**Measured:** panic.log had nothing new. stall.log had "main ms=>10000" on every
+probe from 16:05:53: ReviewGlass's main thread was hung, not crashed.
+
+**The cause, a deadlock of my own making:**
+- The rider read the picture's rectangle in a `match` scrutinee, whose lock guard lives
+  until the end of the match.
+- Inside the match it asked the glass for its position, which waits for the main thread.
+- The main thread was in `glass_set_picture`, a synchronous command, waiting for that
+  lock.
+
+The rectangle is now copied out first, and `glass_set_picture` is async (LESSONS:
+"A lock held across a window call waits for the main thread forever").
+
+**The release, amended:** the owner's words were "covers Claude", and an Explorer
+window over Claude, beside the locked pane, did not release the lock. A foreground
+window of another app that overlaps the Claude window now releases it. The shell's
+windows (taskbars, desktop, start menu, task view) never do.
+
+Atlas #447, worker eac35bba. 165 tests. Main 62ee8be, rebuilt and launched through
+Explorer; the owner's look is next.
+
 ## Session 9, 8.10.2026: the glass knows the screen's order (adr.rg.033)
 
 **The owner's week of use:** perfect over Code panes, but anything else that came up - a
