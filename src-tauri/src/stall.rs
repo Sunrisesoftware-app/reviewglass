@@ -251,6 +251,9 @@ pub fn spawn(app: AppHandle) {
             let mut shown_this_minute = false;
             loop {
                 thread::sleep(PROBE_EVERY);
+                if crate::shutting_down() {
+                    return;
+                }
                 let shown = app.state::<crate::capture::Engine>().is_enabled();
                 if shown {
                     shown_this_minute = true;

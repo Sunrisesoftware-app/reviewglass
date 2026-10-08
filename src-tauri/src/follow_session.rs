@@ -583,6 +583,9 @@ fn run(app: AppHandle) {
     let mut missed: Option<Miss> = None;
     let mut told: Option<FollowSaw> = None;
     loop {
+        if crate::shutting_down() {
+            return;
+        }
         thread::sleep(POLL);
         let on = app.state::<Store>().get().glass.follow_session;
         let engine = app.state::<Engine>();

@@ -355,6 +355,9 @@ pub fn spawn_diff_loop(app: AppHandle) {
     thread::Builder::new()
         .name("reviewglass-diff".into())
         .spawn(move || loop {
+            if crate::shutting_down() {
+                return;
+            }
             let denylist = app.state::<crate::config::Store>().get().diff.denylist;
             if app.state::<DiffState>().tick(&denylist) {
                 let _ = app.emit_to(crate::dock::DOCK_LABEL, UPDATE_EVENT, ());

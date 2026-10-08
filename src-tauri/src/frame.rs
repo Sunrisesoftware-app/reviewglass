@@ -145,6 +145,9 @@ fn run(app: AppHandle) {
     };
 
     loop {
+        if crate::shutting_down() {
+            return;
+        }
         thread::sleep(TICK);
         let engine = app.state::<Engine>();
         let cfg = app.state::<Store>().get().glass;

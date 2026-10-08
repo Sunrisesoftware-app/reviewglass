@@ -416,6 +416,9 @@ pub fn spawn_lens_rider(app: AppHandle) {
             // The glass's picture lets the mouse through (adr.rg.033), as last set.
             let mut through = false;
             loop {
+                if crate::shutting_down() {
+                    return;
+                }
                 let engine = app.state::<Engine>();
                 let mode = engine.mode();
                 let enabled = engine.is_enabled();

@@ -99,6 +99,7 @@ pub fn show_dock_window(app: &AppHandle) {
 }
 
 pub fn quit_app(app: &AppHandle) {
+    crate::begin_shutdown();
     app.state::<Engine>().stop();
     app.exit(0);
 }

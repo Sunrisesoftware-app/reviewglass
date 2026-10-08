@@ -90,6 +90,9 @@ pub fn spawn_usage_loop(app: AppHandle) {
     thread::Builder::new()
         .name("reviewglass-usage".into())
         .spawn(move || loop {
+            if crate::shutting_down() {
+                return;
+            }
             let cfg = app.state::<Store>().get().alerts;
             let alerts = app.state::<PanelState>().tick(&cfg);
             for alert in alerts {

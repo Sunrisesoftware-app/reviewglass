@@ -23,7 +23,23 @@ mod stall;
 mod tray;
 pub mod usage;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tauri::Manager;
+
+/// The app is on its way out. Background threads that touch windows or ask the main
+/// thread for work stop when this is set: a request that reached the event loop after
+/// it was destroyed aborted the app on its way out (tao: "cannot move state from
+/// Destroyed", panic.log, 6.10.2026).
+static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
+
+pub fn shutting_down() -> bool {
+    SHUTTING_DOWN.load(Ordering::Relaxed)
+}
+
+pub fn begin_shutdown() {
+    SHUTTING_DOWN.store(true, Ordering::Relaxed);
+}
 
 /// A panic leaves a trace. The release build aborts on panic (`panic = "abort"`) and its
 /// stderr reaches nowhere, so without this a crash is a Windows Error Reporting line
@@ -198,7 +214,11 @@ pub fn run() {
         .build(context)
         .expect("error while building ReviewGlass")
         .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                begin_shutdown();
+            }
             if let tauri::RunEvent::Exit = event {
+                begin_shutdown();
                 app.state::<capture::Engine>().stop();
             }
         });
