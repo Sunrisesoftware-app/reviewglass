@@ -296,11 +296,10 @@ fn run(app: AppHandle) {
                     }
                 }
             }
-            // A window of another application brought to the front over the pane - or the
-            // app minimised - ends the reading of the pane (adr.rg.033): the glass lets go
-            // and reads what is in front, and a click on a pane locks again.
-            let pane_rect = l.pane.rect;
-            let front = crate::stall::uia("front", || in_front(l.root, l.claude_pid, pane_rect));
+            // A window of another application brought to the front over the Claude app -
+            // or the app minimised - ends the reading of the pane (adr.rg.033): the glass
+            // lets go and reads what is in front, and a click on a pane locks again.
+            let front = crate::stall::uia("front", || in_front(l.root, l.claude_pid));
             if let Some(name) = front {
                 crate::stall::note("released", format!("front={name:?}"));
                 crate::measure::log(|| format!("frame released front={name:?}"));
@@ -420,13 +419,15 @@ fn primary_down() -> bool {
     }
 }
 
-/// The window of another application that is in the foreground and overlaps the locked
-/// pane `(left, top, right, bottom)`, by name; or the app's own window minimised. What
-/// ends the reading of a pane (adr.rg.033). ReviewGlass's own windows and the Claude
-/// app's never do: a click on the glass's bar or in another pane is not another window
-/// coming to the front.
+/// The window of another application that is in the foreground and overlaps the Claude
+/// app's window `root`, by name; or that window minimised. What ends the reading of a
+/// pane (adr.rg.033, as amended 8.10.2026: the owner's words were "covers Claude", and an
+/// Explorer window over the next pane did not release a lock held on this one).
+/// ReviewGlass's own windows, the Claude app's and the shell's - the taskbar, the
+/// desktop, the start menu - never do: a click on the glass's bar, in another pane or on
+/// the taskbar on the way to another window is not another window coming to the front.
 #[cfg(windows)]
-fn in_front(root: isize, claude_pid: u32, (l, t, r, b): (i32, i32, i32, i32)) -> Option<String> {
+fn in_front(root: isize, claude_pid: u32) -> Option<String> {
     use windows::Win32::Foundation::{HWND, RECT};
     use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -449,24 +450,51 @@ fn in_front(root: isize, claude_pid: u32, (l, t, r, b): (i32, i32, i32, i32)) ->
         if pid == 0 || pid == std::process::id() || pid == claude_pid {
             return None;
         }
-        let mut rect = RECT::default();
-        let got = DwmGetWindowAttribute(
-            top,
-            DWMWA_EXTENDED_FRAME_BOUNDS,
-            (&mut rect as *mut RECT).cast(),
-            std::mem::size_of::<RECT>() as u32,
-        )
-        .is_ok()
-            || GetWindowRect(top, &mut rect).is_ok();
-        let pane = SourceRect {
-            x: l,
-            y: t,
-            w: (r - l).max(0) as u32,
-            h: (b - t).max(0) as u32,
+        let mut cls = [0u16; 64];
+        let n = windows::Win32::UI::WindowsAndMessaging::GetClassNameW(top, &mut cls);
+        if is_shell_class(&String::from_utf16_lossy(&cls[..n.max(0) as usize])) {
+            return None;
+        }
+        let bounds = |h: HWND| {
+            let mut rect = RECT::default();
+            let got = DwmGetWindowAttribute(
+                h,
+                DWMWA_EXTENDED_FRAME_BOUNDS,
+                (&mut rect as *mut RECT).cast(),
+                std::mem::size_of::<RECT>() as u32,
+            )
+            .is_ok()
+                || GetWindowRect(h, &mut rect).is_ok();
+            got.then_some(rect)
         };
-        (got && overlaps((rect.left, rect.top, rect.right, rect.bottom), pane))
-            .then(|| window_name(top))
+        let (Some(front), Some(app)) = (bounds(top), bounds(HWND(root as *mut _))) else {
+            return None;
+        };
+        let app = SourceRect {
+            x: app.left,
+            y: app.top,
+            w: (app.right - app.left).max(0) as u32,
+            h: (app.bottom - app.top).max(0) as u32,
+        };
+        overlaps((front.left, front.top, front.right, front.bottom), app).then(|| window_name(top))
     }
+}
+
+/// The shell's own windows: the taskbars, the desktop, the start menu and search, task
+/// view. Passing through them on the way to a window is not that window coming to the
+/// front.
+fn is_shell_class(class: &str) -> bool {
+    matches!(
+        class,
+        "Shell_TrayWnd"
+            | "Shell_SecondaryTrayWnd"
+            | "Progman"
+            | "WorkerW"
+            | "Windows.UI.Core.CoreWindow"
+            | "XamlExplorerHostIslandWindow"
+            | "TopLevelWindowForOverflowXamlIsland"
+            | "NotifyIconOverflowWindow"
+    )
 }
 
 /// A window's title, or what it is when it has none (`untitled_name`).
@@ -588,6 +616,14 @@ pub fn frame_step(app: AppHandle, forward: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_shell_on_the_way_to_a_window_is_not_a_window_in_front() {
+        assert!(is_shell_class("Shell_TrayWnd"));
+        assert!(is_shell_class("Windows.UI.Core.CoreWindow"));
+        assert!(!is_shell_class("CabinetWClass")); // File Explorer
+        assert!(!is_shell_class("XLMAIN")); // Excel
+    }
 
     #[test]
     fn a_window_covers_the_box_only_where_they_share_area() {

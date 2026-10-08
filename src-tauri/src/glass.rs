@@ -392,8 +392,10 @@ pub fn set_lens_inner(app: &AppHandle, engine: &Engine, lens: bool) {
 /// reported it: the area that lets the mouse through in Follow (adr.rg.033).
 static PICTURE: parking_lot::Mutex<Option<(i32, i32, u32, u32)>> = parking_lot::Mutex::new(None);
 
+/// Off the main thread (`async`): it takes a lock a background thread also takes, and a
+/// synchronous command waiting on a lock blocks every window's event loop.
 #[tauri::command]
-pub fn glass_set_picture(x: i32, y: i32, w: u32, h: u32) {
+pub async fn glass_set_picture(x: i32, y: i32, w: u32, h: u32) {
     *PICTURE.lock() = Some((x, y, w, h));
 }
 
@@ -501,9 +503,16 @@ pub fn spawn_lens_rider(app: AppHandle) {
                 // be clicked, scrolled and dragged from; the bar and the tab still take
                 // the pointer, and that is where the source holds (adr.rg.033). Still keeps a
                 // picture that is grabbed, and Lens rides the cursor as before.
+                //
+                // The rectangle is copied out before the window is asked for its place:
+                // a window's getters wait for the main thread, and the main thread sets
+                // the rectangle through `glass_set_picture`. Holding the lock across the
+                // call deadlocked the two - the app hung on the owner's first afternoon
+                // with it (stall.log 8.10.2026 16:05: "main ms=>10000" on every probe).
+                let pic = *PICTURE.lock();
                 let want_through = following
                     && !engine.is_held()
-                    && match (*PICTURE.lock(), app.get_webview_window(GLASS_LABEL)) {
+                    && match (pic, app.get_webview_window(GLASS_LABEL)) {
                         (Some(pic), Some(g)) => g
                             .inner_position()
                             .map(|p| over_picture(cursor_pos(), (p.x, p.y), pic))
