@@ -87,6 +87,7 @@
   const TAB_CSS = 26; // the tab below the glass's corner, CSS px at bar size 100 %
 
   let canvas: HTMLCanvasElement;
+  let pictureEl = $state<HTMLElement | null>(null);
   let tabEl = $state<HTMLElement | null>(null);
   let zoom = $state(2); // in effect
   let userZoom = $state(2); // the setting; the fit may show less, never more
@@ -130,7 +131,6 @@
   let error = $state<string | null>(null);
   let notice = $state<string | null>(null);
   let haveFrame = $state(false);
-  let hovering = $state(false);
   type ModeName = "follow" | "lens" | "still";
   const mode = $derived<ModeName>(lens ? "lens" : frozen ? "still" : "follow");
   /** The tab's height in CSS px: none in the lens, which rides the cursor. */
@@ -399,6 +399,18 @@
       zoom,
       derived: zoomDerived,
     });
+    // The picture's rectangle in the window, physical px: the area that lets the mouse
+    // through in Follow (adr.rg.033).
+    const pr = pictureEl?.getBoundingClientRect();
+    if (pr) {
+      const k = dpr();
+      void invoke("glass_set_picture", {
+        x: Math.round(pr.left * k),
+        y: Math.round(pr.top * k),
+        w: Math.round(pr.width * k),
+        h: Math.round(pr.height * k),
+      });
+    }
     // The tab's size, for the window's shape and the next placement beside a pane.
     await tick();
     const t = tabEl?.getBoundingClientRect();
@@ -504,10 +516,12 @@
     await invoke("glass_set_lens", { lens: next });
   }
 
-  // While the pointer is over the glass the source holds still and the picture dims,
-  // so the controls read clearly and nothing jumps underneath them.
+  // While the pointer is on the bar or the tab the source holds still, so reaching for a
+  // control never swaps the picture. The picture itself lets the mouse through in Follow
+  // and is never darkened (adr.rg.033): the window behind it can be clicked and dragged
+  // from, and the core makes the area click-through from the rectangle `reportView`
+  // sends it.
   function setHover(next: boolean) {
-    hovering = next;
     // In the lens the pointer is always over the glass; holding the source there would
     // freeze the lens, so the hold applies to the parked glass only.
     void invoke("glass_set_hovered", { hovered: next && !lens });
@@ -734,15 +748,17 @@
 
 <svelte:window {onkeydown} />
 
-<div
-  class="glass {mode}"
-  class:dimmed={hovering && mode === "follow"}
-  style="--ui: {uiScale}; --tab: {tabH}px"
-  onpointerenter={() => setHover(true)}
-  onpointerleave={() => setHover(false)}
-  role="presentation"
->
-  <header class="titlebar" {onpointerdown} {oncontextmenu} role="toolbar" tabindex="-1" aria-label="ReviewGlass">
+<div class="glass {mode}" style="--ui: {uiScale}; --tab: {tabH}px" role="presentation">
+  <header
+    class="titlebar"
+    {onpointerdown}
+    {oncontextmenu}
+    onpointerenter={() => setHover(true)}
+    onpointerleave={() => setHover(false)}
+    role="toolbar"
+    tabindex="-1"
+    aria-label="ReviewGlass"
+  >
     <button
       class="grab"
       class:held={pinned}
@@ -951,9 +967,8 @@
     {/if}
   </header>
 
-  <div class="picture" {onpointerdown} {ondblclick} {onwheel} {oncontextmenu} role="presentation">
+  <div class="picture" bind:this={pictureEl} {onpointerdown} {ondblclick} {onwheel} {oncontextmenu} role="presentation">
     <canvas bind:this={canvas}></canvas>
-    <div class="dim" aria-hidden="true"></div>
 
     {#if error}
       <div class="overlay error"><span>{error}</span></div>
@@ -973,7 +988,16 @@
 {#if !lens}
   <!-- Outside the glass, below its bottom-right corner (adr.rg.027): reaching for these
        never crosses the picture, so nothing dims or holds on the way. -->
-  <div class="tab {mode}" style="--ui: {uiScale}; height: {tabH}px" role="toolbar" aria-label="Move or hide the glass" bind:this={tabEl}>
+  <div
+    class="tab {mode}"
+    style="--ui: {uiScale}; height: {tabH}px"
+    role="toolbar"
+    tabindex="-1"
+    aria-label="Move or hide the glass"
+    bind:this={tabEl}
+    onpointerenter={() => setHover(true)}
+    onpointerleave={() => setHover(false)}
+  >
     <button
       class="move"
       class:held={pinned}
@@ -1162,19 +1186,6 @@
     display: block;
     width: 100%;
     height: 100%;
-  }
-  /* Darken the picture while the pointer is over the parked glass: the source holds
-     still meanwhile, and the dim says so. */
-  .dim {
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    opacity: 0;
-    transition: opacity 140ms ease;
-    pointer-events: none;
-  }
-  .glass.dimmed .dim {
-    opacity: 1;
   }
 
   .overlay {

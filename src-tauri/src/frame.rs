@@ -293,6 +293,29 @@ fn run(app: AppHandle) {
                     }
                 }
             }
+            // A window of another application brought to the front over the pane - or the
+            // app minimised - ends the reading of the pane (adr.rg.033): the glass lets go
+            // and reads what is in front, and a click on a pane locks again.
+            let pane_rect = l.pane.rect;
+            let front = crate::stall::uia("front", || in_front(l.root, l.claude_pid, pane_rect));
+            if let Some(name) = front {
+                crate::stall::note("released", format!("front={name:?}"));
+                crate::measure::log(|| format!("frame released front={name:?}"));
+                lock = None;
+                engine.set_frame(None);
+                engine.set_covered(false);
+                covered_since = None;
+                *app.state::<FrameState>().neighbour.lock() = None;
+                status = FrameStatus {
+                    note: Some(format!(
+                        "Released: {name} came to the front. Click a pane to lock the glass again"
+                    )),
+                    ..FrameStatus::default()
+                };
+                note_at = Instant::now();
+                tell(&status, &mut told);
+                continue;
+            }
             // The windows in front.
             if cover_at.elapsed() >= COVER_CHECK {
                 cover_at = Instant::now();
@@ -394,6 +417,76 @@ fn primary_down() -> bool {
     }
 }
 
+/// The window of another application that is in the foreground and overlaps the locked
+/// pane `(left, top, right, bottom)`, by name; or the app's own window minimised. What
+/// ends the reading of a pane (adr.rg.033). ReviewGlass's own windows and the Claude
+/// app's never do: a click on the glass's bar or in another pane is not another window
+/// coming to the front.
+#[cfg(windows)]
+fn in_front(root: isize, claude_pid: u32, (l, t, r, b): (i32, i32, i32, i32)) -> Option<String> {
+    use windows::Win32::Foundation::{HWND, RECT};
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetAncestor, GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId, IsIconic,
+        GA_ROOT,
+    };
+    // SAFETY: window queries on handles the system returned, with buffers and sizes
+    // valid for each call.
+    unsafe {
+        if IsIconic(HWND(root as *mut _)).as_bool() {
+            return Some("the minimised Claude app".into());
+        }
+        let fg = GetForegroundWindow();
+        if fg.is_invalid() {
+            return None;
+        }
+        let top = GetAncestor(fg, GA_ROOT);
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(top, Some(&mut pid));
+        if pid == 0 || pid == std::process::id() || pid == claude_pid {
+            return None;
+        }
+        let mut rect = RECT::default();
+        let got = DwmGetWindowAttribute(
+            top,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            (&mut rect as *mut RECT).cast(),
+            std::mem::size_of::<RECT>() as u32,
+        )
+        .is_ok()
+            || GetWindowRect(top, &mut rect).is_ok();
+        let pane = SourceRect {
+            x: l,
+            y: t,
+            w: (r - l).max(0) as u32,
+            h: (b - t).max(0) as u32,
+        };
+        (got && overlaps((rect.left, rect.top, rect.right, rect.bottom), pane))
+            .then(|| window_name(top))
+    }
+}
+
+/// A window's title, or what it is when it has none (`untitled_name`).
+#[cfg(windows)]
+fn window_name(h: windows::Win32::Foundation::HWND) -> String {
+    use windows::Win32::UI::WindowsAndMessaging::{GetClassNameW, GetWindowTextW};
+    // SAFETY: plain queries with buffers valid for each call.
+    unsafe {
+        let mut buf = [0u16; 128];
+        let n = GetWindowTextW(h, &mut buf);
+        let title = String::from_utf16_lossy(&buf[..n.max(0) as usize])
+            .trim()
+            .to_string();
+        if !title.is_empty() {
+            return title;
+        }
+        let mut cls = [0u16; 64];
+        let n = GetClassNameW(h, &mut cls);
+        let class = String::from_utf16_lossy(&cls[..n.max(0) as usize]);
+        untitled_name(&class).into()
+    }
+}
+
 /// The first window above `root` in the z-order that covers `src`: visible, not
 /// minimised, not cloaked, not click-through, and of another application than the
 /// Claude app and ReviewGlass. Its title, or its program's name. The app itself
@@ -405,9 +498,8 @@ fn covering(root: isize, claude_pid: u32, src: SourceRect) -> Option<String> {
         DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetClassNameW, GetWindow, GetWindowLongW, GetWindowRect, GetWindowTextW,
-        GetWindowThreadProcessId, IsIconic, IsWindowVisible, GWL_EXSTYLE, GW_HWNDPREV,
-        WS_EX_TRANSPARENT,
+        GetWindow, GetWindowLongW, GetWindowRect, GetWindowThreadProcessId, IsIconic,
+        IsWindowVisible, GWL_EXSTYLE, GW_HWNDPREV, WS_EX_TRANSPARENT,
     };
 
     let own = std::process::id();
@@ -452,18 +544,7 @@ fn covering(root: isize, claude_pid: u32, src: SourceRect) -> Option<String> {
                 .is_ok()
                     || GetWindowRect(h, &mut r).is_ok();
                 if got && overlaps((r.left, r.top, r.right, r.bottom), src) {
-                    let mut buf = [0u16; 128];
-                    let n = GetWindowTextW(h, &mut buf);
-                    let title = String::from_utf16_lossy(&buf[..n.max(0) as usize])
-                        .trim()
-                        .to_string();
-                    if !title.is_empty() {
-                        return Some(title);
-                    }
-                    let mut cls = [0u16; 64];
-                    let n = GetClassNameW(h, &mut cls);
-                    let class = String::from_utf16_lossy(&cls[..n.max(0) as usize]);
-                    return Some(untitled_name(&class).into());
+                    return Some(window_name(h));
                 }
             }
             h = next;

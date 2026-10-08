@@ -388,6 +388,23 @@ pub fn set_lens_inner(app: &AppHandle, engine: &Engine, lens: bool) {
 /// and moves only when that rectangle does. With a pane locked by a click (adr.rg.026)
 /// the finder covers the pane instead and draws the frame, with the box inside it
 /// (`finder:layout`).
+/// The glass's picture in its window, physical px (x, y, w, h), as the page last
+/// reported it: the area that lets the mouse through in Follow (adr.rg.033).
+static PICTURE: parking_lot::Mutex<Option<(i32, i32, u32, u32)>> = parking_lot::Mutex::new(None);
+
+#[tauri::command]
+pub fn glass_set_picture(x: i32, y: i32, w: u32, h: u32) {
+    *PICTURE.lock() = Some((x, y, w, h));
+}
+
+/// Whether the cursor at `(cx, cy)` is over the picture of a glass whose window's inner
+/// top-left is `origin`.
+fn over_picture((cx, cy): (i32, i32), origin: (i32, i32), pic: (i32, i32, u32, u32)) -> bool {
+    let (x, y, w, h) = pic;
+    let (l, t) = (origin.0 + x, origin.1 + y);
+    cx >= l && cx < l + w as i32 && cy >= t && cy < t + h as i32
+}
+
 pub fn spawn_lens_rider(app: AppHandle) {
     thread::Builder::new()
         .name("reviewglass-rider".into())
@@ -396,6 +413,8 @@ pub fn spawn_lens_rider(app: AppHandle) {
             let mut finder_shown = false;
             let mut finder_rect: Option<crate::capture::SourceRect> = None;
             let mut finder_layout: Option<FinderLayout> = None;
+            // The glass's picture lets the mouse through (adr.rg.033), as last set.
+            let mut through = false;
             loop {
                 let engine = app.state::<Engine>();
                 let mode = engine.mode();
@@ -475,6 +494,27 @@ pub fn spawn_lens_rider(app: AppHandle) {
                     }
                 }
 
+                // In Follow the picture lets the mouse through, so the window behind it can
+                // be clicked, scrolled and dragged from; the bar and the tab still take
+                // the pointer, and that is where the source holds (adr.rg.033). Still keeps a
+                // picture that is grabbed, and Lens rides the cursor as before.
+                let want_through = following
+                    && !engine.is_held()
+                    && match (*PICTURE.lock(), app.get_webview_window(GLASS_LABEL)) {
+                        (Some(pic), Some(g)) => g
+                            .inner_position()
+                            .map(|p| over_picture(cursor_pos(), (p.x, p.y), pic))
+                            .unwrap_or(false),
+                        _ => false,
+                    };
+                if want_through != through {
+                    if let Some(g) = app.get_webview_window(GLASS_LABEL) {
+                        if g.set_ignore_cursor_events(want_through).is_ok() {
+                            through = want_through;
+                        }
+                    }
+                }
+
                 // A menu open over the glass holds the rider too: the menu pops at the
                 // cursor and a lens that kept riding would carry the picture out from
                 // under it while the user reaches for an item.
@@ -496,8 +536,9 @@ pub fn spawn_lens_rider(app: AppHandle) {
                 } else if paused {
                     // Riding again the moment the menu closes.
                     thread::sleep(Duration::from_millis(8));
-                } else if finder_wanted {
-                    // The source rectangle changes at the frame poll's rate at most.
+                } else if finder_wanted || following {
+                    // The source rectangle changes at the frame poll's rate at most, and
+                    // the picture's click-through follows the pointer as quickly.
                     thread::sleep(Duration::from_millis(33));
                 } else {
                     thread::sleep(Duration::from_millis(100));
@@ -1012,6 +1053,19 @@ fn frame_for(app: &AppHandle, engine: &Engine, since: u64) -> Result<Vec<u8>, St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_picture_lets_the_mouse_through_only_inside_it() {
+        // A glass at (100, 50) whose picture starts 40 px down, 600 by 300.
+        let pic = (0, 40, 600, 300);
+        assert!(over_picture((100, 90), (100, 50), pic));
+        assert!(over_picture((699, 389), (100, 50), pic));
+        // The bar above the picture takes the pointer.
+        assert!(!over_picture((300, 70), (100, 50), pic));
+        // Outside the glass.
+        assert!(!over_picture((700, 200), (100, 50), pic));
+        assert!(!over_picture((300, 390), (100, 50), pic));
+    }
     use crate::capture::{PaneFrame, SourceRect};
 
     #[test]

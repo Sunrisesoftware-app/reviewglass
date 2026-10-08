@@ -147,6 +147,7 @@ pub fn run() {
             glass::glass_scroll,
             glass::glass_save_position,
             glass::glass_set_pinned,
+            glass::glass_set_picture,
             glass::glass_hide,
             glass::app_quit,
             glass::glass_frame,
