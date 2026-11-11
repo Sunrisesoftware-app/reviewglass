@@ -131,6 +131,19 @@ pub fn run() {
                 if let Err(e) = glass::exclude_from_capture(&w) {
                     eprintln!("reviewglass: {e}");
                 }
+                // The attached diff window follows the glass (adr.rg.034), driven by the
+                // glass's own moves and resizes, never by a poll. These run on the main
+                // thread, so the window calls in follow_glass do not wait on it.
+                let handle = app.handle().clone();
+                w.on_window_event(move |e| {
+                    if matches!(
+                        e,
+                        tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)
+                    ) && !shutting_down()
+                    {
+                        diffwin::follow_glass(&handle);
+                    }
+                });
             }
             tray::install(app.handle())?;
             glass::prepare_overlays(app.handle());
@@ -192,7 +205,9 @@ pub fn run() {
             frame::frame_step,
             diffwin::diffwin_toggle,
             diffwin::diffwin_is_open,
-            diffwin::diffwin_save,
+            diffwin::diffwin_dropped,
+            diffwin::diffwin_attach,
+            diffwin::diffwin_attached,
             glass::glass_set_shape,
             diff::file::panel_file_view,
             diff::worktree::panel_worktree,

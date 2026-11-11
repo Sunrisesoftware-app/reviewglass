@@ -134,7 +134,7 @@ collector replaced it in `settings.json` on 11.9.2026.
 | `src-tauri/src/explain/` | `rg.explain-service` (provider-agnostic) and `backend/` (`rg.explain-backend`: local, remote, the key in Credential Manager) — the only place a provider is named |
 | `src-tauri/src/follow_session.rs` | Follow chooses the session (adr.rg.022): the Code pane's header title under the cursor, by UI Automation; `uia::Reader` also serves the frame (lock_at, neighbour, the header title through the tree) |
 | `src-tauri/src/frame.rs` | the frame (adr.rg.026–027): a click locks the glass to a pane, the windows in front, the arrow steps, the locked pane's neighbour |
-| `src-tauri/src/diffwin.rs` | the diff window (adr.rg.028): created on open, placed, its place remembered |
+| `src-tauri/src/diffwin.rs` | the diff window (adr.rg.028, adr.rg.034): created on open, attached to a side of the glass and following it, or free where the user left it |
 | `src-tauri/src/picture.rs` | the drawer's own picture (adr.rg.025): WebView2 CapturePreview → clipboard and Pictures\ReviewGlass |
 | `src-tauri/src/stall.rs` | the stall log, `~/.reviewglass/stall.log`: a line per slow stage of the glass's picture, a summary a minute |
 | `src-tauri/src/probe.rs` | the structure recorder (adr.rg.032): other applications' structure at a click, to `~/.reviewglass/measurements` |

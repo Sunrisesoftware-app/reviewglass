@@ -3,9 +3,13 @@
   // window of its own. It shows the session of the pane locked by a click and follows
   // the lock (Follow's sighting, `follow:session`); with nothing locked, the drawer's
   // choice made by hand (`selection:changed`). Its title row names the session, moves
-  // the window and closes it; its edges resize it. Only a move or a resize the user
-  // starts here is remembered as the window's place — ReviewGlass's own placement is
-  // not.
+  // the window and closes it; its edges resize it.
+  //
+  // Attached to a side of the glass (adr.rg.034): four side buttons in the title row
+  // attach it with one click, the lit one naming the side. A move or a resize the user
+  // starts here is reported when it ends: dropped beside the glass it attaches to that
+  // side (a resize of the free edge sets its thickness), dropped away from it it is
+  // free and stays there. ReviewGlass's own placement is never reported.
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -22,11 +26,24 @@
     if (!byHand) return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
+      byHand = false;
       const p = await win.outerPosition();
       const s = await win.outerSize();
-      await invoke("diffwin_save", { x: p.x, y: p.y, width: s.width, height: s.height });
-      byHand = false;
-    }, 500);
+      await invoke("diffwin_dropped", { x: p.x, y: p.y, width: s.width, height: s.height });
+    }, 400);
+  }
+
+  type Side = "left" | "right" | "above" | "below";
+  /** The side of the glass the window is attached to; null: free. */
+  let attached = $state<Side | null>(null);
+  const SIDES: { side: Side; glyph: string; name: string }[] = [
+    { side: "left", glyph: "◧", name: "left of" },
+    { side: "right", glyph: "◨", name: "right of" },
+    { side: "above", glyph: "⬒", name: "above" },
+    { side: "below", glyph: "⬓", name: "below" },
+  ];
+  function attach(side: Side) {
+    void invoke("diffwin_attach", { side });
   }
 
   function startMove(e: PointerEvent) {
@@ -68,6 +85,8 @@
         // The core is not answering yet: the next sighting will do.
       }
       unlisten.push(await listen<FollowSaw>("follow:session", (ev) => followSaw(ev.payload)));
+      unlisten.push(await listen<Side | null>("diffwin:attached", (ev) => (attached = ev.payload)));
+      attached = await invoke<Side | null>("diffwin_attached");
       // A choice made by hand in the drawer. Set directly, not through choose(), which
       // would send it on again.
       unlisten.push(
@@ -86,8 +105,28 @@
 
 <div class="diffwin">
   <header role="toolbar" aria-label="Diff window" tabindex="-1" onpointerdown={startMove}>
-    <span class="title" title="Drag to move the window">
+    <span class="title" title="Drag to move the window; drop it beside the glass to attach it there">
       Diff{" — "}{#if selection.name}<b>{selection.name}</b>{:else}every session{/if}
+    </span>
+    {#if attached === null}
+      <span class="hint">free — drag beside the glass to attach</span>
+    {/if}
+    <span class="sides" role="group" aria-label="Attach to a side of the glass">
+      {#each SIDES as s (s.side)}
+        <button
+          class="side"
+          class:on={attached === s.side}
+          aria-pressed={attached === s.side}
+          title={attached === s.side
+            ? `Attached ${s.name} the glass: it follows the glass's place and size`
+            : `Attach ${s.name} the glass`}
+          aria-label={`Attach ${s.name} the glass`}
+          onpointerdown={(e) => {
+            e.stopPropagation();
+            if (e.button === 0) attach(s.side);
+          }}>{s.glyph}</button
+        >
+      {/each}
     </span>
     <button
       class="close"
@@ -163,6 +202,39 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 12px;
+  }
+  .hint {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    color: #aaa;
+  }
+  .sides {
+    display: flex;
+    gap: 2px;
+    flex: 0 0 auto;
+  }
+  .side {
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: #bbb;
+    font: inherit;
+    font-size: 14px;
+    line-height: 1;
+    padding: 3px 5px;
+    cursor: pointer;
+  }
+  .side:hover {
+    background: #3a3a3a;
+    color: #fff;
+  }
+  .side.on {
+    background: #2f6feb;
+    color: #fff;
   }
   .close {
     border: 0;

@@ -4,6 +4,54 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 10, 11.11.2026: the diff window glued to the glass (adr.rg.034), the model put right
+
+**The owner, after a month of occasional use:** basic use in the Code app is fine; the
+diff comparison is hardly used because it should be easier to reach. Ctrl+Alt+D works;
+the owner wants the same in one click, the window coming up on a side of the glass with
+room, movable by a drag to the left, right, above or below the glass, and then glued to
+it, following its size as the glass fits the pane.
+
+**Also reported (P9, other applications):** the box jumps with every size change and
+the read column wavers with the width of the text; Excel does not work well; overlapping
+windows are a challenge; File Explorer's folder tree is not recognised as a box; through
+the glass the X in a window's corner cannot be found or pressed. "These other
+applications need some other means." Recorded for P9; nothing changed for them here.
+
+**Built (adr.rg.034, Atlas #652; supersedes adr.rg.028's placement):**
+- `diffwin.rs`: the window is attached to a side of the glass, or free.
+  - **Opening:** one click on ⧉ Diff (or Ctrl+Alt+D) opens it on the side the user
+    last chose, or before any choice on the first of right, left, below and above
+    with room for a diff that reads (420 px beside the glass, 240 px above or below).
+  - **Attached:** the shared edge is the glass's: beside it, its top and body height
+    (the tab's strip excluded); above or below, its left and width. The thickness is
+    the user's, remembered per orientation.
+  - **Short of room:** narrowed to the minimum, then moved onto the screen, never cut.
+- `lib.rs`: the glass window's own Moved and Resized events move the attached window.
+  This is event-driven with no poll, and the Lens is not followed.
+- The diff page:
+  - Four side buttons (◧ ◨ ⬒ ⬓) attach it in one click; the lit one names the side.
+  - A drag or a resize the user started is reported when it ends. Dropped within
+    64 px of a side (or over the glass), the window attaches to the side its centre
+    lies towards, and a resize of its free edge sets the thickness.
+  - Dropped further away, it is free and stays there; the title row then says "free -
+    drag beside the glass to attach".
+
+**The Atlas model put right (the daily drift read):** `rg.spool` now points at
+`src-tauri/src/spool.rs`. `rg.transcripts` (Claude Code's own files) has no repository
+path. `rg.installer-integration` is marked planned (P7). Baseline accepted: 0 stale,
+1 planned.
+
+**Measured:** 171 tests (6 new, on the placement: the side order, the shared edges,
+the tab cleared below, narrowing and moving onto the screen, a drop attaching or
+freeing, an old config opening attached); clippy and svelte-check clean.
+
+**AvoQ (read for the hawk eye, the owner's question):** AvoQ covers the code side. It
+has the plan for a plain-language diff explanation ("T2 Reviewglass", phase 3), an LLM
+judge reading diffs against the plan, and one OpenAI-compatible endpoint (local or
+remote) with secret masking. Nothing in it captures or reads the screen. The vision half
+of the hawk eye would be new work in either place.
+
 ## Session 9, 8.10.2026, later: the hang, and "covers Claude" (adr.rg.033 amended)
 
 **The owner's first afternoon with adr.rg.033:** browsing Claude under the glass was

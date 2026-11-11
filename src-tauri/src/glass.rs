@@ -2,7 +2,7 @@
 //! calls, the global hotkeys, self-exclusion from capture, and persistence of
 //! geometry, zoom and freeze state through the config store.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -159,16 +159,26 @@ fn shape(window: &WebviewWindow, tab_w: u32, tab_h: u32) -> Result<(), String> {
     Ok(())
 }
 
+/// The height of the strip the tab hangs in below the glass, physical px (0: no tab):
+/// an attached diff window (adr.rg.034) shares the glass's body, not the strip.
+static TAB_H: AtomicU32 = AtomicU32::new(0);
+
+pub fn tab_height() -> u32 {
+    TAB_H.load(Ordering::Relaxed)
+}
+
 /// The glass page's tab (adr.rg.027), in physical pixels, after every layout: cut into
 /// the window's shape.
 #[tauri::command]
 pub fn glass_set_shape(app: AppHandle, tab_w: u32, tab_h: u32) {
+    TAB_H.store(if tab_w > 0 { tab_h } else { 0 }, Ordering::Relaxed);
     #[cfg(windows)]
     if let Some(w) = app.get_webview_window(GLASS_LABEL) {
         if let Err(e) = shape(&w, tab_w, tab_h) {
             eprintln!("reviewglass: glass shape: {e}");
         }
     }
+    crate::diffwin::follow_glass(&app);
 }
 
 /// Restore geometry and mode from the config store at startup. The glass itself

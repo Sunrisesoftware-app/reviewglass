@@ -940,7 +940,7 @@
         class:on={diffOpen}
         title={diffOpen
           ? "Close the diff window (Ctrl+Alt+D)"
-          : "Open the diff window: the locked pane's session's changes, beside the pane (Ctrl+Alt+D)"}
+          : "Open the diff window: the locked pane's session's changes, attached beside the glass where there is room (Ctrl+Alt+D)"}
         aria-label="Diff window"
         aria-pressed={diffOpen}
         onpointerdown={(e) => control(e, () => invoke("diffwin_toggle"))}>⧉ Diff</button
