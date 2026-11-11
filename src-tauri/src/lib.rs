@@ -18,6 +18,7 @@ mod panel;
 mod picture;
 mod probe;
 pub mod session;
+mod session_end;
 pub mod spool;
 mod stall;
 mod tray;
@@ -145,6 +146,7 @@ pub fn run() {
                     }
                 });
             }
+            session_end::install();
             tray::install(app.handle())?;
             glass::prepare_overlays(app.handle());
             glass::restore(app.handle());
