@@ -5,6 +5,22 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## Put a crash's time next to the system's own log before fixing it (2026-11-11)
+
+The shutdown abort ("cannot move state from Destroyed") was fixed on 8.10.2026 on a
+guess: our background threads were asking a dead event loop for work, so they were
+taught to stop. It came back twice. Windows' System log gave the answer: each panic fell
+on the second Windows logged a shutdown from the Start menu (event 1074). The
+trigger was Windows ending the session, and the message came from Windows, not from us.
+tao answers WM_ENDSESSION by destroying its loop and then keeps pumping messages.
+
+Sending WM_ENDSESSION to the running app's "Tao Thread Event Target" window reproduced
+the panic line exactly, in a second, without a shutdown. The same probe then showed the
+fix working.
+
+Lesson: a crash log's timestamp is a question to put to the system's own logs before
+reading the code. Fix only what a reproduction shows.
+
 ## A lock held across a window call waits for the main thread forever (2026-10-08)
 
 The glass's picture was made click-through from the rider thread. It read the

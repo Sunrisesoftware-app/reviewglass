@@ -4,6 +4,30 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 10, 11.11.2026, later: Windows ending the session no longer aborts ReviewGlass
+
+panic.log had "cannot move state from Destroyed" three times, the last two on 62ee8be,
+after the shutting-down flag of 8.10.2026 that was meant to end it. Windows' System log
+put each one on the second a shutdown from the Start menu was logged (event 1074:
+6.10 21:09:31, 29.10 20:47:45, 9.11 22:01:58).
+
+**The cause:** tao's hidden "Tao Thread Event Target" window answers WM_ENDSESSION by
+destroying the event loop, and the message loop keeps running. The next message to any
+of ReviewGlass's windows asks the destroyed loop for work; tao panics, and the release
+build aborts.
+
+**The fix:** `session_end.rs` subclasses that window after tao, so it is called first.
+On WM_ENDSESSION (wParam TRUE) it marks the app as shutting down and ends the process.
+Windows would end it once the message returned anyway, and the config is written
+atomically on every change.
+
+**Measured:**
+- `WM_ENDSESSION` sent to the running 4325366 reproduced the panic line exactly
+  (runner.rs:371).
+- The same message to f761f1d ended it cleanly; panic.log grew 0 bytes.
+- clippy, cargo test and svelte-check are clean.
+- Main f761f1d is rebuilt and relaunched through Explorer.
+
 ## Session 10, 11.11.2026: the diff window glued to the glass (adr.rg.034), the model put right
 
 **The owner, after a month of occasional use:** basic use in the Code app is fine; the
