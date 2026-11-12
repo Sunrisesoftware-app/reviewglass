@@ -489,7 +489,14 @@ pub(crate) mod uia {
                     )
                 };
                 let cut = |s: &str, n: usize| s.chars().take(n).collect::<String>();
-                out.push(format!("{ct}<{}>'{}'", cut(&class, 40), cut(&name, 40)));
+                let rect = rect_of(&el)
+                    .map(|(l, t, r, b)| format!(" [{l},{t} {}x{}]", r - l, b - t))
+                    .unwrap_or_default();
+                out.push(format!(
+                    "{ct}<{}>'{}'{rect}",
+                    cut(&class, 60),
+                    cut(&name, 40)
+                ));
                 match unsafe { self.walker.GetParentElement(&el) } {
                     Ok(p) if !p.as_raw().is_null() => el = p,
                     _ => break,
@@ -713,6 +720,19 @@ pub fn announce(app: &AppHandle, title: String) {
     }
     let last = app.state::<FollowSessionState>().inner.lock().saw.clone();
     let saw = sighting(app, title, last.as_ref());
+    // Always in the stall log: a lock whose pane names no known session is the case the
+    // diff window cannot follow, and the line says which title it was.
+    crate::stall::note(
+        "lock",
+        format!(
+            "title={:?} session={} live={}",
+            saw.title,
+            saw.session_id
+                .as_deref()
+                .map_or("none", |s| &s[..s.len().min(8)]),
+            saw.live
+        ),
+    );
     app.state::<FollowSessionState>().inner.lock().saw = Some(saw.clone());
     // Every window: the dock's tabs and the diff window (adr.rg.028) follow it.
     let _ = app.emit(EVENT, saw);
@@ -874,8 +894,8 @@ mod tests {
                 "({x},{y}) {ms:7.1} ms root={:#x} own={} claude={} -> {found:?}",
                 at.hwnd, at.own, at.claude
             );
-            if found.is_none() && std::env::var("RG_PANE_CHAIN").is_ok() {
-                for c in r.chain(x, y, 14) {
+            if std::env::var("RG_PANE_CHAIN").is_ok() {
+                for c in r.chain(x, y, 24) {
                     println!("      {c}");
                 }
             }

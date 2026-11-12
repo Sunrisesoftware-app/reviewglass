@@ -316,6 +316,23 @@
     }
   }
 
+  // Another session chosen - a pane clicked in the glass, or a pick by hand - is a new
+  // view: the file picked in the last one, and its whole-file or New view, go with it, so
+  // the newest edit of the session now shown comes up by itself (the owner, 12.11.2026:
+  // a lock on another pane left the previous project's file on show).
+  let lastSession: string | null | undefined = undefined;
+  $effect(() => {
+    const now = selection.session;
+    if (lastSession !== undefined && now !== lastSession) {
+      closeExplanation();
+      selected = null;
+      mode = "hunks";
+      file = null;
+      viewEl?.scrollTo({ top: 0 });
+    }
+    lastSession = now;
+  });
+
   $effect(() => {
     // Each hunk header in diff2html's rendering opens the whole file at that hunk:
     // by click, or by Enter/Space once tabbed to. The rows are diff2html's, so they

@@ -58,6 +58,8 @@
     pane_lock: boolean;
     pane_fit: boolean;
     pinned: boolean;
+    see_through: boolean;
+    see_through_pct: number;
     pane_width: number | null;
     build: string;
     follow_log: boolean;
@@ -102,6 +104,12 @@
   let paneLock = $state(true);
   let paneFit = $state(true);
   let paneWidth = $state<number | null>(null);
+  /** See-through under the pointer (adr.rg.035): the setting, its level in percent, and
+   *  whether the pointer is over the picture now (the core says so as it makes the
+   *  picture click-through). */
+  let seeThrough = $state(true);
+  let seePct = $state(45);
+  let through = $state(false);
   type FrameStatus = {
     locked: boolean;
     title: string | null;
@@ -133,6 +141,8 @@
   let haveFrame = $state(false);
   type ModeName = "follow" | "lens" | "still";
   const mode = $derived<ModeName>(lens ? "lens" : frozen ? "still" : "follow");
+  /** The picture lets the screen show through now (adr.rg.035). */
+  const see = $derived(seeThrough && through && mode === "follow");
   /** The tab's height in CSS px: none in the lens, which rides the cursor. */
   const tabH = $derived(lens ? 0 : Math.round(TAB_CSS * uiScale));
   // The bar reflows when the mode or the column value changes: keep the picture area's
@@ -399,24 +409,27 @@
       zoom,
       derived: zoomDerived,
     });
-    // The picture's rectangle in the window, physical px: the area that lets the mouse
-    // through in Follow (adr.rg.033).
-    const pr = pictureEl?.getBoundingClientRect();
-    if (pr) {
-      const k = dpr();
-      void invoke("glass_set_picture", {
-        x: Math.round(pr.left * k),
-        y: Math.round(pr.top * k),
-        w: Math.round(pr.width * k),
-        h: Math.round(pr.height * k),
-      });
-    }
+    reportPicture();
     // The tab's size, for the window's shape and the next placement beside a pane.
     await tick();
     const t = tabEl?.getBoundingClientRect();
     void invoke("glass_set_shape", {
       tabW: t ? Math.round(t.width * dpr()) : 0,
       tabH: t ? Math.round(t.height * dpr()) : 0,
+    });
+  }
+
+  /** The picture's rectangle in the window, physical px: the area that lets the mouse
+   *  through in Follow (adr.rg.033) and lets the screen show through (adr.rg.035). */
+  function reportPicture() {
+    const pr = pictureEl?.getBoundingClientRect();
+    if (!pr) return;
+    const k = dpr();
+    void invoke("glass_set_picture", {
+      x: Math.round(pr.left * k),
+      y: Math.round(pr.top * k),
+      w: Math.round(pr.width * k),
+      h: Math.round(pr.height * k),
     });
   }
 
@@ -552,9 +565,19 @@
 
   // The title bar and the picture both drag the window: the title bar because that is
   // where every other window is dragged, the picture because a still is a thing one
-  // grabs and moves.
+  // grabs and moves. The second press of a double-click (which freezes) does not drag.
+  // Counted here: `detail` on a pointerdown is the click count in some WebView2
+  // versions and 0 in others, and a check on it stopped the bar dragging (12.11.2026).
+  let lastPress = { at: 0, x: 0, y: 0 };
+  const DOUBLE_MS = 500;
   function onpointerdown(e: PointerEvent) {
-    if (e.button === 0 && e.detail === 1) dragWindow();
+    if (e.button !== 0) return;
+    const second =
+      e.timeStamp - lastPress.at < DOUBLE_MS &&
+      Math.abs(e.screenX - lastPress.x) < 6 &&
+      Math.abs(e.screenY - lastPress.y) < 6;
+    lastPress = { at: second ? 0 : e.timeStamp, x: e.screenX, y: e.screenY };
+    if (!second) dragWindow();
   }
 
   function ondblclick() {
@@ -643,6 +666,8 @@
       paneLock = s.pane_lock;
       paneFit = s.pane_fit;
       pinned = s.pinned;
+      seeThrough = s.see_through;
+      seePct = s.see_through_pct;
       paneWidth = s.pane_width;
       build = s.build;
       followLog = s.follow_log;
@@ -689,6 +714,8 @@
           uiScale = ev.payload.ui_scale;
           paneLock = ev.payload.pane_lock;
           paneFit = ev.payload.pane_fit;
+          seeThrough = ev.payload.see_through;
+          seePct = ev.payload.see_through_pct;
           paneWidth = ev.payload.pane_width;
           followLog = ev.payload.follow_log;
           void relayout();
@@ -697,6 +724,14 @@
       frame = await invoke<FrameStatus>("frame_state");
       diffOpen = await invoke<boolean>("diffwin_is_open");
       unlisten.push(await listen<boolean>("diffwin:open", (ev) => (diffOpen = ev.payload)));
+      unlisten.push(await listen<boolean>("glass:through", (ev) => (through = ev.payload)));
+      // The picture's area is what lets the mouse through: re-sent whenever it changes
+      // (the bar wrapping to a second row moves it), not only when the window does.
+      if (pictureEl) {
+        const ro = new ResizeObserver(() => reportPicture());
+        ro.observe(pictureEl);
+        unlisten.push(() => ro.disconnect());
+      }
       unlisten.push(await listen<FrameStatus>("frame:status", (ev) => onFrameStatus(ev.payload)));
       unlisten.push(
         await listen<{ width: number | null }>("glass:pane", (ev) => {
@@ -748,7 +783,12 @@
 
 <svelte:window {onkeydown} />
 
-<div class="glass {mode}" style="--ui: {uiScale}; --tab: {tabH}px" role="presentation">
+<div
+  class="glass {mode}"
+  class:see
+  style="--ui: {uiScale}; --tab: {tabH}px; --see: {(100 - seePct) / 100}"
+  role="presentation"
+>
   <header
     class="titlebar"
     {onpointerdown}
@@ -935,6 +975,16 @@
           </span>
         {/if}
       {/if}
+
+      <button
+        class:on={seeThrough}
+        title={seeThrough
+          ? `See-through is on: with the pointer over the picture, ${seePct} % of the screen behind shows through, so a control under the glass is found by sight (level in Settings > Glass)`
+          : "See-through is off: the picture stays solid under the pointer"}
+        aria-label="See-through under the pointer"
+        aria-pressed={seeThrough}
+        onpointerdown={(e) => control(e, () => invoke("glass_set_see_through", { on: !seeThrough }))}>◐</button
+      >
 
       <button
         class:on={diffOpen}
@@ -1186,6 +1236,24 @@
     display: block;
     width: 100%;
     height: 100%;
+    transition: opacity 150ms ease;
+  }
+  /* See-through (adr.rg.035): with the pointer over the picture, the ground goes and the
+     picture lets the screen behind show; the bar and the tab stay solid. */
+  .glass {
+    transition: background-color 150ms ease;
+  }
+  .picture {
+    transition: background-color 150ms ease;
+  }
+  .glass.see {
+    background-color: transparent;
+  }
+  .glass.see .picture {
+    background-color: transparent;
+  }
+  .glass.see canvas {
+    opacity: var(--see);
   }
 
   .overlay {

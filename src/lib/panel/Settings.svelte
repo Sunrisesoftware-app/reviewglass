@@ -3,6 +3,7 @@
   // like without burning 75 % of a window to find out.
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import type { ExplainConfig, ExplainView } from "./types";
   import { explain, loadExplain } from "./explain.svelte";
 
@@ -90,9 +91,28 @@
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
 
+  // See-through under the pointer (adr.rg.035): on/off (also the glass's ◐) and how much.
+  let seeThrough = $state(true);
+  let seePct = $state(45);
+  function setSeeThrough(on: boolean | null, pct: number | null) {
+    void invoke("glass_set_see_through", { on, pct });
+  }
+  onMount(() => {
+    let off: (() => void) | undefined;
+    void listen<{ see_through: boolean; see_through_pct: number }>("glass:state", (ev) => {
+      seeThrough = ev.payload.see_through;
+      seePct = ev.payload.see_through_pct;
+    }).then((u) => (off = u));
+    return () => off?.();
+  });
+
   async function load() {
     cfg = await invoke<AlertConfig>("alerts_get");
-    const s = await invoke<{ hotkey_toggle: string } & LogState>("glass_state");
+    const s = await invoke<
+      { hotkey_toggle: string; see_through: boolean; see_through_pct: number } & LogState
+    >("glass_state");
+    seeThrough = s.see_through;
+    seePct = s.see_through_pct;
     hotkey = s.hotkey_toggle;
     hotkeyDraft = hotkey;
     rec = s;
@@ -277,6 +297,38 @@
       {:else if hotkeyError}
         <span class="bad">{hotkeyError}</span>
       {/if}
+    </div>
+  </section>
+
+  <section>
+    <h2>Glass</h2>
+    <label class="row">
+      <input
+        type="checkbox"
+        checked={seeThrough}
+        onchange={(e) => setSeeThrough(e.currentTarget.checked, null)}
+      />
+      See-through under the pointer
+    </label>
+    <p class="help">
+      With the pointer over the glass's picture, the screen behind it shows through, so a
+      button, a menu or a window's corner under the glass is found by sight while the same
+      place shows larger in the glass. The picture is solid again as soon as the pointer
+      leaves it. The glass's <b>◐</b> switches this too.
+    </p>
+    <div class="range">
+      <input
+        type="range"
+        min="25"
+        max="75"
+        step="5"
+        value={seePct}
+        disabled={!seeThrough}
+        aria-label="How much of the screen shows through, percent"
+        oninput={(e) => (seePct = Number(e.currentTarget.value))}
+        onchange={(e) => setSeeThrough(null, Number(e.currentTarget.value))}
+      />
+      <span>{seePct} % shows through</span>
     </div>
   </section>
 
@@ -535,6 +587,11 @@
 <style>
   section + section {
     margin-top: 22px;
+  }
+  .range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
   .hotkey {
     display: flex;

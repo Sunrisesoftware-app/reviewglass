@@ -359,8 +359,11 @@ fn lock_to(
     let engine = app.state::<Engine>();
     engine.set_frame(Some(frame_of(pane.rect)));
     engine.set_covered(false);
-    if let Some(t) = pane.title.clone() {
-        crate::follow_session::announce(app, t);
+    match pane.title.clone() {
+        Some(t) => crate::follow_session::announce(app, t),
+        // No title read from the pane's header: the session's choice cannot follow the
+        // lock, and the stall log says so (12.11.2026).
+        None => crate::stall::note("lock", format!("title=none rect={:?}", pane.rect)),
     }
     *status = FrameStatus {
         locked: true,

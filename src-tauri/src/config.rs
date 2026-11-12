@@ -76,7 +76,16 @@ pub struct GlassConfig {
     /// pane lock, no Fit width, no drag. Kept across restarts with `x`, `y`, `width` and
     /// `height`, so the glass opens where it was locked.
     pub pinned: bool,
+    /// See-through (adr.rg.035): in Follow, while the pointer is over the picture, the
+    /// screen behind shows through it, so a control under the glass is found by sight.
+    pub see_through: bool,
+    /// How much shows through then, in percent (25-75).
+    pub see_through_pct: u8,
 }
+
+/// The see-through level's bounds (adr.rg.035).
+pub const SEE_THROUGH_MIN: u8 = 25;
+pub const SEE_THROUGH_MAX: u8 = 75;
 
 impl Default for GlassConfig {
     fn default() -> Self {
@@ -99,6 +108,8 @@ impl Default for GlassConfig {
             pane_fit: true,
             follow_session: true,
             pinned: false,
+            see_through: true,
+            see_through_pct: 45,
         }
     }
 }

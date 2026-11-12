@@ -4,6 +4,58 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 10, 12.11.2026: see-through under the pointer (adr.rg.035), the diff follows the clicked pane, the bar drags again
+
+**The owner's look at adr.rg.034:** "quite ok". Four reports came with it:
+- In four panes side by side, a click on pane 2 (an AvoQ thread) left the Sunrise
+  site's index file in the diff window.
+- The glass moved only from the tab's small cross. Before, the bar dragged it once
+  unlocked.
+- A conversation popped out into a window of its own over the Code app makes the glass
+  needlessly wide, about 65 % of the screen. Narrowed by hand, it follows well.
+- With the glass over a window, one cannot tell exactly where a control under it is.
+  On web pages the glass often goes to the full width.
+
+**The diff follows the clicked pane:**
+- The pane titles were measured. Every live session's title is in its transcript's
+  tail, and the AvoQ thread's title matches its live session.
+- The view that stayed behind was the file picked in the last session. A whole-file or
+  New view was pinned and survived the session change.
+- A change of the chosen session now drops the picked file and its view, and the newest
+  edit of the session now shown comes up.
+- A lock whose pane names no known session says so in the diff window. Every lock is a
+  line in the stall log (`lock title=... session=...`), so the next miss shows its
+  cause.
+
+**The bar drags again:** the bar dragged the glass only when the pointerdown's `detail`
+was 1. The tab's cross and the bar's ✥ never checked it, and only they still worked.
+`detail` on a pointerdown changed with the WebView2 runtime. The page now counts a
+double press itself (500 ms, 6 px), and the second press still freezes rather than
+drags.
+
+**The picture's area is re-sent when it changes:** a ResizeObserver reports it, not
+only a window resize. The bar wrapping to a second row moves the picture, and the
+click-through area must move with it.
+
+**See-through under the pointer (adr.rg.035, Atlas #658):**
+- In Follow, while the pointer is over the picture, the dark ground goes and the
+  picture is drawn at 55 % opacity by default. The screen behind shows in place at its
+  own size, under the magnified picture.
+- It fades over 150 ms, and the bar and the tab stay solid.
+- The rider that already decides the click-through tells the page (`glass:through`),
+  so nothing new polls.
+- Controls: ◐ on the bar, and Settings > Glass (on/off, 25-75 %).
+
+**The popped-out window's width - measured, not changed:**
+- A lock in a session's own window takes the whole page (`own_window`). The messages
+  sit in a "Keskusteluviestit" element inside it.
+- At the window's present 518 px the message column is 490 px, the window's width
+  less padding. Whether the column stays narrower than a wide window is not measured
+  yet.
+- The choice waits for the owner.
+
+**Measured:** 171 tests, clippy and svelte-check clean. Not yet seen by the owner.
+
 ## Session 10, 11.11.2026, later: Windows ending the session no longer aborts ReviewGlass
 
 panic.log had "cannot move state from Destroyed" three times, the last two on 62ee8be,

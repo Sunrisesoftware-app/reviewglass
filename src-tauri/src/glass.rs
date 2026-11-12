@@ -51,6 +51,9 @@ pub struct GlassState {
     pub pane_fit: bool,
     /// Locked here (adr.rg.030): the glass keeps its place and size.
     pub pinned: bool,
+    /// See-through under the pointer (adr.rg.035), and how much, in percent.
+    pub see_through: bool,
+    pub see_through_pct: u8,
     /// Width of the pane under the cursor in source pixels; absent when none is found
     /// or the lock is off.
     pub pane_width: Option<u32>,
@@ -94,6 +97,8 @@ fn state_of(engine: &Engine, store: &Store) -> GlassState {
         pane_lock: g.pane_lock,
         pane_fit: g.pane_fit,
         pinned: g.pinned,
+        see_through: g.see_through,
+        see_through_pct: g.see_through_pct,
         pane_width: engine.pane().map(|p| p.width()),
         build: build_stamp(),
         hotkey_toggle: store.get().hotkeys.toggle_glass.clone(),
@@ -533,6 +538,9 @@ pub fn spawn_lens_rider(app: AppHandle) {
                     if let Some(g) = app.get_webview_window(GLASS_LABEL) {
                         if g.set_ignore_cursor_events(want_through).is_ok() {
                             through = want_through;
+                            // The page shows the screen through the picture while the
+                            // pointer is over it (adr.rg.035).
+                            let _ = app.emit_to(GLASS_LABEL, THROUGH_EVENT, through);
                         }
                     }
                 }
@@ -569,6 +577,10 @@ pub fn spawn_lens_rider(app: AppHandle) {
         })
         .expect("rider thread");
 }
+
+/// Event to the glass page: the pointer is over the picture, which lets the mouse
+/// through (adr.rg.033) and lets the screen show through (adr.rg.035).
+pub const THROUGH_EVENT: &str = "glass:through";
 
 /// Event to the halo page: whether it is shown (it animates only then).
 pub const HALO_SHOWN_EVENT: &str = "halo:shown";
@@ -932,6 +944,31 @@ pub fn glass_set_lens(app: AppHandle, engine: State<Engine>, lens: bool) {
 #[tauri::command]
 pub fn glass_set_halo(store: State<Store>, halo: bool) {
     let _ = store.update(|c| c.glass.halo = halo);
+}
+
+/// See-through under the pointer (adr.rg.035): on or off, and how much (percent,
+/// held to its bounds). Every window hears the new state: the bar's button and the
+/// Settings tab.
+#[tauri::command]
+pub fn glass_set_see_through(
+    app: AppHandle,
+    engine: State<Engine>,
+    store: State<Store>,
+    on: Option<bool>,
+    pct: Option<u8>,
+) {
+    let _ = store.update(|c| {
+        if let Some(on) = on {
+            c.glass.see_through = on;
+        }
+        if let Some(p) = pct {
+            c.glass.see_through_pct = p.clamp(
+                crate::config::SEE_THROUGH_MIN,
+                crate::config::SEE_THROUGH_MAX,
+            );
+        }
+    });
+    broadcast_state(&app, &engine, &store);
 }
 
 /// Open the bar-size menu (the Aa button).

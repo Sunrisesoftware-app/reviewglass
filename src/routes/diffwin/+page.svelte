@@ -15,7 +15,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Diff from "$lib/panel/Diff.svelte";
-  import { selection, followSaw, type FollowSaw, type FollowStatus } from "$lib/panel/selection.svelte";
+  import { selection, follow, followSaw, type FollowSaw, type FollowStatus } from "$lib/panel/selection.svelte";
 
   const win = getCurrentWindow();
 
@@ -138,6 +138,12 @@
       }}>✕</button
     >
   </header>
+  {#if follow.saw && !follow.saw.session_id}
+    <p class="unmatched" role="status">
+      The pane "{follow.saw.title}" names no session ReviewGlass can find (live, or in the
+      last three days' transcripts), so the diff still shows {selection.name ? `"${selection.name}"` : "every session"}.
+    </p>
+  {/if}
   <section>
     <Diff />
   </section>
@@ -247,6 +253,13 @@
   }
   .close:hover {
     background: #b32020;
+  }
+  .unmatched {
+    margin: 0;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--warn);
+    border-bottom: 1px solid var(--line);
   }
   section {
     flex: 1 1 auto;
