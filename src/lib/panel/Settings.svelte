@@ -94,14 +94,20 @@
   // See-through under the pointer (adr.rg.035): on/off (also the glass's ◐) and how much.
   let seeThrough = $state(true);
   let seePct = $state(45);
+  // The widest glass Fit makes (adr.rg.036), percent of the screen width.
+  let fitMax = $state(60);
+  function setFitMax(pct: number) {
+    void invoke("glass_set_fit_max", { pct });
+  }
   function setSeeThrough(on: boolean | null, pct: number | null) {
     void invoke("glass_set_see_through", { on, pct });
   }
   onMount(() => {
     let off: (() => void) | undefined;
-    void listen<{ see_through: boolean; see_through_pct: number }>("glass:state", (ev) => {
+    void listen<{ see_through: boolean; see_through_pct: number; fit_max_pct: number }>("glass:state", (ev) => {
       seeThrough = ev.payload.see_through;
       seePct = ev.payload.see_through_pct;
+      fitMax = ev.payload.fit_max_pct;
     }).then((u) => (off = u));
     return () => off?.();
   });
@@ -109,8 +115,9 @@
   async function load() {
     cfg = await invoke<AlertConfig>("alerts_get");
     const s = await invoke<
-      { hotkey_toggle: string; see_through: boolean; see_through_pct: number } & LogState
+      { hotkey_toggle: string; see_through: boolean; see_through_pct: number; fit_max_pct: number } & LogState
     >("glass_state");
+    fitMax = s.fit_max_pct;
     seeThrough = s.see_through;
     seePct = s.see_through_pct;
     hotkey = s.hotkey_toggle;
@@ -329,6 +336,25 @@
         onchange={(e) => setSeeThrough(null, Number(e.currentTarget.value))}
       />
       <span>{seePct} % shows through</span>
+    </div>
+    <h3>Widest glass with Fit</h3>
+    <p class="help">
+      Fit makes the glass the column's width times the zoom. A column wider than this keeps
+      the zoom, and the glass follows the pointer along it, as in a narrow pane. A session
+      in a window of its own is read by its message column.
+    </p>
+    <div class="range">
+      <input
+        type="range"
+        min="40"
+        max="100"
+        step="5"
+        value={fitMax}
+        aria-label="Widest glass with Fit, percent of the screen width"
+        oninput={(e) => (fitMax = Number(e.currentTarget.value))}
+        onchange={(e) => setFitMax(Number(e.currentTarget.value))}
+      />
+      <span>{fitMax >= 100 ? "no limit" : `${fitMax} % of the screen`}</span>
     </div>
   </section>
 

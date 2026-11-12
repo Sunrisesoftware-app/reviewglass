@@ -4,6 +4,42 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 10, 12.11.2026, later: the message column and the widest glass (adr.rg.036)
+
+**The owner's choice:** the glass over a popped-out session window should follow the
+message column.
+
+**Measured first, by UI Automation, with the owner's leave:**
+- The window was widened to 1600 px for two seconds and restored to 1098,25 534x708.
+- The message list spans the page, but the messages sit in a centred column about
+  928 px wide.
+- At the usual width of about 830 px the column is the window less its padding. Reading
+  it alone would narrow a 2x glass by only about 40 px.
+- Shown the figures, the owner chose the column and a widest glass of their own.
+
+**Built (adr.rg.036, Atlas #662):**
+- A lock on a session in a window of its own reads its message column. The conversation's
+  scroll area is found by its class (`overflow-y-auto` and `[contain:strict]`, a bounded
+  breadth-first walk). The column is the span of the messages shown in its list, read at
+  the lock and at every reread.
+- The page is the frame when the column is within 40 px of it, or cannot be read.
+- Fit has a widest glass, a share of the screen width: Settings > Glass, 40-100 %, 60 %
+  by default, 100 = no limit. A column times the zoom wider than that keeps the zoom,
+  and the box follows the pointer along the column, as a locked frame wider than the box
+  always did. Only a column too wide for the screen lowers the zoom, as before.
+- The Fit button's tooltip names the limit.
+
+**Measured:**
+- The scroll area was found in the real popped-out window, by its handle, in 58 ms. At
+  its present 518 px the column is the page, as designed.
+- The column code was not run against a wide window; that is the owner's look.
+- 172 tests (the column frame's rule from the measured figures), clippy and svelte-check
+  clean.
+
+**A slip, recorded:** a scratch command meant as a placeholder ran the WM_ENDSESSION
+probe and closed the owner's ReviewGlass at 15:43. It was relaunched at once. panic.log
+grew 0 bytes: the session-end fix held.
+
 ## Session 10, 12.11.2026: see-through under the pointer (adr.rg.035), the diff follows the clicked pane, the bar drags again
 
 **The owner's look at adr.rg.034:** "quite ok". Four reports came with it:

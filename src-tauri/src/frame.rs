@@ -235,6 +235,7 @@ fn run(app: AppHandle) {
                             rect,
                             title,
                             own_window: false,
+                            column: None,
                         })
                     });
                     match next {
@@ -268,7 +269,16 @@ fn run(app: AppHandle) {
             // The pane again: the window may have moved, the pane changed width.
             if l.read_at.elapsed() >= REREAD {
                 l.read_at = Instant::now();
-                match crate::stall::uia("rect_of", || uia::rect_of(&l.pane.element)) {
+                let read = crate::stall::uia("rect_of", || {
+                    let page = uia::rect_of(&l.pane.element)?;
+                    // A session window: its message column again (adr.rg.036).
+                    let column = match (l.pane.column.as_ref(), reader.as_ref()) {
+                        (Some(c), Some(r)) => r.column_rect(c, page),
+                        _ => None,
+                    };
+                    Some(column.unwrap_or(page))
+                });
+                match read {
                     Some(rect) => {
                         if rect != l.pane.rect {
                             l.pane.rect = rect;
@@ -680,8 +690,8 @@ mod tests {
             match found {
                 Some(l) => {
                     println!(
-                        "({x},{y}) claude={} locks {:?} title={:?} own_window={} in {ms:.1} ms",
-                        root.claude, l.rect, l.title, l.own_window
+                        "({x},{y}) claude={} locks {:?} title={:?} own_window={} column={} in {ms:.1} ms",
+                        root.claude, l.rect, l.title, l.own_window, l.column.is_some()
                     );
                     let t1 = Instant::now();
                     let right = r.neighbour(&l.element, true).and_then(|e| uia::rect_of(&e));

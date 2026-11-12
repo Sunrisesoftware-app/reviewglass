@@ -130,6 +130,25 @@ pub fn is_claude_image(path: &str) -> bool {
 
 /// Whether an element's class names a Code pane: one of its space-separated tokens is
 /// exactly the pane class.
+/// The conversation's scroll area in a session's page (adr.rg.036), by its class.
+pub fn is_scroll_area(class: &str) -> bool {
+    let tokens: Vec<&str> = class.split_whitespace().collect();
+    ["overflow-y-auto", "[contain:strict]"]
+        .iter()
+        .all(|m| tokens.contains(m))
+}
+
+/// The message column as a frame: the messages' span clamped to the page, from the
+/// page's top to its bottom; `None` when it is (nearly) the page's own width.
+pub fn column_frame(
+    (l, r): (i32, i32),
+    (pl, pt, pr, pb): (i32, i32, i32, i32),
+) -> Option<(i32, i32, i32, i32)> {
+    const SLACK: i32 = 40;
+    let (l, r) = (l.max(pl), r.min(pr));
+    (r > l && (pr - pl) - (r - l) > SLACK).then_some((l, pt, r, pb))
+}
+
 pub fn is_pane_class(class: &str) -> bool {
     class.split_whitespace().any(|t| t == PANE_CLASS)
 }
@@ -231,8 +250,8 @@ pub(crate) mod uia {
     };
 
     use super::{
-        header_points, is_claude_image, is_pane_class, title_from_name, title_from_page,
-        HEADER_BAND, HEADER_WALK_MAX, MAX_DEPTH,
+        column_frame, header_points, is_claude_image, is_pane_class, is_scroll_area,
+        title_from_name, title_from_page, HEADER_BAND, HEADER_WALK_MAX, MAX_DEPTH,
     };
 
     /// A UI Automation client, on the thread that made it.
@@ -351,18 +370,26 @@ pub(crate) mod uia {
                         rect,
                         title,
                         own_window: false,
+                        column: None,
                     });
                 }
                 // SAFETY: as above.
                 if unsafe { el.CurrentControlType() }.ok() == Some(UIA_DocumentControlTypeId) {
                     let name = unsafe { el.CurrentName() }.ok()?.to_string();
                     let title = title_from_page(&name)?.to_string();
-                    let rect = rect_of(&el)?;
+                    let page = rect_of(&el)?;
+                    // A session window is read by its message column (adr.rg.036).
+                    let column = self.conversation_in(&el, page);
+                    let rect = column
+                        .as_ref()
+                        .and_then(|c| self.column_rect(c, page))
+                        .unwrap_or(page);
                     return Some(Locked {
                         element: el,
                         rect,
                         title: Some(title),
                         own_window: true,
+                        column,
                     });
                 }
                 el = unsafe { self.walker.GetParentElement(&el) }.ok()?;
@@ -458,6 +485,97 @@ pub(crate) mod uia {
         pub title: Option<String>,
         /// A session in a window of its own: the page is the frame.
         pub own_window: bool,
+        /// In a session's own window, its conversation's scroll area: the message
+        /// column is read from it at every reread (adr.rg.036).
+        pub column: Option<IUIAutomationElement>,
+    }
+
+    /// Elements looked at to find the conversation, and messages looked at for the
+    /// column.
+    const CONVERSATION_WALK_MAX: usize = 400;
+    const MESSAGES_MAX: usize = 60;
+
+    impl Reader {
+        /// The conversation's scroll area in a session's page: the widest element whose
+        /// class marks it as the scrolling, contained message area. Walked breadth
+        /// first, a bounded number of elements, never below one outside the page.
+        pub fn conversation_in(
+            &self,
+            page: &IUIAutomationElement,
+            (pl, _, pr, _): (i32, i32, i32, i32),
+        ) -> Option<IUIAutomationElement> {
+            let mut best: Option<(i32, IUIAutomationElement)> = None;
+            let mut queue = std::collections::VecDeque::from([page.clone()]);
+            let mut visited = 0;
+            while let Some(el) = queue.pop_front() {
+                // SAFETY: tree navigation and read-only properties of elements this
+                // thread holds.
+                let mut child = unsafe { self.walker.GetFirstChildElement(&el) }.ok();
+                while let Some(c) = child.take().filter(|c| !c.as_raw().is_null()) {
+                    visited += 1;
+                    if visited > CONVERSATION_WALK_MAX {
+                        return best.map(|(_, e)| e);
+                    }
+                    let next = unsafe { self.walker.GetNextSiblingElement(&c) }.ok();
+                    if let Some((l, _, r, _)) = rect_of(&c) {
+                        if r > pl && l < pr {
+                            let class = unsafe { c.CurrentClassName() }
+                                .map(|b| b.to_string())
+                                .unwrap_or_default();
+                            if is_scroll_area(&class) {
+                                if best.as_ref().is_none_or(|(w, _)| r - l > *w) {
+                                    best = Some((r - l, c.clone()));
+                                }
+                            } else {
+                                queue.push_back(c);
+                            }
+                        }
+                    }
+                    child = next;
+                }
+            }
+            best.map(|(_, e)| e)
+        }
+
+        /// The message column in a session's page, as a frame: the horizontal span of
+        /// the messages shown in the scroll area, from the page's top to its bottom.
+        /// `None` when no message is shown, or the column is (nearly) the page.
+        pub fn column_rect(
+            &self,
+            area: &IUIAutomationElement,
+            page: (i32, i32, i32, i32),
+        ) -> Option<(i32, i32, i32, i32)> {
+            let (al, at, ar, ab) = rect_of(area)?;
+            // The list: the child taller than the area it scrolls in; else the area.
+            let mut list = None;
+            // SAFETY: tree navigation and read-only properties of elements this thread
+            // holds.
+            let mut c = unsafe { self.walker.GetFirstChildElement(area) }.ok();
+            while let Some(e) = c.take().filter(|e| !e.as_raw().is_null()) {
+                if rect_of(&e).is_some_and(|(_, t, _, b)| b - t > ab - at) {
+                    list = Some(e);
+                    break;
+                }
+                c = unsafe { self.walker.GetNextSiblingElement(&e) }.ok();
+            }
+            let list = list.unwrap_or_else(|| area.clone());
+            let mut span: Option<(i32, i32)> = None;
+            let mut m = unsafe { self.walker.GetFirstChildElement(&list) }.ok();
+            let mut seen = 0;
+            while let Some(e) = m.take().filter(|e| !e.as_raw().is_null()) {
+                seen += 1;
+                if seen > MESSAGES_MAX {
+                    break;
+                }
+                if let Some((l, t, r, b)) = rect_of(&e) {
+                    if b > at && t < ab && r > al && l < ar {
+                        span = Some(span.map_or((l, r), |(sl, sr)| (sl.min(l), sr.max(r))));
+                    }
+                }
+                m = unsafe { self.walker.GetNextSiblingElement(&e) }.ok();
+            }
+            column_frame(span?, page)
+        }
     }
 
     /// An element's rectangle now; `None` when it is gone or has no area (a pane
@@ -469,6 +587,37 @@ pub(crate) mod uia {
     }
 
     impl Reader {
+        /// Diagnostics: a session window's page, by its top-level window handle (not by
+        /// a point, so a window in front does not matter), whether its conversation area
+        /// is found, and the column read from it. For the ignored live test only.
+        #[cfg(test)]
+        pub fn session_window_column(
+            &self,
+            hwnd: isize,
+        ) -> Option<((i32, i32, i32, i32), bool, Option<(i32, i32, i32, i32)>)> {
+            use windows::Win32::Foundation::HWND;
+            use windows::Win32::System::Variant::VARIANT;
+            use windows::Win32::UI::Accessibility::{
+                TreeScope_Descendants, UIA_ControlTypePropertyId,
+            };
+            // SAFETY: read-only queries of a window this test names.
+            unsafe {
+                let top = self.uia.ElementFromHandle(HWND(hwnd as _)).ok()?;
+                let cond = self
+                    .uia
+                    .CreatePropertyCondition(
+                        UIA_ControlTypePropertyId,
+                        &VARIANT::from(UIA_DocumentControlTypeId.0),
+                    )
+                    .ok()?;
+                let page_el = top.FindFirst(TreeScope_Descendants, &cond).ok()?;
+                let page = rect_of(&page_el)?;
+                let area = self.conversation_in(&page_el, page);
+                let column = area.as_ref().and_then(|c| self.column_rect(c, page));
+                Some((page, area.is_some(), column))
+            }
+        }
+
         /// Diagnostics: the chain of (control type id, class, name) from the element at
         /// (x, y) upwards, truncated. For the ignored live test only.
         #[cfg(test)]
@@ -900,6 +1049,41 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A session window's message column, by the window's handle in RG_SESSION_HWND
+    /// (decimal). Read-only: `cargo test --lib live_session_column -- --ignored
+    /// --nocapture`.
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "diagnostic: reads a session window on this machine"]
+    fn live_session_column() {
+        let r = uia::Reader::new().expect("UI Automation");
+        let hwnd: isize = std::env::var("RG_SESSION_HWND")
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .expect("RG_SESSION_HWND");
+        let t0 = Instant::now();
+        let got = r.session_window_column(hwnd);
+        println!(
+            "session window {hwnd}: {got:?} in {:.1} ms",
+            t0.elapsed().as_secs_f64() * 1000.0
+        );
+    }
+
+    #[test]
+    fn the_message_column_is_the_frame_only_when_narrower_than_the_page() {
+        // Measured 12.11.2026: a 1584 px page, messages in a 928 px column.
+        let page = (408, 25, 1992, 725);
+        assert_eq!(column_frame((736, 1664), page), Some((736, 25, 1664, 725)));
+        // A 518 px page whose messages fill it less their padding: the page.
+        assert_eq!(column_frame((1124, 1614), (1106, 25, 1624, 725)), None);
+        // A span reaching past the page is clamped to it.
+        assert_eq!(column_frame((300, 900), page), Some((408, 25, 900, 725)));
+        assert!(is_scroll_area(
+            "h-full overflow-y-auto overflow-x-hidden [contain:strict] [scrollbar-gutter:stable]"
+        ));
+        assert!(!is_scroll_area("h-full overflow-y-auto"));
     }
 
     #[test]

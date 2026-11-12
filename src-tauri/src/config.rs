@@ -81,7 +81,15 @@ pub struct GlassConfig {
     pub see_through: bool,
     /// How much shows through then, in percent (25-75).
     pub see_through_pct: u8,
+    /// The widest glass Fit makes, in percent of the screen's width (adr.rg.036): a
+    /// column times the zoom wider than this is read by following the pointer along
+    /// it. 100: no limit.
+    pub fit_max_pct: u8,
 }
+
+/// The widest glass's bounds (adr.rg.036).
+pub const FIT_MAX_MIN: u8 = 40;
+pub const FIT_MAX_MAX: u8 = 100;
 
 /// The see-through level's bounds (adr.rg.035).
 pub const SEE_THROUGH_MIN: u8 = 25;
@@ -110,6 +118,7 @@ impl Default for GlassConfig {
             pinned: false,
             see_through: true,
             see_through_pct: 45,
+            fit_max_pct: 60,
         }
     }
 }

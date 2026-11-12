@@ -46,3 +46,4 @@ here. A hand edit here is lost on the next run.
 - [ADR-0033](0033-the-glass-knows-the-screen-s-order-a-window-that.md) — The glass knows the screen's order: a window that comes to the front over the locked pane releases the lock, and the picture lets the mouse through *(accepted)*
 - [ADR-0034](0034-the-diff-window-is-glued-to-a-side-of-the-glass-.md) — The diff window is glued to a side of the glass: one click opens it where there is room, a drag beside the glass glues it to that side, and it follows the glass's place and size *(accepted)*
 - [ADR-0035](0035-the-glass-lets-the-screen-show-through-while-the.md) — The glass lets the screen show through while the pointer is over its picture *(accepted)*
+- [ADR-0036](0036-a-session-in-a-window-of-its-own-is-read-by-its-.md) — A session in a window of its own is read by its message column, and Fit has a widest glass the user sets *(accepted)*

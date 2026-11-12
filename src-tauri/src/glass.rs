@@ -54,6 +54,8 @@ pub struct GlassState {
     /// See-through under the pointer (adr.rg.035), and how much, in percent.
     pub see_through: bool,
     pub see_through_pct: u8,
+    /// The widest glass Fit makes, percent of the screen width (adr.rg.036).
+    pub fit_max_pct: u8,
     /// Width of the pane under the cursor in source pixels; absent when none is found
     /// or the lock is off.
     pub pane_width: Option<u32>,
@@ -99,6 +101,7 @@ fn state_of(engine: &Engine, store: &Store) -> GlassState {
         pinned: g.pinned,
         see_through: g.see_through,
         see_through_pct: g.see_through_pct,
+        fit_max_pct: g.fit_max_pct,
         pane_width: engine.pane().map(|p| p.width()),
         build: build_stamp(),
         hotkey_toggle: store.get().hotkeys.toggle_glass.clone(),
@@ -944,6 +947,16 @@ pub fn glass_set_lens(app: AppHandle, engine: State<Engine>, lens: bool) {
 #[tauri::command]
 pub fn glass_set_halo(store: State<Store>, halo: bool) {
     let _ = store.update(|c| c.glass.halo = halo);
+}
+
+/// The widest glass Fit makes, in percent of the screen width (adr.rg.036), held to
+/// its bounds. Every window hears it: the glass fits again, Settings shows it.
+#[tauri::command]
+pub fn glass_set_fit_max(app: AppHandle, engine: State<Engine>, store: State<Store>, pct: u8) {
+    let _ = store.update(|c| {
+        c.glass.fit_max_pct = pct.clamp(crate::config::FIT_MAX_MIN, crate::config::FIT_MAX_MAX)
+    });
+    broadcast_state(&app, &engine, &store);
 }
 
 /// See-through under the pointer (adr.rg.035): on or off, and how much (percent,

@@ -60,6 +60,7 @@
     pinned: boolean;
     see_through: boolean;
     see_through_pct: number;
+    fit_max_pct: number;
     pane_width: number | null;
     build: string;
     follow_log: boolean;
@@ -109,6 +110,8 @@
    *  picture click-through). */
   let seeThrough = $state(true);
   let seePct = $state(45);
+  /** The widest glass Fit makes, percent of the screen width (adr.rg.036); 100: none. */
+  let fitMaxPct = $state(60);
   let through = $state(false);
   type FrameStatus = {
     locked: boolean;
@@ -209,7 +212,12 @@
       const maxW = Math.round(screen.availWidth * scale) - FIT_MARGIN;
       let z = userZoom;
       let want = Math.round(paneWidth * z) + border;
-      if (want > maxW) {
+      // The widest glass the user allows (adr.rg.036): a column wider than that at the
+      // user's zoom keeps the zoom, and the box follows the pointer along the column.
+      const capW = Math.round(screen.availWidth * scale * (fitMaxPct / 100));
+      if (fitMaxPct < 100 && want > capW) {
+        want = capW;
+      } else if (want > maxW) {
         z = Math.max(ZOOM_MIN, Math.floor((maxW - border) / paneWidth / ZOOM_STEP) * ZOOM_STEP);
         want = Math.round(paneWidth * z) + border;
       }
@@ -222,7 +230,7 @@
       // The waits and the slack are for the pixel detector's readings.
       const exact = frame.locked;
       const slack = exact ? 1 : FIT_SLACK;
-      const facts = `fit pane=${paneWidth} z=${z} want=${want} size=${size.width} max=${maxW} exact=${exact ? 1 : 0}`;
+      const facts = `fit pane=${paneWidth} z=${z} want=${want} size=${size.width} max=${maxW} cap=${fitMaxPct} exact=${exact ? 1 : 0}`;
       const narrower = want < size.width - slack;
       const wideColumn =
         want > size.width + slack && paneWidth > Math.round(screen.availWidth * scale) * FIT_WIDE_COLUMN;
@@ -668,6 +676,7 @@
       pinned = s.pinned;
       seeThrough = s.see_through;
       seePct = s.see_through_pct;
+      fitMaxPct = s.fit_max_pct;
       paneWidth = s.pane_width;
       build = s.build;
       followLog = s.follow_log;
@@ -716,6 +725,9 @@
           paneFit = ev.payload.pane_fit;
           seeThrough = ev.payload.see_through;
           seePct = ev.payload.see_through_pct;
+          const maxChanged = fitMaxPct !== ev.payload.fit_max_pct;
+          fitMaxPct = ev.payload.fit_max_pct;
+          if (maxChanged) void fitToPane();
           paneWidth = ev.payload.pane_width;
           followLog = ev.payload.follow_log;
           void relayout();
@@ -939,7 +951,7 @@
           : !paneLock
             ? "Fit needs the column lock"
             : paneFit
-              ? "Fit is on: the window's width follows the column at this zoom; the zoom comes down when a column is too wide for the screen"
+              ? `Fit is on: the window's width follows the column at this zoom, up to ${fitMaxPct} % of the screen (Settings > Glass); a wider column is read by moving the pointer along it`
               : "Let the window's width follow the column at this zoom"}
         aria-label="Fit width to the column"
         aria-pressed={paneFit && paneLock}

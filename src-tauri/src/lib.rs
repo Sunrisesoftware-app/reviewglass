@@ -171,6 +171,7 @@ pub fn run() {
             glass::glass_set_lens,
             glass::glass_set_halo,
             glass::glass_set_see_through,
+            glass::glass_set_fit_max,
             glass::glass_set_pane_lock,
             glass::glass_set_pane_fit,
             glass::glass_ui_scale_menu,
