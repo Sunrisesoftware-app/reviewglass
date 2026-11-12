@@ -5,6 +5,17 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## A check piped into a filter never stops the chain (2026-11-12)
+
+`cargo clippy ... | grep ... | head` followed by `&& git commit && git push` committed
+and pushed a clippy failure. The pipeline's status is `head`'s, and `head` always
+succeeds. CI caught it; it was fixed in the next commit. The same afternoon, a scratch
+command meant as a placeholder ran a real probe (WM_ENDSESSION) and closed the owner's
+running ReviewGlass.
+
+Lesson: a gate is run on its own and its exit code read before anything is committed.
+A probe that acts on the owner's app is never typed as a placeholder.
+
 ## Put a crash's time next to the system's own log before fixing it (2026-11-11)
 
 The shutdown abort ("cannot move state from Destroyed") was fixed on 8.10.2026 on a
