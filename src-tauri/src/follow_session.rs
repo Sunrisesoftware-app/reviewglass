@@ -586,15 +586,17 @@ pub(crate) mod uia {
         (r.right > r.left && r.bottom > r.top).then_some((r.left, r.top, r.right, r.bottom))
     }
 
+    /// A session window's page, whether its conversation area was found, and the
+    /// column read from it (diagnostics).
+    #[cfg(test)]
+    pub type SessionColumn = ((i32, i32, i32, i32), bool, Option<(i32, i32, i32, i32)>);
+
     impl Reader {
         /// Diagnostics: a session window's page, by its top-level window handle (not by
         /// a point, so a window in front does not matter), whether its conversation area
         /// is found, and the column read from it. For the ignored live test only.
         #[cfg(test)]
-        pub fn session_window_column(
-            &self,
-            hwnd: isize,
-        ) -> Option<((i32, i32, i32, i32), bool, Option<(i32, i32, i32, i32)>)> {
+        pub fn session_window_column(&self, hwnd: isize) -> Option<SessionColumn> {
             use windows::Win32::Foundation::HWND;
             use windows::Win32::System::Variant::VARIANT;
             use windows::Win32::UI::Accessibility::{
