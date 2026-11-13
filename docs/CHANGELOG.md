@@ -4,6 +4,26 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 11, 13.11.2026: the name is kept (adr.rg.008 accepted), docs only
+
+**The owner's word**, given while the Sunrise Software site's page for ReviewGlass was written
+(the site's copy round S, item S.1): the name ReviewGlass is kept and stays, and this
+repository's record that the name is unresolved was old.
+
+**Changed:**
+- `adr.rg.008` in the Atlas model (Atlas #673): proposed to accepted, retitled "The name is
+  ReviewGlass, kept by the owner's decision; the public release is no longer gated on it";
+  `docs/adr/` rendered from the model with `scripts/adr-from-model.mjs`.
+- README, CLAUDE.md and BUILD_INFO no longer say that P8 waits on the name; the name item
+  left `next`.
+- `docs/NAME-CLEARANCE.md` keeps the research of 4.10.2026 under an outcome line.
+- **Not changed:** the spec. `docs/REVIEWGLASS-SPEC.md` is the copy of the Atlas artifact
+  `REVIEWGLASS-SPEC` and the two change together or not at all, so its D4 and P8 rows follow
+  with spec v0.5, which is already on the list.
+
+**Checked:** `pnpm validate:models` OK and `pnpm review --system reviewglass` found no break
+in the Atlas branch; no code changed here, so no build.
+
 ## Session 10, 12.11.2026, later: the message column and the widest glass (adr.rg.036)
 
 **The owner's choice:** the glass over a popped-out session window should follow the

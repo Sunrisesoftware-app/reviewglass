@@ -3,7 +3,7 @@
 A Windows 11 desktop companion for Claude Code sessions: a magnifier glass hanging from
 a dock whose drawer is the panel — sessions and quota, threshold alerts, a live diff. Tauri v2, Rust core,
 SvelteKit. Apache-2.0. Built first for the author's own use; the repository has been
-public since 17.9.2026, and the public release (P8) waits on the name (adr.rg.008).
+public since 17.9.2026, and the name is kept (adr.rg.008, accepted 13.11.2026).
 
 Read `docs/REVIEWGLASS-SPEC.md` before changing architecture. Section 6.3 is the module
 contract list. The Atlas model (system `reviewglass`) is the source of truth for
@@ -95,8 +95,8 @@ collector replaced it in `settings.json` on 11.9.2026.
 - **P6** (novice mode: the explain backend, local or remote with the user's own key)
   built and observed 23.9.2026 (adr.rg.023), before P5 by the owner's decision; the "hawk eye" is P6b, a vision
   that needs its own privacy decision first (spec v0.3, section 7).
-- **P8** (public release) waits on name clearance (adr.rg.008); the repository itself is
-  already public.
+- **P8** (public release) no longer waits on the name: the owner kept ReviewGlass on
+  13.11.2026 (adr.rg.008 accepted). The repository itself is already public.
 - **Session 7 (27–28.9.2026), polish before new phases** by the owner's verdict ("it must
   feel part of the Claude app"): the Diff tab by session (adr.rg.024), the drawer's own
   picture (adr.rg.025), the frame — a click locks the glass to a Code pane (adr.rg.026),
@@ -111,9 +111,10 @@ collector replaced it in `settings.json` on 11.9.2026.
   line of adr.rg.032 (structure only, at a click, never names or text, never a password
   manager) and the structure recorder in Settings > Measurements; the lock is designed
   from its files.
-- **The name** (D4, adr.rg.008, still proposed): the registers are clear, but two
-  e-commerce review services trade as ReviewGlass (`.com`, `.app`). The owner's choice
-  waits; see `docs/NAME-CLEARANCE.md`.
+- **The name** (D4, adr.rg.008): kept by the owner on 13.11.2026. Two e-commerce review
+  services still trade as ReviewGlass (`.com`, `.app`); the research is
+  `docs/NAME-CLEARANCE.md`. The spec's D4 and P8 rows follow with spec v0.5, which changes
+  the repository copy and the Atlas artifact together.
 
 ## Layout
 

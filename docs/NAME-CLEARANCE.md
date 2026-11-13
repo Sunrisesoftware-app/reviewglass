@@ -3,6 +3,8 @@
 **Date:** 2026-10-04 · **Gates:** P8, the public release (`adr.rg.008`, spec D4)
 **Status:** a web research pass, read-only. **This is not a legal clearance.** Nothing
 was registered, bought or submitted anywhere.
+**Outcome (13.11.2026):** the owner kept the name ReviewGlass (option 1 below), and
+`adr.rg.008` is accepted. The rest of this file is the research as it stood on 4.10.2026.
 
 ## Verdict
 

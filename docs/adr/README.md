@@ -18,7 +18,7 @@ here. A hand edit here is lost on the next run.
 - [ADR-0005](0005-tauri-v2-with-a-rust-core-not-electron.md) — Tauri v2 with a Rust core, not Electron *(accepted)*
 - [ADR-0006](0006-rectangle-only-magnifier-pixels-only-no-ocr.md) — Rectangle-only magnifier, pixels only, no OCR *(accepted)*
 - [ADR-0007](0007-account-wide-quota-and-per-session-attribution-a.md) — Account-wide quota and per-session attribution are two quantities, never blended *(accepted)*
-- [ADR-0008](0008-name-availability-is-unresolved-and-gates-public.md) — Name availability is unresolved and gates public release only *(proposed)*
+- [ADR-0008](0008-the-name-is-reviewglass-kept-by-the-owner-s-deci.md) — The name is ReviewGlass, kept by the owner's decision; the public release is no longer gated on it *(accepted)*
 - [ADR-0009](0009-the-account-quota-gauge-is-borrowed-from-any-liv.md) — The account quota gauge is borrowed from any live CLI session *(accepted)*
 - [ADR-0010](0010-the-collectors-are-native-binaries-not-shell-scr.md) — The collectors are native binaries, not shell scripts *(accepted)*
 - [ADR-0011](0011-every-claude-code-field-tolerates-a-wrong-type-n.md) — Every Claude Code field tolerates a wrong type, not only an absence *(accepted)*

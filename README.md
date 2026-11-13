@@ -13,9 +13,8 @@ or release yet. The phases built so far are
 the magnifier (P1), the session panel (P2), threshold alerts (P3), the live diff with a
 whole-file view (P4, P4b), the glass locked to a pane (P4c) and a provider-agnostic
 explain feature (P6, off by default). Next is the glass in other applications (P9). The
-public release (P8) is gated on the name: the trademark registers are clear, but two
-unrelated services already trade as ReviewGlass ([`docs/NAME-CLEARANCE.md`](docs/NAME-CLEARANCE.md),
-ADR-0008). The source has been public since 17 September 2026. Where the build
+name is kept (ADR-0008, 13 November 2026); the research behind it is in
+[`docs/NAME-CLEARANCE.md`](docs/NAME-CLEARANCE.md). The source has been public since 17 September 2026. Where the build
 stands: [`docs/BUILD_INFO.json`](docs/BUILD_INFO.json); what shipped and why:
 [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
 
