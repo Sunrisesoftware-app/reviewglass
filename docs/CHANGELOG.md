@@ -4,6 +4,37 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 12, 15.11.2026: a dark-theme contrast fault in the Diff view on the list, docs only
+
+**The owner's word**, given 15.11.2026 in the Sunrise Software site's session 12: the fault
+the site's session 11 found (14.11.2026, round AE) is this repository's work and goes on
+its list. The fix is its own work later.
+
+**The fault:** in Windows' dark theme the latest edit's rows in the rendered hunks are
+light text on the light highlighter, `#ececec` on `#fff1a8`. It was seen when the site's
+mockup (adr.sws.021, `docs/mockups/reviewglass-mockup.py` in
+`pkorrrhonen-cmd/sunrisesoftware-site`) drew ReviewGlass's own SvelteKit pages in Edge over
+a staged Tauri core, and the site's picture was taken in the light theme for that reason.
+
+**Read from main 2654ab4 (the CSS, not drawn):**
+- `src/lib/panel/Diff.svelte`: `.rendered :global(tr.rg-fresh td ...)` sets `#fff1a8`
+  whatever the theme. Its comment says diff2html's table is drawn in its light scheme.
+- diff2html 3.4.56's light scheme gives the code no text colour, so it inherits the dark
+  `--fg` (`#ececec`) of the drawer and the diff window.
+- Contrast: 1.04:1 on the latest edit's rows. The same cause gives 1.09:1 on diff2html's
+  added rows (`#dfd`) and 1.01:1 on its deleted rows (`#fee8e9`).
+- In the dark theme the legend's swatch is the dark highlighter (`#4d4110`), beside rows
+  in the light one.
+- The whole-file and New views have a dark highlighter of their own and are not affected
+  (8.55:1).
+
+**Changed:** `docs/BUILD_INFO.json` `next` has the fault beside the Diff view's legends,
+with what done means: every row of the rendered diff in the dark theme with a text colour
+of its own at 4.5:1 or more (WCAG AA), the swatch the colour of the rows, the light theme
+unchanged, both themes seen on the release build.
+
+**Not changed:** no code; nothing to build.
+
 ## Session 11, 13.11.2026: the name is kept (adr.rg.008 accepted), docs only
 
 **The owner's word**, given while the Sunrise Software site's page for ReviewGlass was written
