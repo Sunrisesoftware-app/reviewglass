@@ -1,8 +1,19 @@
 # ReviewGlass
 
-A Windows 11 desktop companion for Claude Code sessions: a magnifier that reads a Code
-pane at a size you can follow, a dock that shows every running session and the account's
-quota, and a live diff of what the agent just changed. Tauri v2, Rust core, SvelteKit.
+**A magnifier and live diff for Claude Code on Windows.** Five sessions side by side
+leave each pane a few hundred pixels wide, and the app's own zoom does not go far.
+ReviewGlass reads the pane you click at 150–400 %, shows every running session and the
+account's quota in one strip, and shows what the agent just changed as a live diff.
+
+![ReviewGlass over five Claude Code panes: the glass locked to one pane at 200 %, its frame on the pane, the dock in the corner](docs/media/reviewglass-hero.png)
+
+<sub>A drawn picture with invented content, laid out from a photograph of the author's
+screen. The glass keeps itself out of every screenshot, so a capture would show
+everything but the glass. Source: [`docs/media/hero.html`](docs/media/hero.html).</sub>
+
+A Windows 11 desktop companion built with Tauri v2, a Rust core and SvelteKit. It reads
+only files Claude Code already writes on your machine. Nothing leaves the machine
+unless you turn on Explain with a remote backend and send a hunk yourself.
 
 > ReviewGlass is an independent project. It is not made, endorsed or supported by
 > Anthropic. "Claude" and "Claude Code" are Anthropic's names for their products; this

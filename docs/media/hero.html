@@ -1,0 +1,373 @@
+<!doctype html>
+<!--
+  ReviewGlass's picture for the README and GitHub's social preview.
+
+  Drawn, not captured: the glass excludes itself from every capture
+  (WDA_EXCLUDEFROMCAPTURE), so a screenshot shows everything but the glass. The
+  layout is copied from a photograph of the owner's screen on 23.11.2026 - five Code
+  panes, the glass locked to one at 200 % with Fit, the dock in the corner - and every
+  word in it is invented. The glass's picture is a clone of the locked pane at twice
+  the size, so what it shows is exactly what the frame holds.
+
+  Render (docs/media/render.ps1):  hero.html          -> reviewglass-hero.png
+                                   hero.html?social   -> social-preview.png
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ReviewGlass picture</title>
+<style>
+  :root {
+    --app: #f9f9f7;
+    --pane: #fcfcfb;
+    --line: #e4e3df;
+    --text: #29292b;
+    --muted: #8a8985;
+    --faint: #b9b8b3;
+    --follow: #ffc800;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #101010; }
+  body { width: 1600px; height: 800px; overflow: hidden; font-family: "Segoe UI", system-ui, sans-serif; }
+
+  /* ---------- the screen ---------- */
+  .screen { position: absolute; left: 0; top: 0; width: 1600px; height: 800px; background: var(--app); overflow: hidden; }
+  .appbar { position: absolute; left: 0; top: 0; right: 0; height: 30px; display: flex; align-items: center;
+            padding: 0 0 0 12px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); background: #f3f3f1; }
+  .appbar .nav { letter-spacing: 10px; }
+  .appbar .winctl { margin-left: auto; display: flex; }
+  .appbar .winctl span { width: 46px; text-align: center; }
+
+  .col { position: absolute; top: 30px; width: 320px; height: 730px; border-right: 1px solid var(--line); background: var(--pane); overflow: hidden; }
+  .col.split-top { height: 420px; border-bottom: 1px solid var(--line); }
+  .col.split-bottom { top: 450px; height: 310px; }
+
+  .head { height: 34px; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 14px; font-size: 11.5px; color: #4a4a48; }
+  .head .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px; }
+  .head .t::after { content: "  ⌄"; color: var(--faint); }
+  .head .icons { margin-left: auto; color: var(--faint); letter-spacing: 6px; font-size: 11px; white-space: nowrap; }
+
+  .body { padding: 4px 16px 0 16px; font-size: 10.6px; line-height: 1.5; color: var(--text); }
+  .body p { margin: 0 0 9px; }
+  .body h4 { margin: 2px 0 3px; font-size: 11.6px; font-weight: 600; }
+  .tool { color: var(--muted); margin: 0 0 9px; }
+  .tool::after { content: " ›"; }
+  .tool b { font-weight: 400; color: #5d8a4e; }
+  .tool i { font-style: normal; color: #b0533c; }
+  .tasks { list-style: none; padding: 0; margin: 2px 0 10px; }
+  .tasks li { position: relative; padding-left: 17px; margin: 0 0 3px; color: #77766f; }
+  .tasks li::before { content: ""; position: absolute; left: 0; top: 3px; width: 10px; height: 10px; border-radius: 50%; border: 1.3px solid #c9c8c2; }
+  .tasks li.done { color: #6f6e69; }
+  .tasks li.done::before { background: #4a4a48; border-color: #4a4a48; }
+  .tasks li.done::after { content: "✓"; position: absolute; left: 2px; top: -1px; font-size: 8px; color: #fff; }
+  .tasks li.now { color: var(--text); font-weight: 600; }
+  .tasks li.now::before { border-color: #4a4a48; }
+  .working { color: #c27a4a; font-size: 10.5px; margin: 4px 0 0; }
+  .working::before { content: "✻  "; }
+
+  .input { position: absolute; left: 12px; right: 12px; bottom: 30px; height: 46px; border: 1px solid var(--line); border-radius: 10px;
+           background: #fff; padding: 8px 12px; font-size: 10.5px; color: var(--faint); }
+  .input::after { content: "■   🎙"; position: absolute; right: 12px; bottom: 7px; color: #55554f; font-size: 9px; letter-spacing: 2px; }
+  .foot { position: absolute; left: 0; right: 0; bottom: 9px; text-align: center; font-size: 9.5px; color: var(--faint); }
+
+  table.rm { border-collapse: collapse; width: 100%; font-size: 10px; margin: 6px 0 10px; }
+  table.rm th { text-align: left; font-weight: 600; color: #6f6e69; border-bottom: 1px solid var(--line); padding: 3px 4px; }
+  table.rm td { vertical-align: top; padding: 5px 4px; border-bottom: 1px solid #efeee9; color: #4a4a48; }
+  table.rm td:first-child { color: var(--muted); width: 16px; }
+  table.rm td:nth-child(2) { font-weight: 600; width: 76px; }
+
+  /* the new-session view in the first column */
+  .newsess { padding: 10px 16px; font-size: 11px; color: #4a4a48; }
+  .newsess .top { display: flex; justify-content: space-between; white-space: nowrap; color: var(--muted); font-size: 11px; margin: 2px 0 64px 130px; }
+  .newsess .proj { margin: 0 0 6px 20px; color: #55554f; }
+  .newsess .proj::before { content: "▤  "; color: var(--faint); }
+  .newsess .env { margin: 12px 0 18px 20px; color: var(--muted); }
+  .newsess .waiting { margin: 0 0 6px 20px; color: var(--muted); }
+  .newsess .waiting b { font-weight: 400; color: #c27a4a; }
+  .newsess .ask { position: absolute; left: 16px; right: 16px; bottom: 34px; border: 1px solid var(--line); border-radius: 10px; background: #fff;
+                  padding: 9px 12px; color: var(--faint); font-size: 10.5px; }
+  .newsess .askfoot { position: absolute; left: 16px; right: 16px; bottom: 10px; display: flex; justify-content: space-between; font-size: 9.5px; color: var(--faint); }
+
+  /* the question card in the first column's lower pane */
+  .q { font-size: 10.5px; color: var(--text); }
+  .opt { position: relative; padding: 0 0 0 24px; margin: 0 0 9px; }
+  .opt::before { content: ""; position: absolute; left: 2px; top: 2px; width: 11px; height: 11px; border-radius: 50%; border: 1.3px solid #c9c8c2; }
+  .opt.sel::before { border: 3.5px solid #3d6fd8; }
+  .opt b { font-weight: 600; display: block; }
+  .opt span { color: var(--muted); font-size: 9.8px; }
+  .qbtn { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+  .qbtn span { padding: 3px 10px; border-radius: 6px; font-size: 10px; color: #4a4a48; }
+  .qbtn span.next { background: #2b2b2b; color: #fff; }
+
+  /* the frame: the locked pane's box, in the Follow colour (routes/finder) */
+  .frame { position: absolute; border: 2px solid rgba(255, 200, 0, 0.9); border-radius: 3px; pointer-events: none; }
+
+  .cursor { position: absolute; width: 16px; height: 24px; }
+
+  /* ---------- the dock (routes/dock) ---------- */
+  .dock { position: absolute; left: 4px; top: 1px; height: 28px; display: flex; align-items: center; gap: 2px;
+          padding: 0 4px 0 3px; border-radius: 8px; background: #202020; border: 1px solid rgba(255,255,255,.16);
+          box-shadow: 0 2px 10px rgba(0,0,0,.45); font: 11px "Segoe UI", system-ui, sans-serif; color: #eee; }
+  .dock .b { height: 20px; display: inline-flex; align-items: center; padding: 0 5px; border-radius: 5px; }
+  .dock .grab { opacity: .75; padding: 0 3px; }
+  .dock .name { font-weight: 700; letter-spacing: .04em; border: 1px solid rgba(255,255,255,.25); background: #eee; color: #111; margin-right: 3px; }
+  .modes { display: flex; gap: 2px; padding: 2px; border-radius: 7px; background: rgba(255,255,255,.08); }
+  .modes .b { padding: 0 7px; }
+  .modes .on { background: var(--follow); color: #111; font-weight: 600; }
+  .sep { width: 1px; height: 16px; margin: 0 5px; background: rgba(255,255,255,.22); }
+  .gauge b { font-weight: 700; color: #fff; }
+  .gauge small { margin-left: 5px; opacity: .65; font-size: 10.5px; }
+  .gauge .lbl { opacity: .65; margin-right: 5px; font-size: 10.5px; }
+
+  /* ---------- the glass (routes/glass) ---------- */
+  .glass { position: absolute; display: flex; flex-direction: column; border: 3px solid var(--follow); border-radius: 6px; overflow: hidden;
+           background: #161616; box-shadow: 0 10px 34px rgba(0,0,0,.38), 0 2px 6px rgba(0,0,0,.3); font: 9.8px "Segoe UI", system-ui, sans-serif; color: #eee; }
+  .bar { flex: none; height: 24px; display: flex; align-items: center; gap: 1px; padding: 0 4px 0 3px; background: #202020;
+         border-bottom: 1px solid rgba(255,255,255,.12); white-space: nowrap; }
+  .bar > *, .bar .modes > * { flex-shrink: 0; }
+  .bar .b { height: 18px; min-width: 16px; display: inline-flex; align-items: center; justify-content: center; padding: 0 3px; border-radius: 4px; }
+  .bar .nm { font-weight: 600; margin: 0 5px 0 1px; opacity: .9; }
+  .bar .nm small { font-weight: 400; opacity: .6; margin-left: 5px; font-size: 10px; }
+  .bar .pinned { margin-right: 1px; }
+  .bar .modes .b { padding: 0 6px; }
+  .bar .val { min-width: 30px; text-align: center; opacity: .85; }
+  .bar .lit { background: rgba(255,140,0,.35); }
+  .bar .pane { flex-shrink: 1 !important; min-width: 0; color: var(--follow); padding: 0 3px; max-width: 96px; overflow: hidden; text-overflow: ellipsis; }
+  .bar .sp { flex: 1; }
+  .bar .sep { height: 12px; margin: 0 2px; }
+  .picture { position: relative; flex: 1; overflow: hidden; background: var(--pane); }
+  .picture .clone { position: absolute; left: 0; transform-origin: 0 0; transform: scale(2); }
+  .tab { position: absolute; display: flex; gap: 2px; padding: 0 3px 3px; border: 3px solid var(--follow); border-top: 0;
+         border-radius: 0 0 6px 6px; background: #161616; color: #eee; font: 10px "Segoe UI", system-ui, sans-serif; }
+  .tab span { width: 22px; height: 16px; display: inline-flex; align-items: center; justify-content: center; }
+
+  /* ---------- the taskbar ---------- */
+  .taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 40px; background: #eef0f4; border-top: 1px solid #dcdfe5;
+             display: flex; align-items: center; justify-content: center; gap: 9px; }
+  .taskbar .ic { width: 22px; height: 22px; border-radius: 5px; }
+  .taskbar .start { display: grid; grid-template-columns: 9px 9px; gap: 2px; }
+  .taskbar .start i { width: 9px; height: 9px; background: #3b82d6; border-radius: 1px; }
+  .taskbar .search { width: 120px; height: 26px; border-radius: 13px; background: #fff; border: 1px solid #dfe2e8; font-size: 11px;
+                     color: #888; display: flex; align-items: center; padding-left: 12px; margin-right: 6px; }
+  .taskbar .tray { position: absolute; right: 14px; top: 0; height: 40px; display: flex; align-items: center; gap: 12px; font-size: 10.5px; color: #333; }
+  .taskbar .tray .rg { font: 700 8px "Segoe UI", sans-serif; background: #202020; color: #ffc800; border-radius: 3px; padding: 2px 3px; }
+  .taskbar .tray .clock { text-align: right; line-height: 1.3; }
+
+  /* ---------- the social preview's frame ---------- */
+  body.social { background: radial-gradient(120% 90% at 85% 10%, #2a2416 0%, #151515 55%, #0f0f0f 100%); }
+  body.social .screen { left: 128px; top: 186px; transform: scale(0.84); transform-origin: 0 0; border-radius: 10px;
+                        box-shadow: 0 24px 70px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08); }
+  .headline { display: none; }
+  body.social .headline { display: block; position: absolute; left: 128px; top: 46px; right: 128px; color: #f2f2f2; }
+  .headline h1 { margin: 0; font: 700 56px/1 "Segoe UI", system-ui, sans-serif; letter-spacing: -0.01em; }
+  .headline h1 span { color: var(--follow); }
+  .headline p { margin: 14px 0 0; font: 400 26px/1.25 "Segoe UI", system-ui, sans-serif; color: #cfcfcf; }
+  .headline .meta { position: absolute; right: 0; top: 6px; font: 400 16px "Segoe UI", system-ui, sans-serif; color: #8d8d8d; text-align: right; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="headline">
+  <h1>Review<span>Glass</span></h1>
+  <p>A magnifier and live diff for Claude Code on Windows</p>
+  <div class="meta">Open source · Apache-2.0<br>Independent project</div>
+</div>
+
+<div class="screen">
+  <div class="appbar"><span class="nav">≡ ‹ ›</span><span class="winctl"><span>—</span><span>▢</span><span>✕</span></span></div>
+
+  <!-- column 1, top: a new session -->
+  <div class="col split-top" style="left:0">
+    <div class="newsess">
+      <div class="top"><span>What's new</span><span style="letter-spacing:6px">›_ ⊕ ▢ ✕</span></div>
+      <div class="proj">sensor-pipeline</div>
+      <div class="proj">billing-service</div>
+      <div class="proj">docs-site</div>
+      <div class="env">Select environment ⌄</div>
+      <div class="waiting"><b>Waiting</b> · Release planning — continue</div>
+      <div class="waiting"><b>Waiting</b> · Parser rewrite — continue</div>
+      <div class="ask">+ Describe a task or ask a question</div>
+      <div class="askfoot"><span>▤ ▢ ☑</span><span>Opus 5.5 · Max</span></div>
+    </div>
+  </div>
+
+  <!-- column 1, bottom: a session waiting on a question -->
+  <div class="col split-bottom" style="left:0">
+    <div class="head"><span class="t">Parser rewrite — continue</span><span class="icons">≡ ›_ ⊞</span></div>
+    <div class="body q">
+      <p style="color:#6f6e69">The grammar is done for expressions and statements. Error recovery can come first or last; it changes what the tests look like.</p>
+      <div class="opt sel"><b>Both, as in 5-4</b><span>Recovery and the tests side by side, one module at a time.</span></div>
+      <div class="opt"><b>Recovery first</b><span>Tests wait until every error path has a rule.</span></div>
+      <div class="opt"><b>Tests first</b><span>Write the failing cases, then the recovery.</span></div>
+      <div class="qbtn"><span>Skip</span><span class="next">Next</span></div>
+    </div>
+  </div>
+
+  <!-- column 2 -->
+  <div class="col" style="left:320px">
+    <div class="head"><span class="t">Billing service — continue</span><span class="icons">≡ ›_ ⊞ ⊕ ▢ ··· ✕</span></div>
+    <div class="body">
+      <p>The invoice job runs again after the schema change; the retry now waits for the ledger lock instead of failing the batch. What next?</p>
+      <div class="tool">Read ledger.ts, ran 3 commands</div>
+      <p>Two things are left before the release:</p>
+      <ul class="tasks">
+        <li class="done">The proration rule for mid-month upgrades</li>
+        <li class="done">Credit notes carry the original invoice's number</li>
+        <li>Refunds over 30 days go to manual review</li>
+        <li>The export to the accounting system: one file a day</li>
+      </ul>
+      <p>The proration tests pass against last month's real cases (412 invoices, no difference over one cent). The refund rule needs your word on the limit: 30 days is what the old system did.</p>
+      <div class="tool">Edited refunds.ts <b>+58</b> <i>−12</i></div>
+      <p>Drafted the rule with the limit as a setting, so it can change without a release. Holding the commit until you answer.</p>
+      <div class="working" style="color:var(--muted)">Thought for 8 min 16 s</div>
+    </div>
+    <div class="input">Queue a message (Ctrl+Enter)</div>
+    <div class="foot">Opus 5.5 · Max · Auto</div>
+  </div>
+
+  <!-- column 3 -->
+  <div class="col" style="left:640px">
+    <div class="head"><span class="t">Docs site — review</span><span class="icons">≡ ›_ ⊞ ⊕ ▢ ··· ✕</span></div>
+    <div class="body">
+      <p>The navigation is rebuilt from the content folders, so a new page appears without editing the menu. Every old link still resolves; 37 redirects were added for the renamed pages.</p>
+      <div class="tool">Ran the link checker, 0 broken</div>
+      <h4>Search</h4>
+      <p>The index is built at deploy time and ships as one 180 kB file. Queries run in the browser; nothing leaves the page.</p>
+      <div class="tool">Edited search.ts <b>+121</b> <i>−40</i></div>
+      <p>Next: the code samples get a copy button, then the dark theme's contrast check on every page.</p>
+      <ul class="tasks">
+        <li class="done">Sync the branch with main</li>
+        <li class="done">Rebuild the navigation from the folders</li>
+        <li class="done">Redirects for the renamed pages</li>
+        <li class="done">Search index at deploy time</li>
+        <li class="now">Copy buttons on the code samples</li>
+        <li>Contrast check, both themes</li>
+        <li>Open the pull request</li>
+      </ul>
+      <div class="working">Editing · 11 min 11 s</div>
+    </div>
+    <div class="input">Queue a message (Ctrl+Enter)</div>
+    <div class="foot">Opus 5.5 · Max · Auto</div>
+  </div>
+
+  <!-- column 4: the locked pane -->
+  <div class="col" id="locked" style="left:960px">
+    <div class="head"><span class="t">Sensor pipeline — continue</span><span class="icons">≡ ›_ ⊞ ⊕ ▢ ··· ✕</span></div>
+    <div class="body">
+      <p>The reader is merged and the fixtures are recorded from the bench rig: three runs, 40 minutes each, at the rig's full rate.</p>
+      <div class="tool">Sent the fixtures to the review session, edited CHANGELOG.md <b>+4</b> <i>−1</i></div>
+      <p>The commits are on main. Next the resampler starts; I'll read the reader's code first.</p>
+      <h4>Stage 2 · resampler</h4>
+      <div class="tool">Ran 2 commands</div>
+      <p>The reader's loop is ready; next I'll read the spec's section 4 to pin down the window length, the overlap and the drift limit.</p>
+      <div class="tool">Read SPEC.md, ran a command</div>
+      <p>I have the spec's figures: a 256-sample window with 50 % overlap, and a gap over 2 ms is a drift. They match the recorded fixtures, so the tests can use them as they are.</p>
+      <div class="tool">Edited resample.rs <b>+188</b></div>
+      <p>The resampler is written. Next the drift check: compare each timestamp with the source clock and flag a gap over the limit.</p>
+      <ul class="tasks">
+        <li class="done">Sync the worktree with origin/main</li>
+        <li class="done">Read BUILD_INFO and the open decisions</li>
+        <li class="done">Write the reader (stage 1)</li>
+        <li class="done">Hand the fixtures to the review session</li>
+        <li class="now">Build the resampler (stage 2) with the spec's figures</li>
+        <li>Add the drift check (stage 3)</li>
+        <li>Run the checks, open the pull request</li>
+      </ul>
+      <div class="working">Editing · 23 min 54 s</div>
+    </div>
+    <div class="input">Queue a message (Ctrl+Enter)</div>
+    <div class="foot">Opus 5.5 · Max · Auto</div>
+  </div>
+
+  <!-- column 5 -->
+  <div class="col" style="left:1280px; border-right:0">
+    <div class="head"><span class="t">Release planning — continue</span><span class="icons">≡ ›_ ⊞ ⊕ ··· ✕</span></div>
+    <div class="body">
+      <div class="tool">Read the decision log</div>
+      <h4>Where the project stands</h4>
+      <p>Main and the plan agree: no open item is older than its phase, and the last release's notes match what shipped.</p>
+      <h4>Roadmap: ten phases</h4>
+      <p>The whole plan is in roadmap.md. Each phase has a condition that says when it is done.</p>
+      <table class="rm">
+        <tr><th>#</th><th>Phase</th><th>What is built</th></tr>
+        <tr><td>0</td><td>Foundation</td><td>Repository, CI on two platforms, the release script</td></tr>
+        <tr><td>1</td><td>Format</td><td>The file format and its test vectors</td></tr>
+        <tr><td>2</td><td>Writer</td><td>Appends records, one segment a day</td></tr>
+        <tr><td>3</td><td>Recovery</td><td>A crash mid-write loses nothing that was confirmed</td></tr>
+        <tr><td>4</td><td>Checker</td><td>Verifies a whole archive without the writer</td></tr>
+        <tr><td>5</td><td>Anchoring</td><td>A daily checksum published outside the archive</td></tr>
+      </table>
+    </div>
+    <div class="input">Queue a message (Ctrl+Enter)</div>
+    <div class="foot">Opus 5.5 · Max · Auto</div>
+  </div>
+
+  <!-- the frame on the locked pane: what the glass shows, at 200 % -->
+  <div class="frame" id="frame" style="left:960px; top:147px; width:320px; height:166px"></div>
+
+  <!-- the pointer, inside the locked pane -->
+  <svg class="cursor" style="left:1068px; top:262px" viewBox="0 0 16 24"><path d="M1 1 L1 18 L5.2 14.2 L8 21 L10.6 19.9 L7.9 13.3 L13.4 13.3 Z" fill="#fff" stroke="#111" stroke-width="1.2" stroke-linejoin="round"/></svg>
+
+  <!-- the dock, in its corner -->
+  <div class="dock">
+    <span class="b grab">✥</span>
+    <span class="b name">RG</span>
+    <span class="modes"><span class="b on">Follow</span><span class="b">Lens</span><span class="b">Still</span></span>
+    <span class="sep"></span>
+    <span class="gauge" title="5-hour window, account-wide"><b>42%</b><small>resets in 2h 10m</small></span>
+    <span class="b" style="margin-left:6px">▤</span>
+    <span class="b">✕</span>
+  </div>
+
+  <!-- the glass: locked here, Follow, 200 %, Column and Fit on, locked to the pane -->
+  <div class="glass" id="glass" style="left:254px; top:118px; width:646px; height:363px">
+    <div class="bar">
+      <span class="b">✥</span>
+      <span class="nm">ReviewGlass<small>0.1.0</small></span>
+      <span class="pinned">🔒 Locked here</span><span class="b">🔓</span>
+      <span class="modes"><span class="b on">Follow</span><span class="b">Lens</span><span class="b">Still</span></span>
+      <span class="sep"></span>
+      <span class="b">−</span><span class="val">200%</span><span class="b">+</span>
+      <span class="sep"></span>
+      <span class="b">◉</span><span class="b">Aa</span>
+      <span class="sep"></span>
+      <span class="b lit">Column</span><span class="b lit">Fit</span>
+      <span class="pane">▣ Sensor pipeline — continue</span><span class="b">✕</span>
+      <span class="b">◐</span><span class="b">⧉ Diff</span>
+      <span class="sp"></span>
+      <span class="b">▤</span><span class="b">▁</span><span class="b">✕</span>
+    </div>
+    <div class="picture" id="picture"></div>
+  </div>
+  <div class="tab" style="left:846px; top:481px"><span>✥</span><span>▁</span></div>
+
+  <div class="taskbar">
+    <span class="start"><i></i><i></i><i></i><i></i></span>
+    <span class="search">⌕  Search</span>
+    <span class="ic" style="background:#f2b233"></span>
+    <span class="ic" style="background:#3a7bd5"></span>
+    <span class="ic" style="background:#2f9e6e"></span>
+    <span class="ic" style="background:#d9775a"></span>
+    <span class="ic" style="background:#6b5bd6"></span>
+    <span class="ic" style="background:#2b2b2b"></span>
+    <span class="tray"><span>^</span><span class="rg">RG</span><span>☁ 🔊</span><span class="clock">14:32<br>11/23/2026</span></span>
+  </div>
+</div>
+
+<script>
+  // The glass's picture is the locked pane, cloned and drawn at the glass's zoom,
+  // offset so the frame's top-left is the picture's top-left.
+  const ZOOM = 2;
+  const pane = document.getElementById("locked");
+  const frame = document.getElementById("frame");
+  const picture = document.getElementById("picture");
+  const clone = pane.cloneNode(true);
+  clone.removeAttribute("id");
+  clone.classList.add("clone");
+  clone.style.left = (pane.offsetLeft - frame.offsetLeft) * ZOOM + "px";
+  clone.style.top = (pane.offsetTop - frame.offsetTop) * ZOOM + "px";
+  clone.style.borderRight = "0";
+  picture.appendChild(clone);
+  if (location.search.includes("social")) document.body.classList.add("social");
+</script>
+</body>
+</html>

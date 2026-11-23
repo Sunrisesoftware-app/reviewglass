@@ -4,6 +4,50 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 13, 23.11.2026: the public face, a picture, and P7's update model
+
+**The owner's wish:** someone opening a shared link to the repository should see at once
+what ReviewGlass is. Claude Code's own zoom is modest, and a project that says "Claude"
+up front gets noticed. The owner also asked whether to rename. The answer was no: the
+name stays (adr.rg.008), and "for Claude Code" goes in the tagline, never in the name.
+Using it in a description says what the tool works with; using it in a product name
+would borrow a trademark.
+
+**Changed on GitHub (by the owner's leave):**
+- The description: "A magnifier and live-diff companion for Claude Code on Windows: read
+  agent output at any size, see every session and your quota, watch each edit as it
+  lands."
+- Nine topics: claude-code, magnifier, accessibility, low-vision, ai-coding,
+  developer-tools, tauri, windows, diff.
+
+**The picture:**
+- `docs/media/hero.html` is drawn, not captured. The glass excludes itself from capture
+  (`WDA_EXCLUDEFROMCAPTURE`), which is why the owner photographed the screen.
+- The layout follows that photograph of 23.11.2026: five Code panes, the first split
+  between a new session and a waiting question, the glass locked here at 200 % with
+  Column and Fit, its frame on the fourth pane, the dock in the corner, the tab under
+  the glass.
+- Every word is invented and in English. No real thread is shown.
+- The glass's picture is a clone of the locked pane at twice the size, offset to the
+  frame, so it shows exactly what the frame holds.
+- `docs/media/render.ps1` renders it with headless Edge:
+  - `reviewglass-hero.png`: 2400×1200, 249 kB, at the top of the README.
+  - `social-preview.png`: 1280×640, 218 kB, with the name and the tagline.
+- GitHub has no API for the social preview, so the owner uploads it by hand.
+
+**The README** opens with one line naming Claude Code, the picture, and a note that the
+picture is drawn and why.
+
+**P7's update model, the owner's decision:**
+- (1) GitHub Releases, with the installer run over the installed version.
+- (2) A winget package.
+- The app itself never fetches an update. An opt-in in-app check would be a second
+  network path beside Explain and needs its own decision.
+- It enters the Atlas model as an ADR when P7 starts. `BUILD_INFO.json` `next` lists
+  what P7 needs besides.
+
+**Not changed:** no code, so nothing to build; the spec follows with v0.5.
+
 ## Session 12, 15.11.2026: a dark-theme contrast fault in the Diff view on the list, docs only
 
 **The owner's word**, given 15.11.2026 in the Sunrise Software site's session 12: the fault
