@@ -73,9 +73,9 @@ modules, connections and decisions; the spec is its prose.
 4. **`docs/adr/`** — the decisions, rendered from the Atlas model; `README.md` there is
    the index.
 5. **`docs/LESSONS.md`** — the pitfalls, with the story behind the rules above.
-6. **`docs/REVIEWGLASS-SPEC.md`** — the product and architecture specification (v0.4,
-   4.10.2026; 5.6 the line for other applications, 6.3 the module contracts, 7 the
-   roadmap in the owner's order). `docs/NAME-CLEARANCE.md` holds the name research.
+6. **`docs/REVIEWGLASS-SPEC.md`** — the product and architecture specification (v0.5,
+   23.11.2026; 3 the product decisions D1-D10, 5.6 the line for other applications, 6.3
+   the module contracts, 7 the roadmap in the owner's order, 8.2 how updates arrive). `docs/NAME-CLEARANCE.md` holds the name research.
 7. Atlas (optional but useful): system `reviewglass` — `atlas_get_workspace` for status
    and thread, `atlas_get_rationale` for the ADRs as the model holds them.
 
@@ -113,8 +113,10 @@ collector replaced it in `settings.json` on 11.9.2026.
   from its files.
 - **The name** (D4, adr.rg.008): kept by the owner on 13.11.2026. Two e-commerce review
   services still trade as ReviewGlass (`.com`, `.app`); the research is
-  `docs/NAME-CLEARANCE.md`. The spec's D4 and P8 rows follow with spec v0.5, which changes
-  the repository copy and the Atlas artifact together.
+  `docs/NAME-CLEARANCE.md`; spec v0.5 says so (D4, P8). Claude is named in what the tool is
+  for, never in its name.
+- **Updates** (D10, owner 23.11.2026): GitHub Releases and winget; the app never fetches
+  an update itself. Enters the Atlas model as an ADR when P7 starts.
 
 ## Layout
 

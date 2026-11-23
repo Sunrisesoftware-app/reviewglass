@@ -1,17 +1,53 @@
 # ReviewGlass — Product & Architecture Specification
 
-**Version:** 0.4
-**Date:** 2026-10-04
+**Version:** 0.5
+**Date:** 2026-11-23
 **Owner:** Petri Korhonen / Sunrise Software Oy
-**Status:** In daily use by the author. P0-P2, P4 (with P4b and P4c) and P6 done, P3
-built; the glass locks to a Claude Code pane and stays where it is locked. Next, in the
-order the owner set on 2026-10-04: P9 (the glass in other applications); P6 with a real
-backend, P5, P7 and P8 wait (7).
-**Model:** Atlas system `reviewglass` (modules `rg.*`, decisions `adr.rg.001`-`032`).
+**Status:** In use by the author. P0-P2, P4 (with P4b and P4c) and P6 done, P3 built;
+the glass locks to a Claude Code pane, gives it up when another window comes to the
+front, and has the diff window glued to its side. P9 (the glass in other applications)
+has its privacy line and its recorder; its lock waits on another means (7). P7's update
+model is decided (D10); P6 with a real backend, P5, the rest of P7 and P8 wait.
+**Model:** Atlas system `reviewglass` (modules `rg.*`, decisions `adr.rg.001`-`036`).
 **Repository:** github.com/Sunrisesoftware-app/reviewglass, public since 2026-09-17 by
-the owner's decision; the name check still gates the public release, P8 (`adr.rg.008`).
+the owner's decision. The name is kept (`adr.rg.008`, accepted 2026-11-13).
 The repo carries a copy of this document at `docs/REVIEWGLASS-SPEC.md`; this artifact is
 the source of truth.
+
+### What changed from v0.4
+
+Seven weeks and four decisions (`adr.rg.033`-`036`). The owner's
+reports drove each of them: the glass had to be closed whenever another program came up,
+the diff comparison was hardly used because it was a step too far, a control under the
+glass could not be found, and a popped-out conversation made the glass two thirds of the
+screen wide.
+
+1. **The glass knows the screen's order** (`adr.rg.033`): a window of another application
+   that comes to the front over the locked pane releases the lock, and the glass reads
+   what is in front; in Follow the picture lets the mouse through.
+2. **The diff window is glued to a side of the glass** (`adr.rg.034`, superseding
+   `adr.rg.028`'s placement): one click opens it where there is room, and it follows the
+   glass's place and size.
+3. **The screen shows through the glass** under the pointer (`adr.rg.035`), so a control
+   under it is found by sight.
+4. **A session window is read by its message column, and Fit has a widest glass**
+   (`adr.rg.036`, 60 % of the screen by default).
+5. **The name is kept** (D4, `adr.rg.008` accepted 2026-11-13). Two e-commerce review
+   services still trade as ReviewGlass; "for Claude Code" goes in the tagline, never in
+   the name.
+6. **Updates are the user's to fetch** (D10, 8.2): GitHub Releases and winget; the app
+   itself never asks the network for a version.
+7. **The Diff view follows the theme and gives each colour one meaning** (2026-11-23):
+   yellow the latest edit, green added earlier, red removed, a darker shade the part of
+   a line that changed, with a key for each (6.3, `panel-window`).
+8. **Robustness, measured where it failed**: Windows ending the session aborted the app
+   until it ended the process itself first (2026-11-11); a lock held across a window call
+   hung the app (2026-10-08); a hang with the glass hidden left no line until the stall
+   log's probe ran whatever is shown (2026-11-23); a hung app has a way out outside itself,
+   the Start Menu's Stop ReviewGlass (9).
+9. **P9 needs another means** (the owner's report, 2026-11-11): the box jumps with size
+   changes, the column wavers with the text's width, Excel does not work, File Explorer's
+   folder tree is not a box, and overlapping windows confuse it (7).
 
 ### What changed from v0.3
 
@@ -137,7 +173,9 @@ It is built first for the author's own use, distributed later as an open-source 
 - Claude Code as the only instrumented agent.
 - Local-only operation. No network egress except one explicitly user-triggered
   feature (see `explain-service`, section 6.3).
-- Free, open-source, signed-installer distribution.
+- Free, open-source distribution: an installer on GitHub Releases and a winget package
+  (8.2), signed if a free route for open source is available (8.3). The app fetches no
+  updates itself.
 
 ### 2.2 Explicit non-goals for v1
 
@@ -159,16 +197,18 @@ It is built first for the author's own use, distributed later as an open-source 
 | D1 | License | **Apache-2.0** | 2026-09-11 |
 | D2 | Explain-service backend | **Both, behind a pluggable interface.** Remote API and a local compute unit are equal-status options; neither is hardcoded. | 2026-09-11 |
 | D3 | Primary target surface | **Desktop Code tab is primary. Terminal CLI is a supported secondary surface**, not a separate build. | 2026-09-11 |
-| D4 | Name availability | **Open, with a finding.** A web research pass on 2026-10-04 (`docs/NAME-CLEARANCE.md`) found the trademark registers it could query clear (TMview, Trademarkia), the Finnish company register clear, and the package names free (npm, crates.io, PyPI, NuGet). But two unrelated e-commerce review services already trade as ReviewGlass and hold `reviewglass.com` and `reviewglass.app`. Not a legal clearance. The owner chooses between keeping the name, renaming before P8, and a professional search first; the name gates P8 - the installer, the bundle identifier, a store listing - not the source (`adr.rg.008`). | — |
+| D4 | Name | **Kept: ReviewGlass.** The research pass of 2026-10-04 (`docs/NAME-CLEARANCE.md`) found the registers it could query clear and the package names free, and two unrelated e-commerce review services trading as ReviewGlass with `reviewglass.com` and `reviewglass.app`. The owner kept the name; P8 no longer waits on it (`adr.rg.008`, accepted). What the tool is for is said in the tagline and the repository's description - "a magnifier and live diff for Claude Code" - never by putting Claude in the name. Decided by the owner. | 2026-11-13 |
 | D5 | Collector form | **Native binaries, not shell scripts** (`adr.rg.010`). Removes the Git Bash / PowerShell question entirely. | 2026-09-11 |
 | D6 | Payload tolerance | **A field of the wrong type costs that field only** (`adr.rg.011`), not only a field that is absent. | 2026-09-11 |
 | D7 | Roadmap order | **P6 before P5.** The explain backend - local, or remote with the user's own key - is what the "hawk eye" (P6b) stands on; the cache and PR panels wait. Decided by the owner. | 2026-09-23 |
 | D8 | Polish before new phases | **It must feel part of the Claude app.** Not in daily use until it does: windowed, locked to a pane, the diff a key away. New phases (P6 with a real backend, P5, autostart) wait until the tool is seamless. Decided by the owner. | 2026-09-27 |
 | D9 | The next phase | **P9, the glass in other applications.** In daily use the glass found a text column in Chrome by pixels alone; locking to another application's reading area the way it locks to a Code pane is the next real gain. It starts with a measurement and a privacy decision. Decided by the owner. | 2026-10-04 |
+| D10 | How updates arrive | **The user fetches them; the app never does.** (1) GitHub Releases: the installer run over the installed version; the app's About shows its version and opens the releases page in the browser. (2) A winget package, its manifest made by the release workflow. An in-app check (Tauri's updater) would be a second network path beside Explain and is not taken; it would need its own decision. Decided by the owner. | 2026-11-23 |
 
-The architecture decisions are `adr.rg.001`-`032`, rendered in the repository under
-`docs/adr/` (`adr.rg.029` superseded by `adr.rg.030`); this table keeps the product-level
-ones.
+The architecture decisions are `adr.rg.001`-`036`, rendered in the repository under
+`docs/adr/` (`adr.rg.029` superseded by `adr.rg.030`; `adr.rg.028`'s placement by
+`adr.rg.034`); this table keeps the product-level ones. D10 enters the Atlas model as a
+decision when P7 starts.
 
 ### 3.1 Consequences of D1 (Apache-2.0)
 
@@ -471,7 +511,8 @@ ReviewGlass process (Tauri v2)
   ├─ dock     a strip in a screen corner; its drawer is the panel (Sessions, Diff, Settings)
   ├─ halo     a ring on the pointer in Follow; click-through
   ├─ finder   the frame around the locked pane and the box the glass shows; click-through
-  └─ diffwin  the locked pane's session's diff, created when opened (adr.rg.028)
+  └─ diffwin  the locked pane's session's diff, glued to a side of the glass or free,
+              created when opened (adr.rg.028, adr.rg.034)
 ```
 
 The split down the middle is the P0 result made structural: the status line reaches CLI
@@ -496,6 +537,13 @@ finder are excluded from capture, so the glass never shows ReviewGlass itself; t
 and the diff window are not, so a screenshot or a screen share sees them like any other
 window (`adr.rg.025`, `adr.rg.028`). The diff window is created when it is opened and
 destroyed when it is closed.
+
+**What runs.** One `reviewglass.exe`, its WebView2 processes as its children (five to nine,
+recognised by the identifier `app.sunrisesoftware.reviewglass` in their command line),
+and the two collectors for milliseconds at a time. The README lists them, because a user
+running many sessions and tools must be able to tell ReviewGlass's processes from the
+rest, and a hung app is ended from outside: `taskkill /IM reviewglass.exe /F /T` ends the
+app and its web views and nothing else (9).
 
 ### 6.2 Technology stack
 
@@ -677,7 +725,11 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
     the compositor's frame late, the crop, the core's main thread, a synchronous command
     by name, a UI Automation read, a covering window, the glass page's round trip, timer
     or draw - and a summary a minute while the glass is shown. Timings, sizes and names
-    only.
+    only. The core's main thread is probed whatever is on screen: every 100 ms while the
+    glass is shown, every 2 s while it is hidden (a line only for an answer over 1 s). A
+    probe unanswered for 10 s is a hang: a line when it starts, one a minute while it
+    lasts and one when it ends, each naming the timed command on the main thread, if any
+    (2026-11-23: a hang with the glass hidden had left no line).
   - **Pane detection** (`adr.rg.017`): the column under the cursor is found from pixels -
     a gutter or a border line between two textured spans is a boundary, an indentation
     gap narrower than a gutter is not - and a tracker holds the column through brief
@@ -717,6 +769,24 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
   zoom, at once and to the pixel for a pane locked by a click - growing and shrinking
   around the centre the glass was locked at, so the reading area runs along the pane's
   edges and the glass does not move.
+- **The screen's order** (`adr.rg.033`): while a pane is locked, a window of another
+  application that becomes the foreground window over the Claude app's window, or the app
+  minimised, releases the lock at once (the shell's own windows do not); the bar says
+  which window came to the front, and the glass reads whatever is in front, by pixels as
+  outside the app. A window that overlaps the box without being in front still only holds
+  the picture (`adr.rg.026`). In Follow the picture lets the mouse through: the wheel's
+  zoom, a double-click's freeze and the right-click menu are on the bar.
+- **See-through** (`adr.rg.035`): in Follow, while the pointer is over the picture, its
+  ground is dropped and the magnified picture drawn at the user's level (25-75 %, 45 by
+  default; the bar's ◐ and Settings > Glass), fading in and out over 150 ms, so the
+  window behind shows in place and a control is found without moving the glass. The bar
+  and the tab stay opaque.
+- **A session window's column and the widest glass** (`adr.rg.036`): a lock on a session
+  popped out into a window of its own takes the message column as its reading area (the
+  span of the messages in the conversation's scroll area, read at the lock and at each
+  reread), or the page where the column is within 40 px of it. Fit never makes the glass
+  wider than the user's share of the screen (Settings > Glass, 40-100 %, 60 by default);
+  a wider column keeps the zoom and is read by moving the pointer along it.
 - The bar's base text is 13 px at bar size 100 %, and a menu offers 125-200 %.
 
 ---
@@ -763,7 +833,9 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
   capture; hidden in Lens and Still, while the glass is hidden, while the lock is off and
   while no pane is found. While a pane is locked by a click (`adr.rg.026`) the window is
   the pane and draws its outline, with the box inside it; while a window in front holds
-  the picture it says so.
+  the picture it says so. In a session window of its own the outline is the message
+  column (`adr.rg.036`); a lock released by a window in front takes the frame away with
+  it (`adr.rg.033`).
 
 ---
 
@@ -794,12 +866,24 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
 - **The drawer's own picture** (`adr.rg.025`): a camera button at the end of the tab row
   renders the drawer's page (WebView2, no screen capture) to the clipboard and to
   `Pictures\ReviewGlass`, and says where it went.
-- **The diff window** (`adr.rg.028`): the Diff tab's view of one session in a frameless
-  window of its own, opened and closed from the glass's bar or Ctrl+Alt+D. It shows the
-  locked pane's session and follows the lock; with nothing locked, what the drawer's
-  choice shows. The first time it opens over the locked pane's neighbour at that pane's
-  size (at least 560 by 400 px); after the user has moved or resized it, where they left
-  it, across restarts. A placement ReviewGlass makes is never stored as the user's.
+- **The diff window** (`adr.rg.028`, placement by `adr.rg.034`): the Diff tab's view of one
+  session in a frameless window of its own, opened and closed by one click on the glass's
+  Diff button or Ctrl+Alt+D. It shows the locked pane's session and follows the lock (a
+  change of session drops the picked file, so the clicked pane's newest edit comes up);
+  with nothing locked, what the drawer's choice shows. It is attached to a side of the
+  glass - the user's last choice, or the first of right, left, below and above with room
+  for a diff that reads (420 px beside, 240 px above or below) - sharing the glass's edge
+  and following its moves and resizes; four side buttons in its title row choose, a drop
+  beside the glass attaches, a drop away frees it where the user left it. A placement
+  ReviewGlass makes is never stored as the user's.
+- **The colours of the diff** (2026-11-23): one meaning each, in every view and both
+  themes - yellow (with a bar) the latest edit, green added earlier and not committed,
+  red removed (in the whole-file view a red line where lines were cut), a darker shade
+  the part of a line that changed. The rendered hunks follow the theme on the drawer's
+  own ground, and diff2html's own yellow for a changed line gives way to its red and
+  green. A legend row names each mark on screen with a sample - a row in miniature, its
+  sign included, so the key does not rest on colour alone - and a count. Every row's text
+  is at 4.5:1 or more against its ground in both themes (measured 9-17:1).
 
 ---
 
@@ -913,7 +997,9 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
   it as `.bak`, and says so visibly rather than failing to start. Opened before the
   app's windows exist (10). A value derived from a setting is never written back as the
   setting: Fit's width is not the user's width; a glass locked here (`adr.rg.030`) stores
-  its place and size as the user's own, because locking is the user adopting them.
+  its place and size as the user's own, because locking is the user adopting them. The
+  diff window's side or free place (`adr.rg.034`), the see-through switch and level
+  (`adr.rg.035`) and Fit's widest glass (`adr.rg.036`) are the user's settings.
 
 ---
 
@@ -933,7 +1019,13 @@ Modules are specified in Atlas contract form: inputs, outputs, dependsOn.
   existed when it started (4.1) - the hook, measured, does not need the restart. MUST
   place the spool and the collectors under the profile root, never under AppData
   (`adr.rg.019`). MUST give the app its own toast identity: the unpackaged exe's toasts
-  are attributed to Windows PowerShell today.
+  are attributed to Windows PowerShell today. MUST replace both collectors on every
+  upgrade. MUST create the Start Menu entry Stop ReviewGlass (`taskkill /IM
+  reviewglass.exe /F /T`), the way out of a hung app whose tray no longer answers; until
+  an installer exists it is made by hand. SHOULD do the settings step as a visible
+  first-run step of the app itself - showing the change, with an undo - which the
+  uninstaller reverses by calling the app, rather than as JSON edits in the installer
+  script.
 
 ---
 
@@ -951,11 +1043,11 @@ Each phase is independently useful and independently shippable.
 | **P4b** | The whole file, the new code, the session under the glass | `diff-service`, `session-source`, the drawer | **Done.** The whole file around a hunk (2026-09-20); the previous edit as the baseline where git has none; the latest edit highlighted and a New view (2026-09-23); the drawer sized by hand (`adr.rg.021`); a session choice, made by hand or by Follow (`adr.rg.022`) |
 | **P4c** | Part of the app | `glass-window`, `finder-window`, `panel-window`, `diff-service`, `session-source` | **Done** (D8, 2026-09-27 to 10-04). The Diff tab by session, the drawer's picture, the frame, the centred lock with its tab and arrows, the diff window, Lock here, the waiting session (`adr.rg.024`-`031`). Observed by the owner |
 | **P6** | Novice mode | `explain-service`, `explain-backend` | **Built and observed** (2026-09-23, `adr.rg.023`). Explanation on demand through both backends - local on loopback, or remote with the user's own key; disclosure and credential storage verified. Daily use with a real backend waits (D8) |
-| **P9** | The glass in other applications | `capture-engine`, `glass-window`, a reader of other applications' structure | **Next** (D9). A click in another application locks the glass to its reading area - a page's main content, an editor's text - as a click on a Code pane does, with Lock here and the box along the area's edges; where an application says nothing about its structure, the pixel column detector stays. Starts with a measurement of what Chrome, Edge, VS Code and the terminals expose, and the privacy line of `adr.rg.032`; the recorder that measures it is built (5.6) |
+| **P9** | The glass in other applications | `capture-engine`, `glass-window`, a reader of other applications' structure | **Started** (D9): the privacy line (`adr.rg.032`) and the recorder are built, and the glass already gives a locked pane up to a window in front and reads it by pixels (`adr.rg.033`). The owner's report of 2026-11-11 asks for another means before the lock is built: the box jumps with size changes, the column wavers with the text's width, Excel does not work, File Explorer's folder tree is not a box, overlapping windows confuse it. The plan as first written: a click in another application locks the glass to its reading area - a page's main content, an editor's text - as a click on a Code pane does, with Lock here and the box along the area's edges; where an application says nothing about its structure, the pixel column detector stays. Starts with a measurement of what Chrome, Edge, VS Code and the terminals expose, and the privacy line of `adr.rg.032`; the recorder that measures it is built (5.6) |
 | **P6b** | Hawk eye | `explain-service`, `explain-backend`, `diff-service` | **Vision.** A watcher through the P6 backend that reads the columns and the new code as they change and raises what looks wrong. A continuous send is a new privacy line (opt-in, per repository, denylist, payload disclosed) and needs its own decision before anything is built |
 | **P5** | Cache & PR panels | drawer tabs | Waits (D8). `prompt_cache` and `pr` surfaces rendered, absent-data paths verified |
-| **P7** | Packaging | `installer-integration`, updater | Clean install and uninstall on a fresh Windows 11 machine; both collectors placed; the app's own toast identity |
-| **P8** | Public release | — | The name cleared (D4), a signed or documented installer, release notes. The repository itself is already public |
+| **P7** | Packaging | `installer-integration`, the release workflow | Clean install, upgrade and uninstall on a fresh Windows 11 machine; both collectors placed and replaced on upgrade; the settings step visible and undoable; the app's own toast identity; Stop ReviewGlass in the Start Menu; a release on GitHub and its winget manifest (D10) |
+| **P8** | Public release | — | A signed or documented installer, release notes. The name is kept (D4) and the repository is already public |
 | **v2** | macOS, Codex adapter | new `session-source` impl, ScreenCaptureKit backend | out of v1 scope |
 
 Phase 1 alone solved the original complaint and was shipped to the author before anything
@@ -985,19 +1077,37 @@ Three binaries ship: the app, and the two collectors - the statusLine collector 
 PostToolUse hook collector - installed under `~/.reviewglass/bin` (`adr.rg.010`,
 `adr.rg.019`), which is why the crate declares `default-run`.
 
+The MSI build runs WiX's validation, which the Application log records as Windows
+Installer installing and completing "ReviewGlass". Nothing is installed; a reader of the
+log should not take those lines for a second copy (2026-11-23).
+
 ### 8.2 Updates
 
-Tauri's updater plugin with `"createUpdaterArtifacts": true` produces signed `.sig`
-files checked against a project keypair. This secures the update channel and is
-distinct from Authenticode code signing, which addresses SmartScreen.
+Decided by the owner (D10, 2026-11-23): the app never fetches an update, so its privacy
+line (8.4) holds without an exception.
+
+1. **GitHub Releases.** Each release carries the NSIS installer; run over the installed
+   version it upgrades in place (the same identifier, the running instance stopped
+   first, the collectors replaced). The app's About shows its version and a button that
+   opens the releases page in the browser - the browser fetches, not the app.
+2. **winget.** The release workflow makes the package's manifest (`wingetcreate`), so
+   `winget upgrade` updates ReviewGlass the way it updates the rest of the machine.
+
+Not taken: Tauri's updater plugin (`"createUpdaterArtifacts": true`, signed `.sig` files
+checked against a project keypair), which would make the app ask a server for versions.
+It would be a second network path beside Explain, opt-in at the least, and needs its own
+decision. If it is ever taken, the keypair's private half is kept where losing it cannot
+strand installed copies.
 
 ### 8.3 Signing
 
 Not required for personal use or an open-source release. A SmartScreen warning on an
 unsigned build is expected and should be documented in the README rather than worked
-around. If signing is added later, Microsoft's own Artifact Signing service (from
-about $10/month, no hardware token) is the appropriate route; an EV certificate no
-longer bypasses the first-run SmartScreen prompt and does not justify its premium.
+around. If signing is added later, the free route for open-source projects (the
+SignPath Foundation) comes first; Microsoft's own Artifact Signing service (from about
+$10/month, no hardware token) is the paid route, its availability to an individual
+outside North America to be checked; an EV certificate no longer bypasses the first-run
+SmartScreen prompt and does not justify its premium.
 
 ### 8.4 Privacy posture
 
@@ -1035,7 +1145,8 @@ Stated plainly in the README, because it is a genuine differentiator:
 - The account quota reaches ReviewGlass only through a terminal `claude` session, because
   that is the only surface Claude Code runs a status line on. A Desktop-only user sees
   sessions but no gauge, and the panel says so rather than showing a blank.
-- No analytics, no accounts, no network listener.
+- No analytics, no accounts, no network listener, and no update check: updates come from
+  GitHub Releases or winget when the user asks for them (8.2).
 - The explain feature is off by default with no backend selected. A fresh installation
   performs no inference.
 - When enabled, it offers two modes. A **local** backend keeps everything on the
@@ -1073,6 +1184,12 @@ rather than quietly dropped, and it should not stand in the README unexamined.
 | The desktop app renames what ReviewGlass reads | The frame locks to the wrong thing | **This fired** (2026-09-30): the main window's page took the active session's name, and a sidebar click locked the glass to the whole window. Recognised by its " - Claude Code" ending; a page click in the window that holds the locked pane leaves the lock as it is (`adr.rg.030`) |
 | A skip that misses a change | The glass shows stale text | **This fired** (2026-09-29): the publish skip's sampled hash missed half the typed characters. It reads every byte now; the stall log made the cause visible in a day |
 | A reader of other applications' accessibility trees (P9) | Wakes accessibility in browsers and editors, and could read what it must not | The line is drawn first (`adr.rg.032`): structure and rectangles only, never names or text, only at a click, never a password manager; the cost Chromium's accessibility adds is measured before P9 ships |
+| Another program comes to the front over the locked pane | The glass is in the way of everything else, and is closed | **This fired** (2026-10-08, "the tool is very static"). The foreground window releases the lock and the glass reads what is in front (`adr.rg.033`) |
+| A lock held across a window call from a background thread | The app hangs | **This fired** (2026-10-08): the rider held the picture's lock while asking the glass for its place, and the main thread waited on that lock. A value is copied out before any window call; a command sharing a lock with one runs `async` |
+| Windows ends the session under the app | The app aborts at every shutdown | **This fired** (until 2026-11-11): tao destroys its loop on WM_ENDSESSION and the next message panicked. The app ends its own process first; reproduced and verified by sending WM_ENDSESSION |
+| A hang with nothing on screen | No trace, and no way out but Windows' own | **This fired** (2026-11-23, unexplained, not reproduced under a watchdog). The main-thread probe runs whatever is shown and writes a hang's start, length and the command in flight; Stop ReviewGlass ends a hung app from the Start Menu |
+| A library's own colours collide with ReviewGlass's marks | A mark reads as its opposite | **This fired** (2026-11-23): diff2html's yellow for a changed line beside ReviewGlass's yellow for the latest edit, and its light scheme in the dark theme (1.01-1.09:1). One meaning per colour, the library's colours mapped onto it, contrast measured in both themes |
+| The name is shared with unrelated products | A visitor finds someone else | Accepted (D4): the description and tagline say "for Claude Code"; the research is kept |
 | Scope creep into an IDE | Project never ships | Non-goals in 2.2 are binding |
 
 ---
@@ -1090,8 +1207,12 @@ rather than quietly dropped, and it should not stand in the README unexamined.
   outside `explain-backend`, the boundary has been violated.
 - ReviewGlass is a read surface. It never writes into a session, a repository or a
   transcript.
-- P0-P2, P4, P4b, P4c and P6 are done and P3 is built. P9 is next (D9); P6 with a real
-  backend, P5, P7 and P8 wait (D8).
+- P0-P2, P4, P4b, P4c and P6 are done and P3 is built. P9 has its privacy line and
+  recorder and waits on another means (7); P7's update model is decided (D10); P6 with a
+  real backend, P5, the rest of P7 and P8 wait.
+- A hang is read from the stall log's `main ... hang` lines before anything is guessed;
+  a hung app is ended with Stop ReviewGlass, never by guessing which `msedgewebview2.exe`
+  is ours.
 - When the owner reports a slowdown, measure it before fixing it: the stall log
   (`~/.reviewglass/stall.log`) names the stage; per-process CPU separates ReviewGlass from
   the sessions' own builds.
@@ -1107,6 +1228,5 @@ rather than quietly dropped, and it should not stand in the README unexamined.
 - Ship the affordance with the mechanism: a visible control for every action, a
   discoverable first-run state, and a named empty state. A feature reachable only by a
   keystroke nobody was told about is not finished.
-- D4 (name) blocks P8 only. Development proceeds under the working name, in a public
-  repository. The research pass of 2026-10-04 and the choice it asks for are in
-  `docs/NAME-CLEARANCE.md`.
+- The name is kept (D4). Claude is named in what the tool is for, never in its name; the
+  research pass of 2026-10-04 is in `docs/NAME-CLEARANCE.md`.

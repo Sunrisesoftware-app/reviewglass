@@ -4,6 +4,50 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 13, 23.11.2026, spec v0.5
+
+**The owner's call:** spec v0.5 next. The repository copy and the Atlas artifact
+`REVIEWGLASS-SPEC` change together.
+
+**Before:** they matched at v0.4 (Atlas version 4, 74 394 bytes, the repository copy's
+size).
+
+**What v0.5 brings in** (`docs/REVIEWGLASS-SPEC.md`, 85 481 bytes):
+- The header: status, decisions `adr.rg.001`-`036`, the name kept.
+- A "What changed from v0.4" list of nine.
+- 2.1: distribution through GitHub Releases and winget, no update fetched by the app.
+- 3, the decision table:
+  - D4 resolved: the name is kept, and Claude is named in what the tool is for, never in
+    its name.
+  - A new D10: how updates arrive (the owner's decision of the same day). It enters the
+    Atlas model as an ADR when P7 starts.
+- 6.1: the diff window's line in the topology, and a paragraph on what runs.
+- 6.3, the module contracts:
+  - the stall log's hang lines (`capture-engine`)
+  - `adr.rg.033`, `035` and `036` (`glass-window`), with `033` and `036` also in
+    `finder-window`
+  - the diff window by `adr.rg.034` and the Diff view's colours (`panel-window`)
+  - the new settings (`config-store`)
+  - collectors replaced on upgrade, the Stop entry and a visible first-run settings step
+    (`installer-integration`)
+- 7: P9 "started", with the owner's report of 11.11.2026; P7's exit criteria; P8 no
+  longer waits on the name.
+- 8:
+  - 8.1: the MSI build's WiX validation shows as an "installation" in the Application
+    log.
+  - 8.2: rewritten to D10.
+  - 8.3: SignPath Foundation first.
+  - 8.4: no update check.
+- 9: six risks, each of which fired, and the shared name.
+- 10: the current phase and how a hang is read.
+
+**Atlas:** `REVIEWGLASS-SPEC` version 5 (`art_e881479f57a6419a`, shared), 85 481 bytes as
+Atlas lists it, the repository copy's size; version 4 stays as the previous one. Only
+the byte count was compared: Atlas lists no hash.
+
+**Also changed:** CLAUDE.md's handover list and roadmap notes; BUILD_INFO drops the
+spec item.
+
 ## Session 13, 23.11.2026, closing: a hang leaves a line, and a way out
 
 **The owner's go-ahead** for both follow-ups of the hang below.
