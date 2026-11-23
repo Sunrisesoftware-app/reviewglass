@@ -4,6 +4,36 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 13, 23.11.2026, P7 begins: two decisions, one version, an About
+
+**The owner's go-ahead** for the P7 plan.
+
+**Two decisions into the Atlas model first**, then rendered to `docs/adr/`:
+- `adr.rg.037`: updates come from GitHub Releases and winget; the app never asks the
+  network for a version.
+- `adr.rg.038`: the Claude Code integration is a visible step in Settings > Claude Code,
+  with an undo. The installer places files only, and the uninstaller runs
+  `reviewglass.exe --remove-integration`.
+- Atlas PR #729 (`f23b282`); worker `d3b075dd`.
+- The first CI run failed on a stale embedded model. It passed after
+  `pnpm --filter @atlas/mcp-worker bundle`.
+
+**Step 1, one version and an About** (`aeb45c6`):
+- `scripts/check-version.mjs` runs first in `pnpm check`, so CI runs it too. It fails
+  when `package.json`, `tauri.conf.json`, `Cargo.toml` and `Cargo.lock` disagree, naming
+  each.
+- `pnpm version:set <v>` sets all three manifests.
+- Settings > About shows the version and build, and a button that opens the releases
+  page through ShellExecute. The address is a constant in `about.rs`, never taken from
+  input.
+- Tested:
+  - The check passes at 0.1.0.
+  - It fails with every manifest named when `package.json` alone says 0.1.1.
+  - Set mode at the same version changes nothing.
+- 176 tests, two of them new; clippy and svelte-check clean.
+- The shortcut's exe is `aeb45c6`, started through Explorer, responding. The About has
+  not been seen by the owner yet.
+
 ## Session 13, 23.11.2026, spec v0.5
 
 **The owner's call:** spec v0.5 next. The repository copy and the Atlas artifact
