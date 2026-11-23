@@ -4,6 +4,73 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 13, 23.11.2026, Dependabot: 24 alerts, none in what ships, 14 closed by patch bumps
+
+**Why now:** P7 ships the app to other machines, and GitHub listed 24 open Dependabot
+alerts on `main` (6 high, 11 moderate, 7 low).
+
+**What ships, and how it was checked:**
+- **Rust:** the exe and the two collectors are built from `src-tauri/Cargo.lock`. The
+  one Rust alert is `glib`. `cargo tree -i glib --target x86_64-pc-windows-msvc` prints
+  nothing: glib comes in through gtk, which Tauri uses on Linux only.
+- **Frontend:** what ships is what Vite writes to `build/`. Everything else in
+  `pnpm-lock.yaml` is tooling.
+  - SvelteKit's client imports devalue for server data. With `ssr = false` and no
+    server load, that path is dropped from the bundle.
+  - The bundle was searched before and after the bump. It contains none of devalue's
+    error strings (`Invalid input`, `Invalid circular reference`), no `__data.json`, no
+    cookie code (`samesite`) and no form-action code (`x-sveltekit-action`).
+- **Tooling:** Vite's dev server runs only under `pnpm tauri dev`; the release build
+  serves `build/` itself.
+
+**Bumped:** all of these are inside the existing majors. `package.json` minimums were
+raised to the patched versions.
+- `@sveltejs/kit` 2.70.3 → 2.70.4
+- `@sveltejs/adapter-static` 3.0.10 → 3.0.11
+- `vite` 8.3.0 → 8.3.8
+- `devalue` 5.9.2 → 5.9.4 (transitive)
+- `source-map-js` 1.2.1 → 1.2.4 (transitive, through postcss)
+
+`build/` went from 282 094 to 282 305 bytes.
+
+| # | Package | Sev. | Advisory | Ships? | Fix |
+|---|---|---|---|---|---|
+| 27 | glib (Rust) | mod | GHSA-wrw7-89jp-8q8g iterator unsoundness | No: Linux-only (gtk) | Not fixed: needs glib 0.20, i.e. a Tauri/gtk-rs change upstream |
+| 26, 4 | @sveltejs/kit | high | GHSA-3r8g-jcqq-3p5j remote `form` DoS | No: server-side, no remote functions | Not fixed: needs Kit 3.1.1 (major) |
+| 25, 3 | @sveltejs/kit | mod | GHSA-6cf5-gc4q-fm3x `query.batch` collision | No: server-side | Not fixed: needs Kit 3.1.1 (major) |
+| 24 | @sveltejs/kit | mod | GHSA-rqp5-r3wg-vg35 protocol-relative import in server route resolution | No: no server | **Fixed**: 2.70.4 |
+| 22 | @sveltejs/adapter-static | mod | GHSA-jf9x-2fg2-hx4w prerendered paths as regex (Vercel config) | No: build-time | **Fixed**: 3.0.11 |
+| 21, 2 | @sveltejs/kit | low | GHSA-pfhg-q3qv-9q6r redirect via `use:enhance` | No: no forms or `use:enhance` | Not fixed: needs Kit 3.0.0 (major) |
+| 20, 1 | @sveltejs/kit | low | GHSA-27mw-82g8-phjj cache-control XSS in prerendered page | No: server response headers | Not fixed: needs Kit 3.0.0 (major) |
+| 19 | vite | low | GHSA-9jrq-w75r-8gcw custom middleware cross-origin | No: dev server | **Fixed**: 8.3.8 |
+| 18 | vite | mod | GHSA-rq7h-c2jc-7f22 `server.fs.allow` bypass (non-Windows) | No: dev server | **Fixed**: 8.3.8 |
+| 17 | vite | mod | GHSA-vfpm-58rq-9qcg `?vite-wasm-instance` reads 4 bytes | No: dev server | **Fixed**: 8.3.8 |
+| 16 | vite (launch-editor) | mod | GHSA-r825-w8mm-5pxw editor flag injection | No: dev server | **Fixed**: 8.3.8 |
+| 15 | vite (launch-editor) | high | GHSA-587h-7wmj-h5pm `existsSync` bypass on Windows | No: dev server | **Fixed**: 8.3.8 |
+| 14 | vite (launch-editor) | mod | GHSA-698v-4r3x-3vcv `%` not escaped on Windows | No: dev server | **Fixed**: 8.3.8 |
+| 13 | devalue | high | GHSA-r9w8-h9r3-54w4 ArrayBuffer reviver | No: not in `build/` | **Fixed**: 5.9.4 |
+| 11 | devalue | high | GHSA-j22f-vq7h-c4qm shared memory in `stringify` | No: not in `build/` | **Fixed**: 5.9.4 |
+| 10 | devalue | mod | GHSA-hx4r-w6wj-j8fg sparse-array CPU in `uneval` | No: not in `build/` | **Fixed**: 5.9.4 |
+| 8 | devalue | low | GHSA-wf3x-273g-mvxv sparse-array allocation | No: not in `build/` | **Fixed**: 5.9.4 |
+| 6 | devalue | mod | GHSA-4q55-j62x-fr9h `__proto__` key coercion | No: not in `build/` | **Fixed**: 5.9.4 |
+| 12 | source-map-js | high | GHSA-68fv-2mgg-jv7q source-map section DoS | No: build tooling (postcss) | **Fixed**: 1.2.4 |
+| 5 | cookie | low | GHSA-pxg6-pf52-xh8x out-of-range characters | No: Kit's server runtime | Not fixed: Kit 2 pins `^0.6.0`; 0.7 arrives with Kit 3 |
+
+Numbers 1–4 are duplicates of 20, 21, 25 and 26: Dependabot reports `package.json` and
+`pnpm-lock.yaml` separately.
+
+**Ten alerts remain open, and none of them ships.**
+- Nine need SvelteKit 3, a major version, so they wait for the owner's decision.
+- The tenth is `glib`, which waits on Tauri.
+- An override of `cookie` to 0.7 was not made. It would cross a 0.x minor (a breaking
+  range) under Kit 2, for code that never runs here.
+
+**Checks:** all pass. No Rust dependency changed.
+- `cargo fmt`
+- clippy `-D warnings`
+- `cargo test`: 176 passed, 5 ignored
+- `pnpm check`: 203 files, 0 errors
+
 ## Session 13, 23.11.2026, P7 begins: two decisions, one version, an About
 
 **The owner's go-ahead** for the P7 plan.
