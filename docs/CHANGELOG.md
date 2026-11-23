@@ -71,6 +71,34 @@ Numbers 1–4 are duplicates of 20, 21, 25 and 26: Dependabot reports `package.j
 - `cargo test`: 176 passed, 5 ignored
 - `pnpm check`: 203 files, 0 errors
 
+## Session 13, 23.11.2026, the first release workflow run: v0.1.0 as a draft
+
+**The owner's go-ahead:** tag `v0.1.0`, on `a71cab6`, pushed.
+
+**The run** (release workflow, run 45225298946, windows-latest) succeeded at every step:
+- the tag against the version;
+- `pnpm check`, fmt, clippy and tests;
+- the installer build;
+- the checksum and the manifests;
+- `winget validate` ("Manifest validation succeeded" in the log, not only the step's
+  status, since the step may fail without failing the run);
+- the draft release.
+
+**The draft "ReviewGlass 0.1.0"** carries:
+- `ReviewGlass_0.1.0_x64-setup.exe` (2 306 546 bytes);
+- `SHA256SUMS.txt`;
+- `winget-manifests-0.1.0.zip` (the three manifests).
+
+**Checked by download:**
+- `sha256sum -c` passes (`65be5887…195d`).
+- The installer lists `reviewglass.exe` and both collectors.
+- The zip holds the version, installer and locale manifests.
+
+**Still to do:**
+- The draft is not published.
+- The installer has not been run: P7 step 5, on a clean Windows.
+- Publishing is the owner's, preferably after step 5.
+
 ## Session 13, 23.11.2026, P7 step 4: the release workflow and winget's manifests
 
 **Built:**
