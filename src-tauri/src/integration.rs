@@ -72,6 +72,9 @@ pub struct Paths {
     pub settings: PathBuf,
     pub bin: PathBuf,
     pub record: PathBuf,
+    /// Left by the uninstaller's disconnect, so an upgrade that uninstalls first can
+    /// put the connection back (`--restore-integration`).
+    pub reconnect: PathBuf,
     /// Where the collectors to install are: beside the running app.
     pub shipped: PathBuf,
 }
@@ -82,6 +85,7 @@ impl Paths {
             settings: settings_path().ok_or("no home folder")?,
             bin: bin_dir().ok_or("no home folder")?,
             record: record_path().ok_or("no home folder")?,
+            reconnect: home_dir().ok_or("no home folder")?.join("reconnect.json"),
             shipped: shipped_dir().ok_or("the app's own folder is unknown")?,
         })
     }
@@ -595,16 +599,76 @@ pub fn disconnect_at(p: &Paths, remove_collectors: bool) -> Result<IntegrationSt
     Ok(state_at(p))
 }
 
+/// How long the uninstaller's marker stands: an upgrade that uninstalls the old version
+/// first installs the new one within minutes; a reinstall a day later is a new start.
+const RECONNECT_WITHIN_S: u64 = 3600;
+
+/// What `--remove-integration` leaves when it disconnects a connected ReviewGlass.
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct Reconnect {
+    at: u64,
+    record: Record,
+}
+
+fn now_s() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// The uninstaller's disconnect. A connected ReviewGlass leaves a marker first, because
+/// Tauri's installer offers to uninstall an older version before installing the new
+/// one, without telling the uninstaller it is an update; `restore_at` reads it.
+fn remove_at(p: &Paths, now: u64) -> Result<IntegrationState, String> {
+    if state_at(p).connected {
+        let marker = Reconnect {
+            at: now,
+            record: read_record_at(&p.record),
+        };
+        let bytes = serde_json::to_vec_pretty(&marker).unwrap_or_default();
+        write_atomic(&p.reconnect, &bytes).map_err(|e| format!("marker: {e}"))?;
+    }
+    disconnect_at(p, true)
+}
+
+/// The installer's last step: put back a connection the uninstaller took down within
+/// the hour, with the user's own status line chained or replaced as it was. Without a
+/// fresh marker it does nothing: a first install connects only on the user's Connect.
+fn restore_at(p: &Paths, now: u64) -> Result<bool, String> {
+    let Ok(bytes) = fs::read(&p.reconnect) else {
+        return Ok(false);
+    };
+    let _ = fs::remove_file(&p.reconnect);
+    let Ok(marker) = serde_json::from_slice::<Reconnect>(&bytes) else {
+        return Ok(false);
+    };
+    if now.saturating_sub(marker.at) > RECONNECT_WITHIN_S {
+        return Ok(false);
+    }
+    let existing = if marker.record.chain {
+        Existing::Chain
+    } else {
+        Existing::Replace
+    };
+    connect_at(p, existing).map(|s| s.connected)
+}
+
 /// `reviewglass.exe --remove-integration`: the uninstaller's call, handled before Tauri
 /// starts (adr.rg.038). Always exits 0: an uninstall must not stop on it.
 pub fn remove_from_command_line() -> i32 {
-    match disconnect(true) {
-        Ok(_) => 0,
-        Err(e) => {
-            eprintln!("reviewglass: {e}");
-            0
-        }
+    if let Err(e) = Paths::real().and_then(|p| remove_at(&p, now_s())) {
+        eprintln!("reviewglass: {e}");
     }
+    0
+}
+
+/// `reviewglass.exe --restore-integration`: the installer's last step. Always exits 0.
+pub fn restore_from_command_line() -> i32 {
+    if let Err(e) = Paths::real().and_then(|p| restore_at(&p, now_s())) {
+        eprintln!("reviewglass: {e}");
+    }
+    0
 }
 
 // ---- commands --------------------------------------------------------------------------
@@ -802,6 +866,7 @@ mod tests {
             settings: root.join("claude").join("settings.json"),
             bin: root.join("reviewglass").join("bin"),
             record: root.join("reviewglass").join("integration.json"),
+            reconnect: root.join("reviewglass").join("reconnect.json"),
             shipped,
         }
     }
@@ -870,6 +935,34 @@ mod tests {
         let s = connect_at(&p, Existing::Chain).unwrap();
         assert!(s.connected);
         assert!(!backup_path_of(&p.settings).exists());
+        let _ = fs::remove_dir_all(p.settings.parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn an_upgrade_that_uninstalls_first_gets_its_connection_back_within_the_hour() {
+        let p = temp_paths("upgrade");
+        fs::create_dir_all(p.settings.parent().unwrap()).unwrap();
+        let original = "{\"statusLine\": {\"type\": \"command\", \"command\": \"my-line\"}}";
+        fs::write(&p.settings, original).unwrap();
+        connect_at(&p, Existing::Replace).unwrap();
+
+        // The old uninstaller, then the new installer ten minutes later.
+        assert!(!remove_at(&p, 1_000).unwrap().connected);
+        assert!(p.reconnect.exists());
+        assert!(restore_at(&p, 1_600).unwrap());
+        let s = state_at(&p);
+        assert!(s.connected);
+        assert!(!s.chained, "the choice to replace comes back as it was");
+        assert!(!p.reconnect.exists());
+
+        // A real uninstall, and an install two hours later: nothing comes back.
+        remove_at(&p, 10_000).unwrap();
+        assert!(!restore_at(&p, 10_000 + 7_200).unwrap());
+        assert!(!state_at(&p).connected);
+        assert!(!p.reconnect.exists());
+
+        // A first install with no marker does nothing.
+        assert!(!restore_at(&p, 20_000).unwrap());
         let _ = fs::remove_dir_all(p.settings.parent().unwrap().parent().unwrap());
     }
 
