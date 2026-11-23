@@ -144,6 +144,26 @@ feature). These packages are unsigned and do not yet set up the collectors.
 Every key has a mouse equivalent as well: a button on the glass's bar or the dock, an item
 in the right-click menu, or, for the arrows, a click on another pane.
 
+## What runs on your machine
+
+So you can tell ReviewGlass's processes from everything else in Task Manager:
+
+| Process | What it is | How to recognise it |
+|---|---|---|
+| `reviewglass.exe` | The app, always exactly one (a second launch only brings the dock forward) | Its windows: ReviewGlass Glass, Dock, Halo, Finder, Diff, and ReviewGlass (the drawer) |
+| `msedgewebview2.exe`, usually 5–9 | The app's windows' web views | Other apps use WebView2 too; ReviewGlass's have `app.sunrisesoftware.reviewglass` in their command line, and the first of them has `reviewglass.exe` as its parent |
+| `reviewglass-statusline.exe`, `reviewglass-hook.exe` | The collectors Claude Code runs | Live for milliseconds per run, from `~/.reviewglass/bin` |
+
+The app's identifier is `app.sunrisesoftware.reviewglass`: its web views' data is in
+`%LOCALAPPDATA%\app.sunrisesoftware.reviewglass`, everything else under `~/.reviewglass`.
+
+If ReviewGlass stops responding and the tray icon no longer answers either, this stops it
+and its web views, and nothing else:
+
+```powershell
+Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'reviewglass*' -or ($_.Name -eq 'msedgewebview2.exe' -and $_.CommandLine -match 'app\.sunrisesoftware\.reviewglass') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+```
+
 ## Privacy posture
 
 - **Screen pixels are read, scaled and shown, never kept.** The glass and its halo

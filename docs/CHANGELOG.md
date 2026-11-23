@@ -4,6 +4,45 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 13, 23.11.2026, last: a hang that did not come back, and what runs
+
+**The owner's report:** ReviewGlass froze and could not be got off the screen. Windows'
+problem reporting froze too. The owner also asked for a plain list of the processes
+that belong to ReviewGlass, since many other programs run beside it.
+
+**Read after the fact:**
+- The Application log: Application Hang 1002 and Windows Error Reporting 1001
+  (AppHangB1, `reviewglass.exe` 0.1.0.0) at 16:54:28. Windows had closed the
+  instance started at 16:49, the build 1944bf0.
+- When this session looked, nothing of ReviewGlass was left: no `reviewglass.exe`, no
+  web view with its identifier, no `WerFault.exe`.
+- `panic.log` untouched since 11.11, so it was not a panic.
+- `stall.log` had its `start` line at 16:49:15, written at the end of `setup`, so that
+  launch was the primary instance. Nothing came after it. The main-thread probe runs
+  only while the glass is shown, so a hang with the glass hidden leaves no line.
+- No archived report: the hang's WER folder was not kept.
+- The MsiInstaller "installed ReviewGlass" events at 16:37:35 are the WiX validation run
+  during `pnpm tauri build`. No product is installed, and both shortcuts point at the
+  build directory.
+
+**Tried to reproduce, with the owner's leave:**
+- The release (1944bf0) was started with WebView2's debug port. A watchdog
+  (`IsHungAppWindow` on each of its windows, CDP `Runtime.evaluate` on each page, every
+  2 s) would have written thread states and a minidump, then stopped the app after 20 s
+  hung.
+- The owner used it as before, from 16:57 to 17:03: no hang, every window and page
+  responding.
+- Restarted through the shortcut without the port: one `reviewglass.exe` and 9 web
+  views, none orphaned.
+
+**Cause: unknown.** Since the legend change touched only the page and a page's loop
+cannot hang the host's window loop, a Rust-side hang is the likelier kind (cf. the
+8.10.2026 lock). That is a guess until a hang leaves a trace.
+
+**Changed:** README has "What runs on your machine": each process, how to tell
+ReviewGlass's web views from other apps', and a one-line command that stops ReviewGlass
+and nothing else.
+
 ## Session 13, 23.11.2026, later still: the Diff view's legend, one meaning per colour
 
 **The owner's wish** (11.11.2026, on the list since): clearer legends of new, changed and
