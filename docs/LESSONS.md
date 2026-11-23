@@ -5,6 +5,20 @@ lesson that becomes a rule moves into `CLAUDE.md`; a lesson that becomes a decis
 becomes an ADR (`docs/adr/`, rendered from the Atlas model). This file keeps the ones
 that are neither yet, and the story behind the ones that are.
 
+## A watchdog that sleeps when nothing is shown cannot see a hang then (2026-11-23)
+
+Build 1944bf0 hung once, with the glass hidden; Windows closed it after five minutes
+(AppHangB1). The stall log, written to catch exactly this, had nothing after the start
+line: its main-thread probe slept while the glass was hidden, a choice made on 28.9.2026
+to cut the hidden app's idle cost. The cut was right for the picture's stages and wrong
+for the hang, which does not care what is on screen. Six minutes under an outside
+watchdog did not bring it back, so its cause is still open.
+
+Lesson: a probe for "is the app alive" runs whatever the app shows, at a rate that
+costs nothing; a probe that gives up on a hang stays with it and says when it ended.
+And a hung app needs a way out that does not go through the app: the Start Menu's Stop
+ReviewGlass.
+
 ## A check piped into a filter never stops the chain (2026-11-12)
 
 `cargo clippy ... | grep ... | head` followed by `&& git commit && git push` committed

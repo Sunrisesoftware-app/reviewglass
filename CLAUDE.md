@@ -188,5 +188,9 @@ Full stories in `docs/LESSONS.md`. The short forms:
   rider held the picture's lock while asking the glass for its place; the main thread
   waited on that lock; the app hung. Copy a value out before any window call from a
   background thread; a command sharing a lock with one runs `async`.
+- **A watchdog that sleeps when nothing is shown cannot see a hang then** (23.11.2026).
+  The main-thread probe slept with the glass hidden, and a hang left no line. "Is it
+  alive" is probed whatever is on screen; a hung app has a way out outside itself (the
+  Start Menu's Stop ReviewGlass).
 - **A control the user can see beats a rule the app infers** (30.9.2026). The drag-placed
   rule (adr.rg.029) still let the glass jump; Lock here (adr.rg.030) did not.

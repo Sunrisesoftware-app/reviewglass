@@ -4,6 +4,38 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 13, 23.11.2026, closing: a hang leaves a line, and a way out
+
+**The owner's go-ahead** for both follow-ups of the hang below.
+
+**The stall log sees a hang whatever is on screen (`src-tauri/src/stall.rs`):**
+- The main-thread probe runs while the glass is hidden too:
+  - shown: every 100 ms, writing answers over 100 ms, as before
+  - hidden: every 2 s, writing only answers over 1 s, with `glass=hidden`
+- A probe unanswered for 10 s is a hang. The probe stays with it instead of posting more
+  closures to a thread that runs none of them, and writes three kinds of line:
+  - when it starts: `main ms=>10000 hang cmd=<name> cmd_ms=<n>`
+  - every minute while it lasts: `still hung ms=…`
+  - when it ends: `recovered after_ms=…`
+- `cmd` names the timed command running on the main thread, or `none`. The timed
+  commands are `glass_frame`, `panel_diffs` and `panel_file_view`.
+- Two new tests; 174 in all. clippy and fmt clean.
+- The hang path itself was not exercised on the release: there is no safe way to make
+  the owner's app hang on purpose.
+
+**Stop ReviewGlass:**
+- A Start Menu entry, made by hand in the owner's profile: `taskkill /IM reviewglass.exe
+  /F /T`, ending the app and its web views, which are its children.
+- Used once, from Explorer, on the running 1944bf0. Four seconds later all 10 processes
+  were still counted. When the new build was launched 10 s later, every ReviewGlass
+  process was new (17:12:36): the app and 9 web views, none left of the old.
+- The installer is to create the entry (P7). README says where it is.
+
+**Lesson** (LESSONS.md, CLAUDE.md): a watchdog that sleeps when nothing is shown cannot
+see a hang then.
+
+The shortcut's exe is 04d97f8, started through Explorer, responding.
+
 ## Session 13, 23.11.2026, last: a hang that did not come back, and what runs
 
 **The owner's report:** ReviewGlass froze and could not be got off the screen. Windows'
