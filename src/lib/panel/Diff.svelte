@@ -29,6 +29,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { html as diffHtml } from "diff2html";
+  import { ColorSchemeType } from "diff2html/lib-esm/types";
   import "diff2html/bundles/css/diff2html.min.css";
   import type {
     Baseline,
@@ -140,6 +141,9 @@
           drawFileList: false,
           matching: "lines",
           outputFormat: "line-by-line",
+          // The table follows the theme: in the dark theme diff2html's light scheme gave
+          // its rows no text colour, so the drawer's light text fell on light rows.
+          colorScheme: ColorSchemeType.AUTO,
         })
       : "",
   );
@@ -949,22 +953,31 @@
   .rendered :global(.d2h-wrapper) {
     font-size: 12px;
   }
+  /* The hunk header opens the whole file, so it is read: diff2html's dim grey on its
+     blue ground was 2-3:1 in either theme, the drawer's muted grey is over 4.5:1. */
   .rendered :global(.d2h-info) {
     cursor: pointer;
+    color: var(--muted);
   }
   .rendered :global(tr[role="button"]:focus-visible) {
     outline: 2px solid var(--accent);
     outline-offset: -2px;
   }
-  /* ReviewGlass's highlighter on the latest edit's rows. diff2html's table is drawn in
-     its light scheme whatever the theme, so the light highlighter is used here. */
+  /* diff2html's table follows the theme (colorScheme auto). In the dark theme its
+     ground is the drawer's own, so the table does not sit on a darker slab. */
+  .rendered {
+    --d2h-dark-bg-color: var(--bg);
+  }
+  /* ReviewGlass's highlighter on the latest edit's rows, in the theme's own colours,
+     with a text colour of its own so no row inherits one meant for another ground. */
   .rendered :global(tr.rg-fresh td),
   .rendered :global(tr.rg-fresh td .d2h-code-line),
   .rendered :global(tr.rg-fresh td .d2h-code-line ins) {
-    background-color: #fff1a8 !important;
+    background-color: var(--fresh-bg) !important;
+    color: var(--fresh-fg);
   }
   .rendered :global(tr.rg-fresh td.d2h-code-linenumber) {
-    box-shadow: inset 3px 0 0 #d9a400;
+    box-shadow: inset 3px 0 0 var(--fresh-bar);
   }
   /* Novice mode: the Explain button on a hunk header, the explanation, the disclosure. */
   .rendered :global(button.rg-explain) {
@@ -1111,20 +1124,25 @@
     height: 10px;
     border-radius: 2px;
   }
+  /* The legend's swatches are the rows' own colours, in either theme. */
   .swatch.older {
     margin-left: 8px;
-    background: #dfd;
-    box-shadow: inset 0 0 0 1px #b4e2b4;
+    background: var(--older-bg);
+    box-shadow: inset 0 0 0 1px var(--older-line);
   }
   .swatch.fresh {
-    background: var(--fresh-bg, #fff1a8);
-    box-shadow: inset 2px 0 0 var(--fresh-bar, #d9a400);
+    background: var(--fresh-bg);
+    box-shadow: inset 2px 0 0 var(--fresh-bar);
   }
   /* The whole file: the working copy, one row per line, wide as its longest line so
      a tint spans the row when the view scrolls sideways. */
   .view {
     --fresh-bg: #fff1a8;
+    --fresh-fg: #1b1b1b;
     --fresh-bar: #d9a400;
+    /* diff2html's added rows, light and dark (--d2h-ins-bg-color and its dark twin). */
+    --older-bg: #dfd;
+    --older-line: #b4e2b4;
   }
   .file {
     --added-bg: #e6ffec;
@@ -1138,7 +1156,10 @@
   @media (prefers-color-scheme: dark) {
     .view {
       --fresh-bg: #4d4110;
+      --fresh-fg: #f2f2f2;
       --fresh-bar: #e0b400;
+      --older-bg: rgba(46, 160, 67, 0.15);
+      --older-line: rgba(46, 160, 67, 0.4);
     }
     .file {
       --added-bg: #1f3a28;

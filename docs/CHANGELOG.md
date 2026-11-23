@@ -4,6 +4,57 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 13, 23.11.2026, later: the Diff view readable in the dark theme
+
+**The fault** (on the list since session 12): in Windows' dark theme the rendered hunks
+were light text on light rows. diff2html drew its table in its light scheme, which gives
+the code no text colour, so the drawer's `#ececec` fell on its light rows:
+- the latest edit's highlighter, `#fff1a8`: 1.04:1
+- added rows: 1.09:1
+- deleted rows: 1.01:1
+
+**Changed (`src/lib/panel/Diff.svelte`):**
+- diff2html 3.4.56's own `colorScheme: auto`: the table follows the theme, and its dark
+  ground is the drawer's `--bg`, so it does not sit on a darker slab.
+- The highlighter rows take the theme's colours with a text colour of their own:
+  - light: `#1b1b1b` on `#fff1a8`, as before
+  - dark: `#f2f2f2` on `#4d4110`, the dark highlighter the whole-file and New views
+    already used
+- The legend's swatches are the rows' own colours in both themes. In the dark theme the
+  "earlier" swatch is diff2html's dark added colour; before, it was its light `#dfd`.
+- The hunk header (`@@ … @@`) opens the whole file, but it was diff2html's dim grey:
+  - before: 3.3:1 in dark, about 2:1 in light
+  - now: the drawer's muted grey, in both themes
+
+**Measured:**
+- Method: a harness with diff2html's real CSS and the same rules, its table made by
+  diff2html with the same options. Opened in the built-in browser with the colour
+  scheme emulated. Contrast was computed from the computed colours, with translucent
+  grounds composited.
+- Dark:
+
+  | Row | Contrast |
+  |---|---|
+  | context | 14.71:1 |
+  | added | 10.32:1 |
+  | deleted (changed) | 10.40:1 |
+  | latest edit | 9.02:1 |
+  | hunk header | 5.46:1 |
+
+- Light:
+
+  | Row | Contrast |
+  |---|---|
+  | context | 17.22:1 |
+  | added | 14.23:1 |
+  | deleted | 15.41:1 |
+  | latest edit | 15.09:1 |
+  | hunk header | 5.17:1 |
+
+- The light rows' colours are what they were; only the hunk header's text changed.
+- `pnpm check` clean; cargo fmt, clippy and tests as before (no Rust changed).
+- Not yet seen by the owner on the release build in Windows' dark theme.
+
 ## Session 13, 23.11.2026: the public face, a picture, and P7's update model
 
 **The owner's wish:** someone opening a shared link to the repository should see at once
