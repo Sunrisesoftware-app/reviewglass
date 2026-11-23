@@ -115,8 +115,10 @@ collector replaced it in `settings.json` on 11.9.2026.
   services still trade as ReviewGlass (`.com`, `.app`); the research is
   `docs/NAME-CLEARANCE.md`; spec v0.5 says so (D4, P8). Claude is named in what the tool is
   for, never in its name.
-- **Updates** (D10, owner 23.11.2026): GitHub Releases and winget; the app never fetches
-  an update itself. Enters the Atlas model as an ADR when P7 starts.
+- **P7** (packaging) started 23.11.2026 with adr.rg.037 (updates: GitHub Releases and
+  winget, the app never fetches one) and adr.rg.038 (the Claude Code integration is a
+  visible step in Settings > Claude Code with an undo; the installer places files only,
+  the uninstaller runs `reviewglass.exe --remove-integration`).
 
 ## Layout
 
