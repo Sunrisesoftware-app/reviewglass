@@ -4,6 +4,56 @@ Newest first. One entry per session; a session that ships several distinct thing
 sub-entries. What changed and *why*, with what was measured, so a later reader can tell
 a decision from a habit.
 
+## Session 13, 23.11.2026, later still: the Diff view's legend, one meaning per colour
+
+**The owner's wish** (11.11.2026, on the list since): clearer legends of new, changed and
+older code. Its wording survives only as that list line, so the view was read for what
+it left unsaid.
+
+**What was wrong:**
+- In the hunk view a changed line is a pair. diff2html drew its removed half in its own
+  yellow "change" colour (`#fdf2d0`; brown-yellow in the dark theme). That sat beside
+  ReviewGlass's yellow, which means "the latest edit", so old code and the newest looked
+  alike.
+- The legend named only the latest edit and the earlier green rows. The red removed rows,
+  the File view's red line where lines were cut, and the darker marks on the part of a
+  line that changed went unexplained.
+- The File view's green (`#e6ffec`) was not the hunk view's (`#dfd`).
+
+**Changed (`src/lib/panel/Diff.svelte`):**
+- One meaning per colour in every view:
+
+  | Colour | Means |
+  |---|---|
+  | yellow | the latest edit |
+  | green | added earlier, not committed |
+  | red | removed |
+  | darker shade | the part of a line that changed |
+
+- diff2html's change colours are mapped to its own removed red and added green, in both
+  themes. On a latest-edit row the changed part is a stronger yellow (`#ffd84d` light,
+  `#7a6614` dark). The File view's added rows take the hunks' green.
+- The legend is a row of keys. Each has a sample that is a row in miniature, with its
+  `+` or `−` sign, so it does not rest on colour alone, plus a count and a tooltip:
+  - latest edit (or "first edit seen")
+  - added earlier
+  - removed
+  - lines removed here (the File view)
+  - the part that changed
+  - in the New view, that unchanged lines between are hidden
+- The legend now shows whenever any of these is on screen, not only when the latest
+  edit added lines.
+
+**Measured** (the same harness, diff2html's real CSS, both schemes emulated):
+
+| | Dark | Light |
+|---|---|---|
+| Rows | 9.02–14.71:1 | 14.71–17.22:1 |
+| Removed row (red now) | 13.17:1 | 14.71:1 |
+| Changed-part marks | 5.02:1 on a latest-edit row, about 7:1 on a removed row | over 10:1 |
+
+`pnpm check` clean; no Rust changed (172 tests as at 1684daa). Not yet seen by the owner.
+
 ## Session 13, 23.11.2026, later: the Diff view readable in the dark theme
 
 **The fault** (on the list since session 12): in Windows' dark theme the rendered hunks

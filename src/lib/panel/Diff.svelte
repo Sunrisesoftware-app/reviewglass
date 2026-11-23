@@ -169,6 +169,11 @@
       : Math.max(0, (current?.added ?? 0) - (current?.fresh.length ?? 0)),
   );
 
+  /** Removed lines in the hunks, as git counted them. */
+  const removedLines = $derived(mode === "hunks" ? (current?.removed ?? 0) : 0);
+  /** diff2html marks the changed part of a modified line with <del>/<ins> inside the row. */
+  const wordMarks = $derived(mode === "hunks" && /<(del|ins)>/.test(rendered));
+
   /** The new code alone: runs of consecutive fresh lines, each with its first line. */
   const blocks = $derived.by(() => {
     const out: { start: number; lines: string[] }[] = [];
@@ -613,14 +618,53 @@
             </span>
           </span>
         </header>
-        {#if fresh.size > 0}
-          <!-- What the colours mean. The highlighter is ReviewGlass's own mark. -->
-          <p class="legend">
-            <span class="swatch fresh" aria-hidden="true"></span>
-            {freshFirst ? "new — the first edit ReviewGlass saw of this file" : "new in the latest edit"}
-            ({fresh.size} {fresh.size === 1 ? "line" : "lines"})
-            {#if older > 0 && mode !== "new"}
-              <span class="swatch older" aria-hidden="true"></span> earlier, not yet committed
+        {#if fresh.size > 0 || (mode !== "new" && older > 0) || removedLines > 0 || (mode === "file" && cuts.size > 0)}
+          <!-- What the colours mean: one meaning per colour in every view (the owner's
+               wish, 11.11.2026). Each sample is a row in miniature, with its sign, so
+               the key does not rest on colour alone. The highlighter is ReviewGlass's
+               own mark; the rest are the diff's. -->
+          <p class="legend" aria-label="What the colours mean">
+            {#if fresh.size > 0}
+              <span
+                class="key"
+                title={freshFirst
+                  ? "The first edit ReviewGlass saw of this file: every line it added"
+                  : "The lines the latest edit brought, as they stand now"}
+              >
+                <span class="swatch fresh" aria-hidden="true">+</span>
+                {freshFirst ? "first edit seen" : "latest edit"}
+                <b>{fresh.size}</b>
+              </span>
+            {/if}
+            {#if mode !== "new" && older > 0}
+              <span class="key" title="Lines added by earlier edits, not yet committed">
+                <span class="swatch older" aria-hidden="true">+</span>
+                added earlier
+                <b>{older}</b>
+              </span>
+            {/if}
+            {#if removedLines > 0}
+              <span class="key" title="Lines removed since the baseline; a changed line shows as removed above and added below">
+                <span class="swatch removed" aria-hidden="true">−</span>
+                removed
+                <b>{removedLines}</b>
+              </span>
+            {/if}
+            {#if mode === "file" && cuts.size > 0}
+              <span class="key" title="A red line between two rows: lines were removed there">
+                <span class="swatch cut" aria-hidden="true"></span>
+                lines removed here
+                <b>{cuts.size}</b>
+              </span>
+            {/if}
+            {#if wordMarks}
+              <span class="key" title="In a changed line, the darker shade marks the part that changed">
+                <span class="swatch word" aria-hidden="true"><i>ab</i><i>ab</i></span>
+                the part that changed
+              </span>
+            {/if}
+            {#if mode === "new" && blocks.length > 1}
+              <span class="key">⋯ unchanged lines between are hidden</span>
             {/if}
           </p>
         {/if}
@@ -967,13 +1011,23 @@
      ground is the drawer's own, so the table does not sit on a darker slab. */
   .rendered {
     --d2h-dark-bg-color: var(--bg);
+    /* One meaning per colour: yellow is ReviewGlass's mark for the latest edit, so
+       diff2html's yellow for the two halves of a changed line gives way to its own
+       removed red and added green. The changed part keeps its darker shade. */
+    --d2h-change-del-color: var(--d2h-del-bg-color);
+    --d2h-change-ins-color: var(--d2h-ins-bg-color);
+    --d2h-dark-change-del-color: var(--d2h-dark-del-bg-color);
+    --d2h-dark-change-ins-color: var(--d2h-dark-ins-bg-color);
   }
   /* ReviewGlass's highlighter on the latest edit's rows, in the theme's own colours,
      with a text colour of its own so no row inherits one meant for another ground. */
   .rendered :global(tr.rg-fresh td),
-  .rendered :global(tr.rg-fresh td .d2h-code-line),
-  .rendered :global(tr.rg-fresh td .d2h-code-line ins) {
+  .rendered :global(tr.rg-fresh td .d2h-code-line) {
     background-color: var(--fresh-bg) !important;
+    color: var(--fresh-fg);
+  }
+  .rendered :global(tr.rg-fresh td .d2h-code-line ins) {
+    background-color: var(--fresh-mark) !important;
     color: var(--fresh-fg);
   }
   .rendered :global(tr.rg-fresh td.d2h-code-linenumber) {
@@ -1111,28 +1165,68 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 4px 6px;
+    gap: 4px 14px;
     margin: -2px 0 8px;
     font-size: 11px;
     color: var(--muted);
     position: sticky;
     left: 0;
   }
-  .swatch {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: 2px;
+  .key {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
   }
-  /* The legend's swatches are the rows' own colours, in either theme. */
+  .key b {
+    font-weight: 600;
+    color: var(--fg);
+    font-variant-numeric: tabular-nums;
+  }
+  /* Each sample is a row in miniature: its ground, its sign, in the rows' own colours
+     in either theme. */
+  .swatch {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 18px;
+    height: 14px;
+    border-radius: 2px;
+    font: 600 11px/1 ui-monospace, Consolas, monospace;
+    color: var(--fg);
+  }
   .swatch.older {
-    margin-left: 8px;
     background: var(--older-bg);
     box-shadow: inset 0 0 0 1px var(--older-line);
   }
   .swatch.fresh {
     background: var(--fresh-bg);
-    box-shadow: inset 2px 0 0 var(--fresh-bar);
+    color: var(--fresh-fg);
+    box-shadow: inset 3px 0 0 var(--fresh-bar);
+  }
+  .swatch.removed {
+    background: var(--removed-bg);
+    box-shadow: inset 0 0 0 1px var(--removed-line);
+  }
+  .swatch.cut {
+    height: 8px;
+    border-top: 2px solid var(--cut);
+    border-radius: 0;
+  }
+  .swatch.word {
+    width: auto;
+    gap: 1px;
+    font-weight: 400;
+  }
+  .swatch.word i {
+    padding: 0 2px;
+    font-style: normal;
+    border-radius: 2px;
+    background: var(--removed-mark);
+  }
+  .swatch.word i + i {
+    background: var(--added-mark);
   }
   /* The whole file: the working copy, one row per line, wide as its longest line so
      a tint spans the row when the view scrolls sideways. */
@@ -1140,13 +1234,19 @@
     --fresh-bg: #fff1a8;
     --fresh-fg: #1b1b1b;
     --fresh-bar: #d9a400;
-    /* diff2html's added rows, light and dark (--d2h-ins-bg-color and its dark twin). */
+    /* diff2html's own colours, light and dark (--d2h-ins-bg-color and its dark twin,
+       and so on), named here for the legend. */
     --older-bg: #dfd;
     --older-line: #b4e2b4;
+    --removed-bg: #fee8e9;
+    --removed-line: #e9aeae;
+    --added-mark: #97f295;
+    --removed-mark: #ffb6ba;
+    /* The changed part of a line the latest edit brought: a stronger highlighter. */
+    --fresh-mark: #ffd84d;
+    --cut: #cf222e;
   }
   .file {
-    --added-bg: #e6ffec;
-    --cut: #cf222e;
     width: max-content;
     min-width: 100%;
     font-family: ui-monospace, Consolas, monospace;
@@ -1160,9 +1260,11 @@
       --fresh-bar: #e0b400;
       --older-bg: rgba(46, 160, 67, 0.15);
       --older-line: rgba(46, 160, 67, 0.4);
-    }
-    .file {
-      --added-bg: #1f3a28;
+      --removed-bg: rgba(248, 81, 73, 0.1);
+      --removed-line: rgba(248, 81, 73, 0.4);
+      --added-mark: rgba(46, 160, 67, 0.4);
+      --removed-mark: rgba(248, 81, 73, 0.4);
+      --fresh-mark: #7a6614;
       --cut: #ff8080;
     }
   }
@@ -1187,7 +1289,7 @@
     user-select: none;
   }
   .ln.added {
-    background: var(--added-bg);
+    background: var(--older-bg);
   }
   .ln.cut {
     border-top: 2px solid var(--cut);
