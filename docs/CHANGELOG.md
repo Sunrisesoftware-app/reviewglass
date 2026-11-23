@@ -71,6 +71,50 @@ Numbers 1–4 are duplicates of 20, 21, 25 and 26: Dependabot reports `package.j
 - `cargo test`: 176 passed, 5 ignored
 - `pnpm check`: 203 files, 0 errors
 
+## Session 13, 23.11.2026, P7 step 3: the NSIS installer
+
+**Found in Tauri's own template.** Two of the step's needs were already met:
+- The installer installs the crate's other binaries, both collectors, beside the app,
+  and removes them on uninstall.
+- It gives the Start Menu shortcut the app's identifier as its AppUserModelID. The
+  notification plugin uses that identifier whenever the app runs from outside
+  `targetelease`, so the toast identity comes with installing.
+
+**Added** (`a1bf826`), in `src-tauri/windows/hooks.nsh` (`installerHooks`):
+- After install:
+  - the Start Menu entry Stop ReviewGlass (`taskkill /IM reviewglass.exe /F /T`);
+  - `reviewglass.exe --restore-integration`.
+- Before uninstall, unless the uninstaller runs with `/UPDATE`:
+  `reviewglass.exe --remove-integration`.
+- After uninstall: the Stop entry removed.
+
+**An upgrade keeps its connection.** Tauri's installer offers to uninstall an older
+version before installing the new one, without `/UPDATE`. That would have disconnected
+the integration in the middle of an upgrade. Now:
+- A connected ReviewGlass's `--remove-integration` first leaves
+  `~/.reviewglass/reconnect.json`.
+- The new installer's `--restore-integration` connects again within the hour, with the
+  user's choice for their own status line.
+- A real uninstall leaves nothing connected, and a first install connects only on
+  Connect.
+- A test covers the upgrade, a late reinstall and a first install against a temporary
+  folder (198 tests in all).
+
+**Atlas:** `adr.rg.038` amended (PR #730, `47908b0`; worker `25ab2517`) and rendered.
+
+**Bundle targets:** NSIS only; the MSI is dropped.
+
+**Checked:**
+- `ReviewGlass_0.1.0_x64-setup.exe`, 2.3 MB, lists `reviewglass.exe` and both collectors
+  (7-Zip).
+- The generated `installer.nsi` includes the hooks, and makensis compiled them.
+
+**Not yet done:** install, upgrade and uninstall have not been run. They wait for a clean
+Windows (step 5), since installing on the owner's machine would replace the hand-made
+Start Menu shortcut "ReviewGlass", which points at the build directory.
+
+The shortcut's exe is `a1bf826`, started through Explorer, responding.
+
 ## Session 13, 23.11.2026, P7 step 2: the Claude Code integration in Settings (adr.rg.038)
 
 **Built** (`56fe06f`):
