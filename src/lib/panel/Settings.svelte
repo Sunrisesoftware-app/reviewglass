@@ -294,14 +294,198 @@
     }
   }
 
+  // The Claude Code integration (adr.rg.038): the one place ReviewGlass writes into the
+  // user's Claude Code settings, only on Connect, after showing what will change.
+  type Collector = { name: string; installed: boolean; shipped: boolean; current: boolean };
+  type StatusLine = { kind: "none" } | { kind: "ours" } | { kind: "other"; command: string };
+  type Integration = {
+    settings_path: string | null;
+    settings: "absent" | "ok" | "unreadable";
+    unreadable_reason: string | null;
+    status_line: StatusLine;
+    remembered_status_line: string | null;
+    chained: boolean;
+    hook: boolean;
+    disable_all_hooks: boolean;
+    managed_hooks_only: boolean;
+    collectors: Collector[];
+    bin_dir: string | null;
+    backup_path: string | null;
+    backup_exists: boolean;
+    connected: boolean;
+  };
+  let integ = $state<Integration | null>(null);
+  let integBusy = $state(false);
+  let integError = $state<string | null>(null);
+  let integDone = $state<string | null>(null);
+  let keepMine = $state(true);
+  async function loadIntegration() {
+    try {
+      integ = await invoke<Integration>("integration_state");
+    } catch {
+      integ = null;
+    }
+  }
+  async function connect() {
+    integBusy = true;
+    integError = null;
+    integDone = null;
+    try {
+      integ = await invoke<Integration>("integration_connect", { existing: keepMine ? "chain" : "replace" });
+      integDone =
+        "Connected. Sessions already running keep the status line they started with until they are restarted; the live diff works in them at once.";
+    } catch (e) {
+      integError = e instanceof Error ? e.message : String(e);
+    } finally {
+      integBusy = false;
+    }
+  }
+  async function disconnect() {
+    integBusy = true;
+    integError = null;
+    integDone = null;
+    try {
+      integ = await invoke<Integration>("integration_disconnect");
+      integDone = "Disconnected. ReviewGlass's entries are gone from your settings, and your own status line is back if you had one.";
+    } catch (e) {
+      integError = e instanceof Error ? e.message : String(e);
+    } finally {
+      integBusy = false;
+    }
+  }
+  const otherLine = $derived(integ?.status_line.kind === "other" ? integ.status_line.command : null);
+  const partly = $derived(
+    !!integ && !integ.connected && (integ.status_line.kind === "ours" || integ.hook || integ.collectors.some((c) => c.installed)),
+  );
+
   onMount(load);
   onMount(() => void loadExplain());
   onMount(() => void loadAbout());
+  onMount(() => void loadIntegration());
 </script>
 
 {#if !cfg}
   <p class="state">Reading settings…</p>
 {:else}
+  <section class="integration">
+    <h2>Claude Code</h2>
+    <p class="help">
+      ReviewGlass learns about your sessions from two small programs Claude Code runs: one
+      for the status line (the quota and each session's figures) and one after every edit
+      (the live diff). They are set up in your Claude Code settings, and only here.
+    </p>
+    {#if !integ}
+      <p class="help">Reading the Claude Code settings…</p>
+    {:else}
+      <p class="integ-state">
+        {#if integ.connected}
+          <span class="ok">● Connected</span>
+        {:else if partly}
+          <span class="warn">● Partly connected</span> — Connect completes it.
+        {:else}
+          <span class="muted">○ Not connected</span>
+        {/if}
+      </p>
+      <ul class="integ-list">
+        <li>
+          Status line:
+          {#if integ.status_line.kind === "ours"}
+            ReviewGlass's{#if integ.chained}, showing your own <code>{integ.remembered_status_line}</code>{/if}
+          {:else if integ.status_line.kind === "other"}
+            your own, <code>{integ.status_line.command}</code>
+          {:else}
+            none
+          {/if}
+        </li>
+        <li>After-edit hook: {integ.hook ? "ReviewGlass's is in place" : "not set"}</li>
+        <li>
+          Programs in <code>{integ.bin_dir}</code>:
+          {#each integ.collectors as c, i (c.name)}
+            {i > 0 ? " · " : ""}<code>{c.name}</code>
+            {c.installed ? (c.current ? "current" : c.shipped ? "older than this ReviewGlass's" : "installed") : "not installed"}
+          {/each}
+        </li>
+      </ul>
+
+      {#if integ.settings === "unreadable"}
+        <p class="bad">
+          <code>{integ.settings_path}</code>: {integ.unreadable_reason}. ReviewGlass will not write over
+          it; fix the file or move it away first.
+        </p>
+      {/if}
+      {#if integ.disable_all_hooks}
+        <p class="bad">
+          Your settings say <code>"disableAllHooks": true</code>: Claude Code runs neither the
+          status line nor the hook, so ReviewGlass sees nothing until that is removed.
+        </p>
+      {/if}
+      {#if integ.managed_hooks_only}
+        <p class="bad">
+          Your settings say <code>"allowManagedHooksOnly": true</code>: the after-edit hook
+          does not run, so the live diff stays empty.
+        </p>
+      {/if}
+
+      {#if !integ.connected && integ.settings !== "unreadable"}
+        <div class="integ-plan">
+          <p><b>Connect will:</b></p>
+          <ol>
+            <li>copy the two programs into <code>{integ.bin_dir}</code>;</li>
+            {#if integ.settings === "ok"}
+              <li>keep your settings as they are now in <code>{integ.backup_path}</code>;</li>
+            {/if}
+            <li>
+              add ReviewGlass's status line and after-edit hook to
+              <code>{integ.settings_path}</code>{integ.settings === "absent" ? " (a new file)" : ""}, leaving
+              everything else in it as it is.
+            </li>
+          </ol>
+          {#if otherLine}
+            <p class="help">You have a status line of your own, <code>{otherLine}</code>. Claude Code shows one:</p>
+            <label class="choice">
+              <input type="radio" bind:group={keepMine} value={true} /> Keep showing mine (ReviewGlass runs
+              it and reads the figures beside it)
+            </label>
+            <label class="choice">
+              <input type="radio" bind:group={keepMine} value={false} /> Show ReviewGlass's instead (mine
+              is remembered and comes back on Disconnect)
+            </label>
+          {/if}
+          <p class="help">
+            Claude Code runs these only in folders you have trusted, the same as any hook.
+            Sessions already running keep the status line they started with until you
+            restart them; the live diff works in them at once.
+          </p>
+        </div>
+      {/if}
+
+      <div class="test plain">
+        {#if !integ.connected}
+          <button onclick={() => void connect()} disabled={integBusy || integ.settings === "unreadable"}>
+            {integBusy ? "Connecting…" : "Connect"}
+          </button>
+        {/if}
+        {#if integ.connected || partly}
+          <button onclick={() => void disconnect()} disabled={integBusy}>Disconnect</button>
+        {/if}
+        <button onclick={() => void loadIntegration()} disabled={integBusy}>Refresh</button>
+      </div>
+      {#if integ.connected || partly}
+        <p class="help">
+          Disconnect removes exactly ReviewGlass's entries and puts back a status line of
+          your own; the programs stay until ReviewGlass is uninstalled.
+          {#if integ.backup_exists}Your settings before the last change are in <code>{integ.backup_path}</code>.{/if}
+        </p>
+      {/if}
+      {#if integDone}
+        <p class="ok">{integDone}</p>
+      {/if}
+      {#if integError}
+        <p class="bad">{integError}</p>
+      {/if}
+    {/if}
+  </section>
+
   <section>
     <h2>Glass on / off</h2>
     <p class="help">
@@ -691,6 +875,53 @@
     margin: 0 0 12px;
     max-width: 60ch;
     color: var(--muted);
+  }
+  .integ-state {
+    margin: 0 0 6px;
+    font-weight: 600;
+  }
+  .integ-state .warn {
+    color: var(--warn);
+  }
+  .integ-state .muted {
+    color: var(--muted);
+  }
+  .integ-list {
+    margin: 0 0 10px;
+    padding-left: 18px;
+    color: var(--muted);
+    max-width: 60ch;
+  }
+  .integ-list li {
+    margin: 2px 0;
+  }
+  .integ-list code,
+  .integ-plan code {
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: var(--line);
+    word-break: break-all;
+  }
+  .integ-plan {
+    margin: 0 0 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--raised);
+    max-width: 60ch;
+  }
+  .integ-plan p,
+  .integ-plan ol {
+    margin: 4px 0;
+  }
+  .integ-plan ol {
+    padding-left: 20px;
+  }
+  .choice {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    margin: 4px 0;
   }
   .about-line {
     display: flex;

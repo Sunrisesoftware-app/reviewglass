@@ -153,6 +153,16 @@ pub struct Config {
     pub explain: ExplainConfig,
     /// Where the user last put the diff window (adr.rg.028).
     pub diff_window: crate::diffwin::DiffWindowConfig,
+    /// The Claude Code integration's first-start offer (adr.rg.038).
+    pub integration: IntegrationConfig,
+}
+
+/// Whether the first start has shown Settings > Claude Code already. The integration's
+/// own state is read from the files it concerns, never stored here.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct IntegrationConfig {
+    pub offered: bool,
 }
 
 /// What happened when the file was loaded, for the panel to show once.

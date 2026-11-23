@@ -13,6 +13,7 @@ mod explain;
 mod follow_session;
 mod frame;
 mod glass;
+pub mod integration;
 mod measure;
 mod notifier;
 mod panel;
@@ -93,6 +94,31 @@ fn install_panic_log() {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// At every start (adr.rg.038): a collector in `~/.reviewglass/bin` that differs from
+/// the one beside the app is replaced, so an upgrade needs no step of its own. On the
+/// first start on a machine with no integration, the drawer opens on Settings, where
+/// Settings > Claude Code says what Connect would do - once; after that the section
+/// waits there.
+fn spawn_integration_check(app: tauri::AppHandle) {
+    let _ = std::thread::Builder::new()
+        .name("reviewglass-integration".into())
+        .spawn(move || {
+            if let Err(e) = integration::refresh_collectors(true) {
+                stall::note("integration", format!("refresh failed: {e}"));
+            }
+            let store = app.state::<config::Store>();
+            if store.get().integration.offered {
+                return;
+            }
+            let _ = store.update(|c| c.integration.offered = true);
+            if !integration::state().connected {
+                let _ = store.update(|c| c.dock.drawer_tab = "settings".into());
+                let handle = app.clone();
+                let _ = app.run_on_main_thread(move || dock::open_drawer(&handle));
+            }
+        });
+}
+
 pub fn run() {
     install_panic_log();
     let context = tauri::generate_context!();
@@ -156,6 +182,7 @@ pub fn run() {
                 eprintln!("reviewglass: hotkeys not registered: {e}");
             }
             panel::spawn_usage_loop(app.handle().clone());
+            spawn_integration_check(app.handle().clone());
             glass::spawn_lens_rider(app.handle().clone());
             diff::spawn_diff_loop(app.handle().clone());
             follow_session::spawn(app.handle().clone());
@@ -225,6 +252,9 @@ pub fn run() {
             explain::explain_run,
             explain::explain_cancel,
             about::app_about,
+            integration::integration_state,
+            integration::integration_connect,
+            integration::integration_disconnect,
             about::about_open_releases,
             stall::stall_note,
             stall::stall_log_state,

@@ -16,12 +16,22 @@
 //! installed and PowerShell otherwise, and Git Bash eats unquoted backslashes in
 //! Windows paths — a fragility the spec itself warns about. A native binary invoked
 //! directly has no shell in the path at all, and starts in single-digit milliseconds.
+//!
+//! A status line of the user's own, kept at Connect and chosen to be chained
+//! (adr.rg.038), is run here with the same input, through the shell Claude Code would
+//! have used, and its output is the line printed. If it fails, prints nothing or takes
+//! longer than `CHAIN_TIMEOUT`, ReviewGlass's own line is printed instead.
 
 use std::io::{self, Read, Write};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use reviewglass_lib::session::payload::{SpoolRecord, StatusLine};
-use reviewglass_lib::spool;
+use reviewglass_lib::{integration, spool};
+
+/// How long a chained status line of the user's own may take before ReviewGlass's own
+/// line stands in for it.
+const CHAIN_TIMEOUT: Duration = Duration::from_millis(1500);
 
 fn main() {
     let mut raw = String::new();
@@ -40,7 +50,10 @@ fn main() {
             StatusLine::default()
         }
     };
-    let line = render(&status);
+    let line = integration::read_record()
+        .chained_command()
+        .and_then(|cmd| run_chained(&cmd, &raw))
+        .unwrap_or_else(|| render(&status));
 
     // Print before storing. If the write below somehow blocks or fails, the user still
     // has a status line.
@@ -119,9 +132,107 @@ fn store(status: &StatusLine) {
     }
 }
 
+/// The shell Claude Code runs a status line through on Windows: Git Bash when it is
+/// installed (`CLAUDE_CODE_GIT_BASH_PATH`, or Git's usual place), else PowerShell.
+fn shell_for(cmd: &str) -> Command {
+    let bash = std::env::var_os("CLAUDE_CODE_GIT_BASH_PATH")
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_file())
+        .or_else(|| {
+            [
+                r"C:\Program Files\Git\bin\bash.exe",
+                r"C:\Program Files (x86)\Git\bin\bash.exe",
+            ]
+            .iter()
+            .map(std::path::PathBuf::from)
+            .find(|p| p.is_file())
+        });
+    let mut c = match bash {
+        Some(b) => {
+            let mut c = Command::new(b);
+            c.arg("-c").arg(cmd);
+            c
+        }
+        None => {
+            let mut c = Command::new("powershell.exe");
+            c.args(["-NoProfile", "-NonInteractive", "-Command", cmd]);
+            c
+        }
+    };
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW: no console flashes up on every assistant message.
+        c.creation_flags(0x0800_0000);
+    }
+    c
+}
+
+/// Run the user's own status line with the payload on stdin; its output, trimmed of
+/// trailing line breaks, or `None` when it fails, prints nothing or runs too long.
+fn run_chained(cmd: &str, payload: &str) -> Option<String> {
+    let mut child = shell_for(cmd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(payload.as_bytes());
+    }
+    // Read on a thread of its own so a full pipe never stalls the wait.
+    let mut stdout = child.stdout.take()?;
+    let reader = std::thread::spawn(move || {
+        let mut out = String::new();
+        let _ = stdout.read_to_string(&mut out);
+        out
+    });
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let out = reader.join().ok()?;
+                let out = out.trim_end_matches(['\r', '\n']).to_owned();
+                return (status.success() && !out.trim().is_empty()).then_some(out);
+            }
+            Ok(None) if start.elapsed() < CHAIN_TIMEOUT => {
+                std::thread::sleep(Duration::from_millis(5))
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The chained line runs through a real shell (Git Bash where it is installed, as on
+    // the owner's machine and windows-latest, else PowerShell); both understand these.
+    #[test]
+    fn a_chained_line_prints_the_users_own_output() {
+        assert_eq!(
+            run_chained("echo my-line", "{}").as_deref(),
+            Some("my-line")
+        );
+    }
+
+    #[test]
+    fn a_chained_line_that_fails_or_prints_nothing_gives_way_to_ours() {
+        assert_eq!(run_chained("exit 3", "{}"), None);
+        assert_eq!(run_chained("exit 0", "{}"), None);
+    }
+
+    #[test]
+    fn a_chained_line_that_runs_too_long_is_stopped() {
+        let t = Instant::now();
+        assert_eq!(run_chained("sleep 5", "{}"), None);
+        assert!(t.elapsed() < CHAIN_TIMEOUT + Duration::from_secs(1));
+    }
 
     fn parse(s: &str) -> StatusLine {
         serde_json::from_str(s).unwrap()
