@@ -53,7 +53,8 @@ the code no text colour, so the drawer's `#ececec` fell on its light rows:
 
 - The light rows' colours are what they were; only the hunk header's text changed.
 - `pnpm check` clean; cargo fmt, clippy and tests as before (no Rust changed).
-- Not yet seen by the owner on the release build in Windows' dark theme.
+- Observed by the owner the same day on the release build (main 1684daa) in Windows'
+  dark theme: "the dark mode works well now".
 
 ## Session 13, 23.11.2026: the public face, a picture, and P7's update model
 
