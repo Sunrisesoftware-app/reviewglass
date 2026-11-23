@@ -19,8 +19,8 @@ unless you turn on Explain with a remote backend and send a hunk yourself.
 > Anthropic. "Claude" and "Claude Code" are Anthropic's names for their products; this
 > tool only reads files Claude Code already writes on your own machine.
 
-**Status: pre-alpha.** It is in daily use by its author, and there is no installer
-or release yet. The phases built so far are
+**Status: pre-alpha.** It is in daily use by its author. The installer and the release
+workflow are built (P7); the first release is not out yet. The phases built so far are
 the magnifier (P1), the session panel (P2), threshold alerts (P3), the live diff with a
 whole-file view (P4, P4b), the glass locked to a pane (P4c) and a provider-agnostic
 explain feature (P6, off by default). Next is the glass in other applications (P9). The
@@ -75,19 +75,45 @@ brings the running copy's dock forward instead of starting another.
 - To build: Rust (stable, MSVC), Node 22+, pnpm, Visual Studio Build Tools with the
   Windows 10/11 SDK. The WebView2 runtime comes with Windows 11.
 
-## Building and setting it up
+## Installing
 
-There is no installer yet (that is P7), so setting it up is manual.
+Releases are published on [GitHub Releases](https://github.com/Sunrisesoftware-app/reviewglass/releases)
+(the first one is not out yet; until then, build from source below).
+
+1. Download `ReviewGlass_<version>_x64-setup.exe` and run it. It installs for your user
+   only, with no administrator rights. Windows SmartScreen may call it unrecognised,
+   because it is not code-signed yet; the release page gives its SHA-256.
+2. ReviewGlass starts with its dock in a screen corner, and on the first start the
+   dock's drawer opens on **Settings > Claude Code**.
+3. Press **Connect**. It first shows what it will do: copy two small collectors to
+   `~/.reviewglass/bin`, keep your Claude Code settings as
+   `settings.json.bak-reviewglass`, and add a status line and an after-edit hook to
+   `~/.claude/settings.json`, leaving everything else in it as it is. If you have a
+   status line of your own, you choose whether it stays on screen (ReviewGlass runs it)
+   or ReviewGlass's replaces it. **Disconnect** in the same place takes it all back.
+
+**Upgrading:** run a newer installer over the installed one. The connection stays.
+ReviewGlass never checks for updates itself (ADR-0037); Settings > About shows your
+version and opens the releases page. A winget package will follow the first release.
+
+**Uninstalling:** Windows Settings > Apps. The uninstaller removes ReviewGlass's entries
+from your Claude Code settings, puts your own status line back and removes the
+collectors; `~/.reviewglass` keeps only its logs and the spool.
+
+## Building from source
 
 ```bash
 pnpm install
 pnpm tauri build
 ```
 
-This builds the app, `src-tauri/target/release/reviewglass.exe`, and two small
-collectors beside it: `reviewglass-statusline.exe` and `reviewglass-hook.exe`. Copy the
-two collectors to `~/.reviewglass/bin/`, then add them to `~/.claude/settings.json`.
-Merge the following with your existing settings; use forward slashes in the paths:
+This builds the app, `src-tauri/target/release/reviewglass.exe`, the two collectors
+beside it (`reviewglass-statusline.exe`, `reviewglass-hook.exe`) and the installer,
+`src-tauri/target/release/bundle/nsis/ReviewGlass_<version>_x64-setup.exe`. Run the
+installer, or start `reviewglass.exe` where it was built and press **Connect** in
+Settings > Claude Code, which copies the collectors from beside it. By hand instead, copy
+the two collectors to `~/.reviewglass/bin/` and merge this into
+`~/.claude/settings.json`, with forward slashes in the paths:
 
 ```json
 {
@@ -112,10 +138,16 @@ Merge the following with your existing settings; use forward slashes in the path
 }
 ```
 
+A release is a tag: `pnpm version:set <version>`, commit, push, then
+`git tag v<version>` and push the tag. The release workflow checks that the tag is the
+version, runs every check CI runs, builds the installer and makes a draft release with
+the installer, its SHA-256 and winget's manifests; the draft is published by hand.
+
 Keep these in mind when you set it up:
 
-- **The status line becomes ReviewGlass's.** `statusLine` holds a single command, so the
-  collector replaces any status line you had. It prints a short line of its own.
+- **One status line.** `statusLine` holds a single command. Connect lets your own stay
+  on screen (the collector runs it and reads its figures beside it) or puts
+  ReviewGlass's short line in its place; set up by hand, ReviewGlass's replaces yours.
 - **A session uses the status line that existed when it started.** Terminal sessions
   that were already running must be restarted before they report. The hook does not
   need a restart.

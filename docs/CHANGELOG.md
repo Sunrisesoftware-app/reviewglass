@@ -71,6 +71,36 @@ Numbers 1–4 are duplicates of 20, 21, 25 and 26: Dependabot reports `package.j
 - `cargo test`: 176 passed, 5 ignored
 - `pnpm check`: 203 files, 0 errors
 
+## Session 13, 23.11.2026, P7 step 4: the release workflow and winget's manifests
+
+**Built:**
+- `.github/workflows/release.yml` runs on a `v*` tag, on windows-latest:
+  - the tag must be the version every manifest carries (`check-version.mjs`);
+  - the same gates as CI;
+  - `pnpm tauri build`;
+  - the installer's SHA-256 into `SHA256SUMS.txt`;
+  - winget's manifests, zipped and validated with `winget validate`;
+  - a draft release with the installer, the checksum and the manifests attached, and
+    notes covering install, upgrade, SmartScreen, uninstall and the checksum.
+  - Nothing is published until the owner publishes the draft.
+- `scripts/winget-manifest.mjs` makes winget's three files (version, installer,
+  defaultLocale; schema 1.6.0) for `SunriseSoftware.ReviewGlass`: nullsoft, user scope,
+  silent and interactive, the installer URL of the published release.
+  - Submitting them to microsoft/winget-pkgs is the owner's step (P8).
+- README: "Installing" (the installer, Connect, upgrade, uninstall) and "Building from
+  source" (Connect from a source build; by hand as before; how a release is made).
+
+**Checked:**
+- The manifests made from the real `ReviewGlass_0.1.0_x64-setup.exe` passed
+  `winget validate` locally ("Manifest validation succeeded"), and a bad version is
+  refused.
+- The workflow's YAML parses.
+- The release notes step, run locally with the workflow's variables, renders as
+  intended.
+
+**Not yet run:** the workflow itself, because no tag has been pushed. The first run
+makes a draft only.
+
 ## Session 13, 23.11.2026, P7 step 3: the NSIS installer
 
 **Found in Tauri's own template.** Two of the step's needs were already met:
@@ -78,7 +108,8 @@ Numbers 1–4 are duplicates of 20, 21, 25 and 26: Dependabot reports `package.j
   and removes them on uninstall.
 - It gives the Start Menu shortcut the app's identifier as its AppUserModelID. The
   notification plugin uses that identifier whenever the app runs from outside
-  `targetelease`, so the toast identity comes with installing.
+  `target
+elease`, so the toast identity comes with installing.
 
 **Added** (`a1bf826`), in `src-tauri/windows/hooks.nsh` (`installerHooks`):
 - After install:

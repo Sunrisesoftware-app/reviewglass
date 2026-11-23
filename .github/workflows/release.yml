@@ -1,0 +1,102 @@
+# A release (adr.rg.037): a tag v<version> builds the NSIS installer on windows-latest
+# and creates a DRAFT release with the installer, its SHA-256 and winget's manifests
+# attached. Nothing is published until the owner reviews the draft and publishes it;
+# winget's manifests are then submitted to microsoft/winget-pkgs by hand (P8).
+#
+#   pnpm version:set 0.2.0   # all three manifests; commit, push, CI green
+#   git tag v0.2.0 && git push origin v0.2.0
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: The tag is the version every manifest carries
+        shell: bash
+        run: |
+          node scripts/check-version.mjs
+          v=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME}" != "v${v}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match the version ${v}"
+            exit 1
+          fi
+          echo "VERSION=${v}" >> "$GITHUB_ENV"
+
+      - run: pnpm install --frozen-lockfile
+      # The same gates as CI: a release is never less checked than a push.
+      - run: pnpm check
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build the installer
+        run: pnpm tauri build
+
+      - name: Checksum and winget manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe="src-tauri/target/release/bundle/nsis/ReviewGlass_${VERSION}_x64-setup.exe"
+          test -f "$exe"
+          mkdir -p dist
+          cp "$exe" dist/
+          sha=$(sha256sum "$exe" | cut -c1-64)
+          echo "${sha}  ReviewGlass_${VERSION}_x64-setup.exe" > dist/SHA256SUMS.txt
+          echo "SHA256=${sha}" >> "$GITHUB_ENV"
+          node scripts/winget-manifest.mjs --version "$VERSION" --sha256 "$sha" --out winget --date "$(date -u +%F)"
+          (cd winget && 7z a -tzip "../dist/winget-manifests-${VERSION}.zip" manifests > /dev/null)
+
+      - name: Validate the winget manifests
+        run: winget validate --manifest "winget/manifests/s/SunriseSoftware/ReviewGlass/${{ env.VERSION }}" --disable-interactivity
+        continue-on-error: true
+
+      - name: Draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo "ReviewGlass ${VERSION}: a magnifier and live diff for Claude Code on Windows 11."
+            echo
+            echo "**Install:** download \`ReviewGlass_${VERSION}_x64-setup.exe\` below and run it. It installs for your user only, with no administrator rights. Then open the dock's drawer, **Settings > Claude Code**, and press **Connect**: it shows what it will add to your Claude Code settings before it does."
+            echo
+            echo "**Upgrade:** run the new installer over the installed version. Your settings and your Claude Code connection stay. ReviewGlass never checks for updates itself."
+            echo
+            echo "**Windows SmartScreen** may say the installer is unrecognised, because it is not code-signed yet. Choose *More info* and *Run anyway* if you trust this page."
+            echo
+            echo "**Uninstall:** Windows Settings > Apps. It removes ReviewGlass's entries from your Claude Code settings and puts your own status line back."
+            echo
+            echo "SHA-256 of the installer: \`${SHA256}\`"
+            echo
+            echo "What changed and why: [docs/CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/docs/CHANGELOG.md)."
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+            --title "ReviewGlass ${VERSION}" --notes-file notes.md \
+            dist/*
