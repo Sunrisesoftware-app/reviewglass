@@ -3,6 +3,7 @@
 //! and git.
 //! See docs/REVIEWGLASS-SPEC.md section 6 for the module contracts.
 
+mod about;
 mod capture;
 mod config;
 mod diff;
@@ -223,6 +224,8 @@ pub fn run() {
             explain::explain_check_local,
             explain::explain_run,
             explain::explain_cancel,
+            about::app_about,
+            about::about_open_releases,
             stall::stall_note,
             stall::stall_log_state,
             stall::stall_log_show,

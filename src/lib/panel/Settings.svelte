@@ -274,8 +274,29 @@
     }
   }
 
+  // About (adr.rg.037): this build, and where newer ones are. ReviewGlass never asks the
+  // network; the button hands a fixed address to the browser.
+  let about = $state<{ version: string; commit: string; releases_url: string } | null>(null);
+  let aboutError = $state<string | null>(null);
+  async function loadAbout() {
+    try {
+      about = await invoke("app_about");
+    } catch {
+      about = null;
+    }
+  }
+  async function openReleases() {
+    aboutError = null;
+    try {
+      await invoke("about_open_releases");
+    } catch (e) {
+      aboutError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
   onMount(load);
   onMount(() => void loadExplain());
+  onMount(() => void loadAbout());
 </script>
 
 {#if !cfg}
@@ -608,6 +629,27 @@
       <p class="bad">{recError}</p>
     {/if}
   </section>
+
+  <section>
+    <h2>About</h2>
+    {#if about}
+      <p class="about-line">
+        <b>ReviewGlass {about.version}</b>
+        <span class="help" title="The commit this build was made from; a + means uncommitted changes">build {about.commit}</span>
+      </p>
+    {/if}
+    <p class="help">
+      ReviewGlass never checks for updates itself and sends nothing about itself anywhere.
+      New versions are published on GitHub: download the installer and run it over this
+      one. Your settings and your Claude Code connection stay as they are.
+    </p>
+    <div class="test plain">
+      <button onclick={() => void openReleases()} title={about?.releases_url ?? ""}>Open the releases page</button>
+    </div>
+    {#if aboutError}
+      <p class="bad">{aboutError}</p>
+    {/if}
+  </section>
 {/if}
 
 <style>
@@ -649,6 +691,16 @@
     margin: 0 0 12px;
     max-width: 60ch;
     color: var(--muted);
+  }
+  .about-line {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 0 0 8px;
+  }
+  .about-line .help {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
   }
   .help code {
     padding: 1px 4px;
