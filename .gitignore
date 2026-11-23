@@ -9,3 +9,6 @@ node_modules
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .claude/
+
+# Raw material for the pictures (photos of the screen): kept on this machine, never published
+/docs/media/raw/
