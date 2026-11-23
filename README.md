@@ -157,8 +157,11 @@ So you can tell ReviewGlass's processes from everything else in Task Manager:
 The app's identifier is `app.sunrisesoftware.reviewglass`: its web views' data is in
 `%LOCALAPPDATA%\app.sunrisesoftware.reviewglass`, everything else under `~/.reviewglass`.
 
-If ReviewGlass stops responding and the tray icon no longer answers either, this stops it
-and its web views, and nothing else:
+If ReviewGlass stops responding and the tray icon no longer answers either, the Start
+Menu entry **Stop ReviewGlass** ends it: `taskkill /IM reviewglass.exe /F /T`, the app
+and its web views, which are its children. Until an installer creates that entry (P7),
+it is made by hand like the app's own shortcut. The same from a PowerShell prompt,
+matching the web views by their identifier as well:
 
 ```powershell
 Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'reviewglass*' -or ($_.Name -eq 'msedgewebview2.exe' -and $_.CommandLine -match 'app\.sunrisesoftware\.reviewglass') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }

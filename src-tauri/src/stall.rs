@@ -13,7 +13,11 @@
 //!   that waits on the GPU);
 //! - `main`: the core's main thread answered a probe late. Every synchronous command
 //!   runs there, the glass's frame poll among them, so a busy main thread is a glass
-//!   with no new picture;
+//!   with no new picture. Probed while the glass is hidden too, more rarely, because a
+//!   hang must leave a line whatever is on screen (23.11.2026: a hang with the glass
+//!   hidden left none). A probe not answered in `PROBE_GIVE_UP` is a hang: one line
+//!   when it starts, one a minute while it lasts, one when it ends, each naming the
+//!   timed command running on the main thread, if any;
 //! - `cmd`: a synchronous command that ran long on the main thread, by name;
 //! - `uia`: a UI Automation read on the frame thread that took long;
 //! - `covered`: a window of another application over the box held the picture, and for
@@ -58,12 +62,22 @@ pub const CROP_SLOW: Duration = Duration::from_millis(40);
 pub const LATE_SLOW: Duration = Duration::from_millis(100);
 /// A UI Automation read slower than this is written.
 pub const UIA_SLOW: Duration = Duration::from_millis(50);
-/// A probe the main thread has not answered in this long is written as such, and the
-/// probe moves on.
+/// A probe the main thread has not answered in this long is a hang, written as such;
+/// the probe then waits on with it, to say how long the hang lasted.
 const PROBE_GIVE_UP: Duration = Duration::from_secs(10);
+/// How often the main thread is probed while the glass is hidden: often enough that a
+/// hang leaves a line, rarely enough to cost nothing.
+const PROBE_HIDDEN_EVERY: Duration = Duration::from_secs(2);
+/// While the glass is hidden only an answer this slow is written: nothing on screen
+/// waits on a shorter one.
+const MAIN_SLOW_HIDDEN: Duration = Duration::from_secs(1);
+/// While a hang lasts, a line this often says it still does.
+const HANG_REPEAT: Duration = Duration::from_secs(60);
 
 static FILE: Mutex<Option<File>> = Mutex::new(None);
 static NOTES: AtomicU64 = AtomicU64::new(0);
+/// The timed command running now, and since when: what a hang's line names.
+static IN_FLIGHT: Mutex<Option<(&'static str, Instant)>> = Mutex::new(None);
 
 /// The minute's figures from the core's side, reset by each summary.
 struct Minute {
@@ -174,9 +188,15 @@ pub fn frame_published() {
 
 /// Time a synchronous command's body; a slow one is written with its name and what
 /// `detail` says about its size.
-pub fn command<T>(name: &str, body: impl FnOnce() -> T, detail: impl FnOnce(&T) -> String) -> T {
+pub fn command<T>(
+    name: &'static str,
+    body: impl FnOnce() -> T,
+    detail: impl FnOnce(&T) -> String,
+) -> T {
     let t0 = Instant::now();
+    let outer = IN_FLIGHT.lock().replace((name, t0));
     let out = body();
+    *IN_FLIGHT.lock() = outer;
     let took = t0.elapsed();
     max_into(&MINUTE.cmd_max_us, took);
     if took >= CMD_SLOW {
@@ -186,6 +206,15 @@ pub fn command<T>(name: &str, body: impl FnOnce() -> T, detail: impl FnOnce(&T) 
         );
     }
     out
+}
+
+/// The timed command running now, for a hang's line: `cmd=<name> cmd_ms=<n>`, or
+/// `cmd=none` when the main thread is busy outside every timed command.
+fn in_flight() -> String {
+    match *IN_FLIGHT.lock() {
+        Some((name, since)) => format!("cmd={name} cmd_ms={}", ms(since.elapsed())),
+        None => "cmd=none".into(),
+    }
 }
 
 /// Time a UI Automation read on the frame thread.
@@ -239,9 +268,10 @@ pub fn stall_log_show() -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// The main-thread probe and the core's minute summary. Asleep while the glass is
-/// hidden: a hidden glass has no picture to stall, and the hidden app's idle cost was
-/// cut to almost nothing on 28.9.2026.
+/// The main-thread probe and the core's minute summary. The probe runs every
+/// `PROBE_EVERY` while the glass is shown and every `PROBE_HIDDEN_EVERY` while it is
+/// hidden: the hidden app's idle cost was cut to almost nothing on 28.9.2026, and a
+/// closure posted to the main thread every two seconds keeps it there.
 pub fn spawn(app: AppHandle) {
     note("start", format!("build={}", crate::glass::build_stamp()));
     thread::Builder::new()
@@ -249,6 +279,7 @@ pub fn spawn(app: AppHandle) {
         .spawn(move || {
             let mut minute_at = Instant::now();
             let mut shown_this_minute = false;
+            let mut probed_at = Instant::now();
             loop {
                 thread::sleep(PROBE_EVERY);
                 if crate::shutting_down() {
@@ -257,23 +288,10 @@ pub fn spawn(app: AppHandle) {
                 let shown = app.state::<crate::capture::Engine>().is_enabled();
                 if shown {
                     shown_this_minute = true;
-                    let sent = Instant::now();
-                    let (tx, rx) = mpsc::channel();
-                    let queued = app.run_on_main_thread(move || {
-                        let _ = tx.send(());
-                    });
-                    if queued.is_ok() {
-                        match rx.recv_timeout(PROBE_GIVE_UP) {
-                            Ok(()) => {
-                                let waited = sent.elapsed();
-                                max_into(&MINUTE.main_max_us, waited);
-                                if waited >= MAIN_SLOW {
-                                    note("main", format!("ms={}", ms(waited)));
-                                }
-                            }
-                            Err(_) => note("main", format!("ms=>{}", PROBE_GIVE_UP.as_millis())),
-                        }
-                    }
+                }
+                if shown || probed_at.elapsed() >= PROBE_HIDDEN_EVERY {
+                    probe_main(&app, shown);
+                    probed_at = Instant::now();
                 }
                 if minute_at.elapsed() >= Duration::from_secs(60) {
                     if shown_this_minute {
@@ -309,4 +327,105 @@ pub fn spawn(app: AppHandle) {
             }
         })
         .expect("stall probe thread");
+}
+
+/// One probe of the main thread: a closure posted to it, and how long it took to run.
+/// A probe not answered in `PROBE_GIVE_UP` is a hang; the probe then stays with it
+/// rather than posting more to a thread that runs none of them, and says when it ends.
+fn probe_main(app: &AppHandle, shown: bool) {
+    let sent = Instant::now();
+    let (tx, rx) = mpsc::channel();
+    let queued = app.run_on_main_thread(move || {
+        let _ = tx.send(());
+    });
+    if queued.is_err() {
+        return;
+    }
+    let glass = if shown { "" } else { " glass=hidden" };
+    match rx.recv_timeout(PROBE_GIVE_UP) {
+        Ok(()) => {
+            let waited = sent.elapsed();
+            if shown {
+                max_into(&MINUTE.main_max_us, waited);
+            }
+            if waited >= main_slow(shown) {
+                note("main", format!("ms={}{glass}", ms(waited)));
+            }
+        }
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            note(
+                "main",
+                format!(
+                    "ms=>{} hang {}{glass}",
+                    PROBE_GIVE_UP.as_millis(),
+                    in_flight()
+                ),
+            );
+            loop {
+                match rx.recv_timeout(HANG_REPEAT) {
+                    Ok(()) => {
+                        note("main", format!("recovered after_ms={}", ms(sent.elapsed())));
+                        return;
+                    }
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        if crate::shutting_down() {
+                            return;
+                        }
+                        note(
+                            "main",
+                            format!("still hung ms={} {}", ms(sent.elapsed()), in_flight()),
+                        );
+                    }
+                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                }
+            }
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {}
+    }
+}
+
+/// The main thread's answer that is written as slow: a frame's worth while the glass
+/// shows a picture, a second while it is hidden.
+fn main_slow(shown: bool) -> Duration {
+    if shown {
+        MAIN_SLOW
+    } else {
+        MAIN_SLOW_HIDDEN
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_hang_names_the_timed_command_it_is_in() {
+        assert_eq!(in_flight(), "cmd=none");
+        let inside = command(
+            "outer_cmd",
+            || {
+                let nested = command("inner_cmd", in_flight, |_| String::new());
+                (in_flight(), nested)
+            },
+            |_| String::new(),
+        );
+        assert!(
+            inside.0.starts_with("cmd=outer_cmd cmd_ms="),
+            "{}",
+            inside.0
+        );
+        assert!(
+            inside.1.starts_with("cmd=inner_cmd cmd_ms="),
+            "{}",
+            inside.1
+        );
+        assert_eq!(in_flight(), "cmd=none");
+    }
+
+    #[test]
+    fn a_hidden_glass_writes_only_long_stalls() {
+        assert_eq!(main_slow(true), MAIN_SLOW);
+        assert!(main_slow(false) >= Duration::from_secs(1));
+        assert!(PROBE_HIDDEN_EVERY < PROBE_GIVE_UP);
+    }
 }
