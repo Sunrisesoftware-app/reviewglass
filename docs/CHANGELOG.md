@@ -71,6 +71,64 @@ Numbers 1–4 are duplicates of 20, 21, 25 and 26: Dependabot reports `package.j
 - `cargo test`: 176 passed, 5 ignored
 - `pnpm check`: 203 files, 0 errors
 
+## Session 13, 23.11.2026, P7 step 2: the Claude Code integration in Settings (adr.rg.038)
+
+**Built** (`56fe06f`):
+
+*`src-tauri/src/integration.rs` and Settings > Claude Code*, now the Settings tab's first
+section:
+- The section shows the state: ReviewGlass's status line or the user's own, the
+  after-edit hook, and the two collectors in `~/.reviewglass/bin` (current, older or
+  missing).
+- It warns about an unreadable settings file, `disableAllHooks` and
+  `allowManagedHooksOnly`.
+- Connect first lists what it will do. Then it:
+  - copies the collectors from beside the app into `~/.reviewglass/bin`;
+  - keeps the settings as `settings.json.bak-reviewglass`;
+  - adds the two entries with an atomic write that keeps every other key, in its order
+    (`serde_json` `preserve_order`).
+- A status line of the user's own is chained or replaced. Either way it is remembered in
+  `~/.reviewglass/integration.json` and comes back on Disconnect.
+- Disconnect removes exactly ReviewGlass's entries.
+
+*`src-tauri/src/bin/statusline.rs`: chaining.* The user's own command runs with the same
+payload, through the shell Claude Code would use (Git Bash if installed, else
+PowerShell), with no console window. Its output is the line. ReviewGlass's own line
+stands in when the command fails, prints nothing, or takes more than 1.5 s.
+
+*At start (`lib.rs`):*
+- An installed collector that differs from the app's is replaced. It is renamed aside
+  first, so a running copy is no obstacle.
+- On the first start with no integration, the drawer opens on Settings, once.
+  `config.integration.offered` records that it happened.
+
+*`main.rs`:* `--remove-integration`, the uninstaller's call, runs before Tauri. It
+disconnects, removes the collectors and always exits 0.
+
+**Tested** (197 tests; clippy and svelte-check clean):
+- 14 integration tests:
+  - every settings shape the contract names: absent, empty, BOM, junk, the owner's
+    hand-made configuration (recognised, not doubled), key order, the user's status
+    line chained or replaced and restored, the user's hooks untouched, our hook taken
+    out of a shared group, a hooks key of the wrong shape;
+  - the file work end to end in a temporary folder: backup, record, a collector
+    upgrade, the uninstaller's disconnect restoring the original file byte for byte.
+- 3 collector tests through a real shell: output, failure and silence, the timeout.
+- The file work takes its paths as a parameter, so no test touches the user's own
+  files.
+
+**Seen on the owner's machine** (release `56fe06f`, started through Explorer):
+- The start-up pass replaced both collectors in `~/.reviewglass/bin` with the build's;
+  the SHA-256 now matches.
+- `settings.json` was untouched (last written 21.10.2026). No backup and no record were
+  made, because nothing had to change.
+- `integration.offered` became true, and the drawer stayed on its tab: the hand-made
+  configuration was recognised as connected.
+- The section itself is not yet seen by the owner.
+
+**Also:** the Dependabot session's patch bumps (`c6093ef`) landed first. This step was
+rebased onto them and re-checked.
+
 ## Session 13, 23.11.2026, P7 begins: two decisions, one version, an About
 
 **The owner's go-ahead** for the P7 plan.
